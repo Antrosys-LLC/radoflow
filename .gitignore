@@ -8,13 +8,19 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
-dist-ssr
-.output
-.vinxi
-.tanstack/**
-.nitro
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Supabase local stack
+supabase/.temp/
+supabase/.branches/
+
 *.local
+.env
 
 # Wrangler / Cloudflare
 .wrangler/

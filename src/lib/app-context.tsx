@@ -1,5 +1,14 @@
+"use client";
+
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import { CURRENT_EMPLOYEE_ID, EMPLOYEES, type Department, type FactoryId, type Role } from "@/data/demo";
+import {
+  CURRENT_EMPLOYEE_ID,
+  EMPLOYEES,
+  SUPERUSER_ROLES,
+  type Department,
+  type FactoryId,
+  type Role,
+} from "@/data/demo";
 
 interface AppState {
   role: Role;
@@ -16,7 +25,7 @@ interface AppState {
 const AppContext = createContext<AppState | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [role, setRole] = useState<Role>("CEO");
+  const [role, setRole] = useState<Role>("Admin");
   const [factory, setFactory] = useState<FactoryId>("dyeing");
 
   const value = useMemo<AppState>(() => {
@@ -27,9 +36,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       factory,
       setFactory,
       managedDepartment: self.department,
-      isExecutive: role === "CEO" || role === "CFO" || role === "COO",
-      canSeePayroll: role !== "Manager",
-      canAdmin: role === "CEO" || role === "Admin",
+      // Payroll sign-off belongs to the unrestricted roles only. Operations
+      // runs attendance and has no authority over money.
+      isExecutive: SUPERUSER_ROLES.includes(role),
+      canSeePayroll: SUPERUSER_ROLES.includes(role) || role === "Employee",
+      canAdmin: SUPERUSER_ROLES.includes(role),
       selfId: CURRENT_EMPLOYEE_ID,
     };
   }, [role, factory]);

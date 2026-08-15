@@ -86,6 +86,41 @@ Continue developing this project in the [Lovable editor](https://lovable.dev/pro
 - **Stay in sync**: every change made in Lovable is committed straight to this repository.
 - **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
 
+## Tech stack
+
+- **Next.js 16** (App Router, React Server Components, Turbopack)
+- **React 19**
+- **Tailwind CSS v4** via `@tailwindcss/postcss`
+- **shadcn/ui** + Radix primitives, Lucide icons, Sonner toasts
+- **TanStack Query** for client data fetching
+- TypeScript, ESLint (`eslint-config-next`), Prettier
+
+## Project structure
+
+```
+src/
+  app/                     App Router — one folder per route
+    layout.tsx             <html>/<body>, fonts, base metadata
+    providers.tsx          client providers + persistent AppShell
+    page.tsx               /            → dashboard-view.tsx
+    attendance/page.tsx    /attendance  → attendance-view.tsx
+    payroll/page.tsx       /payroll     → payroll-view.tsx
+    admin/page.tsx         /admin       → admin-view.tsx
+    not-found.tsx          404
+    error.tsx              route error boundary
+    global-error.tsx       root-layout error boundary
+    globals.css            Tailwind entry + design tokens
+  components/              app-shell, ui-kit, shadcn/ui
+  data/                    demo dataset
+  hooks/  lib/             shared hooks and utilities
+```
+
+Each `page.tsx` is a server component that exports `metadata` and renders a
+sibling `*-view.tsx` client component holding the interactive UI.
+
+Routing is folder-based: a route is a directory under `src/app/` containing a
+`page.tsx`. Dynamic segments use `[id]`, catch-alls use `[...slug]`.
+
 ## Development
 
 Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
@@ -96,3 +131,12 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+| Script | Does |
+| --- | --- |
+| `npm run dev` | Dev server on http://localhost:3000 |
+| `npm run build` | Production build |
+| `npm start` | Serve the production build |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run format` | Prettier write |

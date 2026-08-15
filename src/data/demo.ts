@@ -1,5 +1,8 @@
-export type Role = "CEO" | "CFO" | "COO" | "Admin" | "Manager" | "Employee";
-export const ROLES: Role[] = ["CEO", "CFO", "COO", "Admin", "Manager", "Employee"];
+export type Role = "Admin" | "CEO" | "Operations" | "Manager" | "Employee";
+export const ROLES: Role[] = ["Admin", "CEO", "Operations", "Manager", "Employee"];
+
+/** Roles that bypass every permission check. Mirrors roles.is_superuser in the database. */
+export const SUPERUSER_ROLES: Role[] = ["Admin", "CEO"];
 
 export type FactoryId = "dyeing" | "textile";
 export const FACTORIES: { id: FactoryId; name: string; short: string }[] = [
@@ -102,10 +105,17 @@ export const MODULES = [
 
 export type ModuleName = (typeof MODULES)[number];
 
-export const DEFAULT_PERMISSIONS: Record<Exclude<Role, "CEO">, Record<ModuleName, boolean>> = {
-  CFO: { Attendance: true, "Payroll Run": true, Payslips: true, "Shift Rules": false, "Biometric Devices": false, "User Management": false },
-  COO: { Attendance: true, "Payroll Run": false, Payslips: true, "Shift Rules": true, "Biometric Devices": true, "User Management": false },
-  Admin: { Attendance: true, "Payroll Run": false, Payslips: true, "Shift Rules": true, "Biometric Devices": true, "User Management": true },
+/**
+ * Editable defaults for the non-superuser roles. Admin and CEO are absent
+ * because they hold everything implicitly and cannot be restricted here.
+ */
+export const DEFAULT_PERMISSIONS: Record<
+  Exclude<Role, "Admin" | "CEO">,
+  Record<ModuleName, boolean>
+> = {
+  // Operations runs attendance company-wide and nothing that touches money.
+  Operations: { Attendance: true, "Payroll Run": false, Payslips: false, "Shift Rules": true, "Biometric Devices": true, "User Management": false },
+  // Managers correct attendance for their own department only.
   Manager: { Attendance: true, "Payroll Run": false, Payslips: false, "Shift Rules": false, "Biometric Devices": false, "User Management": false },
   Employee: { Attendance: false, "Payroll Run": false, Payslips: true, "Shift Rules": false, "Biometric Devices": false, "User Management": false },
 };

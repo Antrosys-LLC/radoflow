@@ -1,8 +1,7 @@
 node_modules
-dist
-.output
-.vinxi
+.next
+out
+next-env.d.ts
 pnpm-lock.yaml
 package-lock.json
 bun.lock
-routeTree.gen.ts

@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AttendanceStatus } from "@/data/demo";
+import type { AttendanceStatus } from "@/lib/payroll/types";
 import { CheckCircle2, Clock3, XCircle } from "lucide-react";
 
 export function Card({
@@ -153,10 +153,14 @@ export function BarMeter({ value, label, right }: { value: number; label: string
 export function StatusBadge({ status }: { status: AttendanceStatus }) {
   const map = {
     present: { icon: CheckCircle2, text: "Present", cls: "bg-success-soft text-success" },
+    partial: { icon: Clock3, text: "Partial", cls: "bg-warning-soft text-warning" },
     absent: { icon: XCircle, text: "Absent", cls: "bg-danger-soft text-danger" },
+    leave: { icon: Clock3, text: "Leave", cls: "bg-info-soft text-info" },
+    holiday: { icon: Clock3, text: "Holiday", cls: "bg-secondary text-muted-foreground" },
+    off: { icon: Clock3, text: "Off day", cls: "bg-secondary text-muted-foreground" },
     pending: { icon: Clock3, text: "Pending", cls: "bg-warning-soft text-warning" },
   } as const;
-  const { icon: Icon, text, cls } = map[status];
+  const { icon: Icon, text, cls } = map[status] ?? map.pending;
   return (
     <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold", cls)}>
       <Icon className="size-4" />

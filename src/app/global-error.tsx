@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { reportLovableError } from "@/lib/lovable-error-reporting";
+import { reportError } from "@/lib/error-reporting";
 
 // Catches failures in the root layout itself, where the normal error boundary
 // (and therefore the app's styles) is not available — so this renders its own
@@ -16,7 +16,7 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error(error);
-    reportLovableError(error, { boundary: "next_global_error_boundary" });
+    reportError(error, { boundary: "root-layout", ...(error.digest ? { digest: error.digest } : {}) });
   }, [error]);
 
   return (

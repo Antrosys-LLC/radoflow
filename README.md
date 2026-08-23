@@ -76,16 +76,6 @@ Render clean, production-ready React / Tailwind CSS code (or interactive Figma f
 
 Ensure logical visual flow, identical rounded component padding across all pages, seamless navigation linking, and an elegant, modern finish reflect Antrosys' high design standards.
 
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/ef9dae82-9644-4321-b4f4-a9af69c20ed8).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
 ## Tech stack
 
 - **Next.js 16** (App Router, React Server Components, Turbopack)

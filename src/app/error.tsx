@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
-import { reportLovableError } from "@/lib/lovable-error-reporting";
+import { reportError } from "@/lib/error-reporting";
 
 export default function Error({
   error,
@@ -17,7 +17,7 @@ export default function Error({
 
   useEffect(() => {
     console.error(error);
-    reportLovableError(error, { boundary: "next_route_error_boundary" });
+    reportError(error, { boundary: "route", ...(error.digest ? { digest: error.digest } : {}) });
   }, [error]);
 
   return (

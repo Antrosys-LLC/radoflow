@@ -17,6 +17,22 @@ export async function register() {
     return;
   }
 
+  /*
+   * Opt-in, not automatic.
+   *
+   * The terminals live on the factory LAN at 192.168.x.x, which a cloud host
+   * cannot route to. Polling from there fails on every device every minute
+   * forever, burying genuine faults in noise. Enable this only on a machine
+   * that shares the network with the terminals.
+   */
+  const { deviceSyncEnabled } = await import("@/lib/env");
+  if (!deviceSyncEnabled()) {
+    console.info(
+      "[sync] terminal polling disabled (set DEVICE_SYNC_ENABLED=true on a host that can reach the terminals)",
+    );
+    return;
+  }
+
   const { startSyncWorker } = await import("@/lib/devices/sync-worker");
   startSyncWorker();
 }

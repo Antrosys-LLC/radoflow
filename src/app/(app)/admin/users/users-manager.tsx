@@ -354,32 +354,42 @@ function PasswordReset({ userId, name }: { userId: string; name: string }) {
   }
 
   return (
-    <div className="flex w-full items-center gap-2">
-      <div className="min-w-0 flex-1">
-        <PasswordInput
-          autoComplete="new-password"
-          minLength={8}
-          value={value}
-          onChange={setValue}
-          placeholder={`New password for ${name}`}
-          className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs outline-none focus:border-primary"
-        />
+    <div className="w-full space-y-2">
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">
+          <PasswordInput
+            autoComplete="new-password"
+            minLength={8}
+            value={value}
+            onChange={setValue}
+            placeholder={`New password for ${name}`}
+            className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs outline-none focus:border-primary"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setValue("");
+            setOpen(false);
+          }}
+          className="rounded-xl px-2 py-2 text-xs font-semibold text-muted-foreground transition-all hover:text-foreground"
+        >
+          Cancel
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={save}
-        disabled={pending || value.length < 8}
-        className="rounded-xl bg-charcoal px-3 py-2 text-xs font-bold text-charcoal-foreground transition-all hover:opacity-90 disabled:opacity-50"
-      >
-        {pending ? "…" : "Save"}
-      </button>
-      <button
-        type="button"
-        onClick={() => setOpen(false)}
-        className="rounded-xl px-2 py-2 text-xs font-semibold text-muted-foreground transition-all hover:text-foreground"
-      >
-        Cancel
-      </button>
+
+      {/* Locking someone out of their own account is worth a deliberate
+          gesture, the same as changing their role or their pay. */}
+      {value.length >= 8 ? (
+        <SwipeToConfirm
+          label={`Swipe to set ${name.split(" ")[0]}'s password`}
+          confirmedLabel="Setting password…"
+          pending={pending}
+          onConfirm={save}
+        />
+      ) : (
+        <p className="text-[11px] text-muted-foreground">At least 8 characters.</p>
+      )}
     </div>
   );
 }

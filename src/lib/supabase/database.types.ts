@@ -1448,6 +1448,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          cnic: string | null
           created_at: string
           department_id: string | null
           designation: string | null
@@ -1474,6 +1475,7 @@ export type Database = {
           weekend_hourly_rate: number | null
         }
         Insert: {
+          cnic?: string | null
           created_at?: string
           department_id?: string | null
           designation?: string | null
@@ -1500,6 +1502,7 @@ export type Database = {
           weekend_hourly_rate?: number | null
         }
         Update: {
+          cnic?: string | null
           created_at?: string
           department_id?: string | null
           designation?: string | null

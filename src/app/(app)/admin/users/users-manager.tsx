@@ -6,9 +6,17 @@ import { useFormStatus } from "react-dom";
 import { KeyRound, Plus, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { CnicInput, PasswordInput } from "@/components/credential-inputs";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { cn } from "@/lib/utils";
-import { createUser, setUserOverride, setUserRole, setUserStatus, type UserResult } from "./actions";
+import {
+  createUser,
+  setUserOverride,
+  setUserPassword,
+  setUserRole,
+  setUserStatus,
+  type UserResult,
+} from "./actions";
 
 const INITIAL: UserResult = { ok: false, message: "" };
 const INPUT =
@@ -18,6 +26,7 @@ export interface UserRow {
   id: string;
   employee_code: string;
   full_name: string;
+  cnic: string | null;
   email: string | null;
   status: string;
   roleId: string | null;
@@ -137,7 +146,12 @@ function UserCard({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold text-foreground">{user.full_name}</p>
           <p className="truncate text-xs text-muted-foreground">
-            {user.employee_code} · {user.email}
+            {user.employee_code} ·{" "}
+            {user.cnic ? (
+              <span className="font-mono">{user.cnic}</span>
+            ) : (
+              <span className="font-semibold text-danger">No CNIC — cannot sign in</span>
+            )}
           </p>
           {user.overrides.length > 0 ? (
             <p className="mt-1 text-[11px] font-bold text-primary">
@@ -188,6 +202,8 @@ function UserCard({
           </button>
         ) : null}
 
+        <PasswordReset userId={user.id} name={user.full_name} />
+
         <button
           type="button"
           disabled={pending}
@@ -218,6 +234,77 @@ function RoleSubmit() {
     >
       {pending ? "…" : "Set role"}
     </button>
+  );
+}
+
+/**
+ * Sets a new password for one person, in place.
+ *
+ * Collapsed until asked for, because it is a rare action sitting next to two
+ * common ones. Nothing is stored in readable form: the value is echoed back
+ * once so the office can pass it on, and the only way to recover a forgotten
+ * password afterwards is to set another.
+ */
+function PasswordReset({ userId, name }: { userId: string; name: string }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  const save = () =>
+    startTransition(async () => {
+      const result = await setUserPassword(userId, value);
+      if (!result.ok) {
+        toast.error(result.message);
+        return;
+      }
+      // Held until dismissed: once this toast is gone the password is not
+      // recoverable, only replaceable.
+      toast.success(result.message, { duration: Infinity, closeButton: true });
+      setValue("");
+      setOpen(false);
+    });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-xl bg-card px-3 py-2 text-xs font-semibold text-foreground transition-all hover:text-primary"
+      >
+        <KeyRound className="size-3.5" />
+        Set password
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex w-full items-center gap-2">
+      <div className="min-w-0 flex-1">
+        <PasswordInput
+          autoComplete="new-password"
+          minLength={8}
+          value={value}
+          onChange={setValue}
+          placeholder={`New password for ${name}`}
+          className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs outline-none focus:border-primary"
+        />
+      </div>
+      <button
+        type="button"
+        onClick={save}
+        disabled={pending || value.length < 8}
+        className="rounded-xl bg-charcoal px-3 py-2 text-xs font-bold text-charcoal-foreground transition-all hover:opacity-90 disabled:opacity-50"
+      >
+        {pending ? "…" : "Save"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="rounded-xl px-2 py-2 text-xs font-semibold text-muted-foreground transition-all hover:text-foreground"
+      >
+        Cancel
+      </button>
+    </div>
   );
 }
 
@@ -279,11 +366,20 @@ function AddUserDialog({
             <Field label="Employee code / K50 ID">
               <input name="employee_code" required className={INPUT} placeholder="RD-1043" />
             </Field>
-            <Field label="Email (sign-in)">
-              <input name="email" type="email" required className={INPUT} placeholder="name@radoflow.test" />
+            <Field label="CNIC (sign-in)">
+              <CnicInput required className={INPUT} />
             </Field>
             <Field label="Temporary password">
-              <input name="password" type="text" required minLength={8} className={INPUT} placeholder="At least 8 characters" />
+              <PasswordInput
+                autoComplete="new-password"
+                required
+                minLength={8}
+                placeholder="At least 8 characters"
+                className={INPUT}
+              />
+            </Field>
+            <Field label="Email (optional)">
+              <input name="email" type="email" className={INPUT} placeholder="name@radoflow.test" />
             </Field>
             <Field label="Phone">
               <input name="phone" type="tel" className={INPUT} placeholder="+92 300 1234567" />
@@ -298,7 +394,9 @@ function AddUserDialog({
               <select name="role_id" defaultValue="" className={INPUT}>
                 <option value="">No role</option>
                 {roles.map((r) => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -306,7 +404,9 @@ function AddUserDialog({
               <select name="site_id" defaultValue="" className={INPUT}>
                 <option value="">Unassigned</option>
                 {sites.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -314,7 +414,9 @@ function AddUserDialog({
               <select name="department_id" defaultValue="" className={INPUT}>
                 <option value="">Unassigned</option>
                 {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -322,7 +424,9 @@ function AddUserDialog({
               <select name="shift_id" defaultValue="" className={INPUT}>
                 <option value="">No shift</option>
                 {shifts.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -342,11 +446,23 @@ function AddUserDialog({
             </Field>
             {payClass === "monthly" ? (
               <Field label="Monthly salary (₨)">
-                <input name="monthly_salary" type="number" min="0" defaultValue={0} className={INPUT} />
+                <input
+                  name="monthly_salary"
+                  type="number"
+                  min="0"
+                  defaultValue={0}
+                  className={INPUT}
+                />
               </Field>
             ) : (
               <Field label="Hourly rate (₨)">
-                <input name="hourly_rate" type="number" min="0" defaultValue={0} className={INPUT} />
+                <input
+                  name="hourly_rate"
+                  type="number"
+                  min="0"
+                  defaultValue={0}
+                  className={INPUT}
+                />
               </Field>
             )}
           </div>

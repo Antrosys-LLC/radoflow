@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 /**
- * Creates the first Admin account on a fresh RadoFlow database.
+ * Creates — or repairs — the first Admin account on a RadoFlow database.
  *
  * A production database has no users: supabase/seed.sql must never run there,
  * because it creates demo logins with a password published in this repo. So
  * the very first account has to be made deliberately, once.
+ *
+ * Sign-in is by CNIC, so that is what this script takes. Supabase Auth is still
+ * keyed on email underneath, and the address is derived from the digits rather
+ * than asked for — floor staff have a national identity card and no mailbox.
  *
  * Everything goes through the Auth admin API rather than raw SQL. Writing to
  * auth.users by hand is what produced the opaque "Database error querying
@@ -12,10 +16,14 @@
  * empty strings rather than NULL, and needs a matching auth.identities row.
  * The API gets all of that right.
  *
+ * Re-running is safe. If the account already exists the password and CNIC are
+ * brought back in line rather than the run failing, because the usual reason
+ * for running this twice is that nobody can get in.
+ *
  * Usage:
  *   NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co \
  *   SUPABASE_SERVICE_ROLE_KEY=<service role key> \
- *   node scripts/create-admin.mjs "admin@yourcompany.com" "a-strong-password" "Full Name"
+ *   node scripts/create-admin.mjs "35201-1234567-8" "a-strong-password" "Full Name"
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -23,11 +31,51 @@ import { createClient } from "@supabase/supabase-js";
 /** Thrown to abort with a readable message rather than a stack trace. */
 class SetupError extends Error {}
 
+/*
+ * These mirror src/lib/cnic.ts. They are duplicated rather than imported
+ * because this script runs under plain node, which cannot load the TypeScript
+ * module. Both must agree on the stored form or a CNIC typed at the login box
+ * will not match the one written here.
+ */
+
+const CNIC_GROUPS = [5, 7, 1];
+const CNIC_DIGITS = 13;
+
+function cnicDigits(input) {
+  return String(input ?? "")
+    .replace(/\D/g, "")
+    .slice(0, CNIC_DIGITS);
+}
+
+function formatCnic(input) {
+  const digits = cnicDigits(input);
+  if (!digits) return "";
+
+  const parts = [];
+  let offset = 0;
+
+  for (const size of CNIC_GROUPS) {
+    if (offset >= digits.length) break;
+    parts.push(digits.slice(offset, offset + size));
+    offset += size;
+  }
+
+  return parts.join("-");
+}
+
+/**
+ * The synthetic login address for a CNIC. `.invalid` is reserved by RFC 2606
+ * precisely so it can never collide with a real domain or receive mail.
+ */
+function cnicLoginEmail(input) {
+  return `${cnicDigits(input)}@cnic.invalid`;
+}
+
 async function main() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  const [email, password, fullName = "Administrator", employeeCode = "RD-0001"] =
+  const [rawCnic, password, fullName = "Administrator", employeeCode = "RD-0001"] =
     process.argv.slice(2);
 
   if (!url || !serviceKey) {
@@ -38,15 +86,25 @@ async function main() {
     );
   }
 
-  if (!email || !password) {
+  if (!rawCnic || !password) {
     throw new SetupError(
-      'Usage: node scripts/create-admin.mjs "email" "password" ["Full Name"] ["RD-0001"]',
+      'Usage: node scripts/create-admin.mjs "35201-1234567-8" "password" ["Full Name"] ["RD-0001"]',
+    );
+  }
+
+  if (cnicDigits(rawCnic).length !== CNIC_DIGITS) {
+    throw new SetupError(
+      `"${rawCnic}" is not a CNIC. Thirteen digits, written XXXXX-XXXXXXX-X.\n` +
+        "  Dashes are optional here — they are added for you.",
     );
   }
 
   if (password.length < 8) {
     throw new SetupError("Choose a password of at least 8 characters.");
   }
+
+  const cnic = formatCnic(rawCnic);
+  const email = cnicLoginEmail(cnic);
 
   const supabase = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -94,6 +152,21 @@ async function main() {
 
   console.log(`  ✓ schema present, found the ${adminRole.name} role`);
 
+  /*
+   * Sign-in reads profiles.cnic, so a database still on the pre-CNIC schema
+   * would happily create an account that can never log in. Fail loudly here
+   * instead, naming the migration that is missing.
+   */
+  const { error: cnicColumnError } = await supabase.from("profiles").select("cnic").limit(1);
+
+  if (cnicColumnError && /cnic/i.test(cnicColumnError.message ?? "")) {
+    throw new SetupError(
+      `This database predates CNIC sign-in (${cnicColumnError.message}).\n` +
+        `  Run "npx supabase db push" to apply 20260825120000_cnic_login.sql,\n` +
+        `  then run this script again.`,
+    );
+  }
+
   // A person needs a factory to belong to; create one if this is a bare project.
   let { data: site } = await supabase.from("sites").select("id, name").limit(1).maybeSingle();
 
@@ -110,6 +183,43 @@ async function main() {
     console.log(`  ✓ using existing factory "${site.name}"`);
   }
 
+  /*
+   * An existing CNIC is treated as "fix this account", not as an error. The
+   * reason someone runs this a second time is almost always that nobody can
+   * sign in, and failing here would leave them exactly as stuck as before.
+   */
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .eq("cnic", cnic)
+    .maybeSingle();
+
+  if (existingProfile) {
+    const { error: resetError } = await supabase.auth.admin.updateUserById(existingProfile.id, {
+      password,
+      email,
+      email_confirm: true,
+    });
+
+    if (resetError) {
+      throw new SetupError(`Could not reset the existing login: ${resetError.message}`);
+    }
+
+    console.log(`  ✓ ${existingProfile.full_name} already existed — password reset`);
+
+    // The role may be missing if a previous run failed partway through.
+    await supabase
+      .from("user_roles")
+      .upsert(
+        { user_id: existingProfile.id, role_id: adminRole.id },
+        { onConflict: "user_id,role_id", ignoreDuplicates: true },
+      );
+
+    console.log(`  ✓ ${adminRole.name} confirmed\n`);
+    console.log(`Done. Sign in with CNIC ${cnic}.`);
+    return;
+  }
+
   const { data: created, error: authError } = await supabase.auth.admin.createUser({
     email,
     password,
@@ -121,12 +231,13 @@ async function main() {
     throw new SetupError(`Could not create the login: ${authError?.message ?? "unknown error"}`);
   }
 
-  console.log(`  ✓ login created for ${email}`);
+  console.log(`  ✓ login created for CNIC ${cnic}`);
 
   const { error: profileError } = await supabase.from("profiles").insert({
     id: created.user.id,
     employee_code: employeeCode,
     full_name: fullName,
+    cnic,
     email,
     site_id: site.id,
     pay_class: "monthly",
@@ -153,7 +264,7 @@ async function main() {
   }
 
   console.log(`  ✓ granted ${adminRole.name}\n`);
-  console.log(`Done. Sign in at your deployment with ${email}.`);
+  console.log(`Done. Sign in at your deployment with CNIC ${cnic}.`);
   console.log("Change the password after the first sign-in, from My Profile.");
 }
 

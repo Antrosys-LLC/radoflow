@@ -39,7 +39,7 @@ npm run db:reset     # apply migrations + seed
 npm run dev
 ```
 
-Demo accounts use the password `RadoFlow!2026`. Never run `supabase/seed.sql`
+Demo accounts sign in with their CNIC and the password `antrosys123`. Never run `supabase/seed.sql`
 against production.
 
 ## Deployment

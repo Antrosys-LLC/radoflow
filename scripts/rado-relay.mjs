@@ -36,6 +36,9 @@ const SECRET = process.env.RELAY_SECRET ?? "";
 const PORT = Number(process.env.RELAY_PORT ?? 8080);
 const HOST = process.env.RELAY_HOST ?? "0.0.0.0";
 
+/** Log every forwarded request, not just attendance uploads. For setup. */
+const VERBOSE = process.env.RELAY_VERBOSE === "true";
+
 /**
  * Optional comma-separated allowlist of source addresses.
  *
@@ -106,7 +109,15 @@ const server = createServer(async (request, response) => {
   }
 
   if (ALLOWED.length > 0 && !ALLOWED.includes(ip)) {
-    console.warn(`[${stamp()}] refused ${ip} (not in RELAY_ALLOWED_IPS)`);
+    /*
+     * The request line is logged alongside the address. A blocked terminal
+     * asks for /iclock/cdata?SN=..., which distinguishes it at a glance from a
+     * port scanner or a laptop on the wrong network — and the address on that
+     * line is exactly what RELAY_ALLOWED_IPS is missing.
+     */
+    console.warn(
+      `[${stamp()}] refused ${ip} ${request.method} ${url.pathname}${url.search} (not in RELAY_ALLOWED_IPS)`,
+    );
     response.writeHead(403, { "content-type": "text/plain" });
     response.end("Forbidden");
     return;
@@ -158,8 +169,18 @@ const server = createServer(async (request, response) => {
     });
     response.end(text);
 
-    if (url.pathname.includes("cdata") && request.method === "POST") {
-      console.log(`[${stamp()}] ${ip} → ${upstream.status} ${text.slice(0, 40).trim()}`);
+    /*
+     * Attendance uploads are always logged. Everything else — the handshake
+     * and the command poll the terminal repeats every few seconds — is logged
+     * only when RELAY_VERBOSE is on, so a healthy relay stays quiet but a
+     * silent one during setup can be told apart from a dead one.
+     */
+    const isUpload = url.pathname.includes("cdata") && request.method === "POST";
+
+    if (isUpload || VERBOSE) {
+      console.log(
+        `[${stamp()}] ${ip} ${request.method} ${url.pathname} → ${upstream.status} ${text.slice(0, 40).trim()}`,
+      );
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { Building2, LogIn, TriangleAlert } from "lucide-react";
 
+import { CnicInput, PasswordInput } from "@/components/credential-inputs";
 import { signIn, type LoginState } from "./actions";
 
 const INITIAL: LoginState = { error: null };
@@ -32,32 +33,20 @@ export function LoginForm({ next }: { next: string }) {
         >
           <input type="hidden" name="next" value={next} />
 
-          <label htmlFor="email" className="block text-sm font-semibold text-foreground">
-            Email
+          <label htmlFor="cnic" className="block text-sm font-semibold text-foreground">
+            CNIC
           </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="username"
-            required
-            autoFocus
-            placeholder="you@radoflow.test"
-            className="mt-2 w-full rounded-2xl border border-input bg-background px-4 py-3.5 text-base text-foreground outline-none transition-all duration-300 placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
-          />
+          <div className="mt-2">
+            <CnicInput id="cnic" required autoFocus />
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">The dashes are added for you.</p>
 
           <label htmlFor="password" className="mt-5 block text-sm font-semibold text-foreground">
             Password
           </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            placeholder="••••••••"
-            className="mt-2 w-full rounded-2xl border border-input bg-background px-4 py-3.5 text-base text-foreground outline-none transition-all duration-300 placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/30"
-          />
+          <div className="mt-2">
+            <PasswordInput id="password" required />
+          </div>
 
           {state.error ? (
             <p

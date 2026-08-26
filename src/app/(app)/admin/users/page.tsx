@@ -27,7 +27,10 @@ export default async function UsersPage() {
     { data: shifts },
     { data: permissions },
   ] = await Promise.all([
-    supabase.from("profiles").select("id, employee_code, full_name, email, status").order("full_name"),
+    supabase
+      .from("profiles")
+      .select("id, employee_code, full_name, cnic, email, status")
+      .order("full_name"),
     supabase.from("roles").select("id, name, is_superuser").order("rank"),
     supabase.from("user_roles").select("user_id, role_id"),
     supabase.from("user_permission_overrides").select("user_id, permission_id, effect"),
@@ -53,6 +56,7 @@ export default async function UsersPage() {
     return {
       id: profile.id,
       employee_code: profile.employee_code,
+      cnic: profile.cnic,
       full_name: profile.full_name,
       email: profile.email,
       status: profile.status,

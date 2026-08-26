@@ -50,26 +50,47 @@ export interface DeviceRecord {
   timezone: string;
 }
 
+/**
+ * Marks a terminal as alive and returns it, or null if the serial is unknown.
+ *
+ * Used by the handshake as well as by ingestion. A push-mode terminal repeats
+ * the handshake every few seconds but may not upload a punch for hours, so
+ * counting only uploads as a heartbeat leaves a perfectly healthy device
+ * reading "offline" all night — and makes a genuinely dead one indistinguishable
+ * from a quiet one.
+ *
+ * `last_error` is cleared on contact: a failed pull-mode test writes one, and
+ * without this it would sit on the device page forever while push works fine.
+ */
+export async function recordDeviceContact(serialNumber: string): Promise<DeviceRecord | null> {
+  const supabase = createServiceClient();
+
+  const { data: device, error } = await supabase
+    .from("devices")
+    .select("id, site_id, timezone")
+    .eq("serial_number", serialNumber)
+    .single<DeviceRecord>();
+
+  if (error || !device) return null;
+
+  await supabase
+    .from("devices")
+    .update({ last_seen_at: new Date().toISOString(), status: "online", last_error: null })
+    .eq("id", device.id);
+
+  return device;
+}
+
 export async function ingestPunches(
   serialNumber: string,
   punches: readonly IclockPunch[],
 ): Promise<IngestResult> {
   const supabase = createServiceClient();
 
-  const { data: device, error: deviceError } = await supabase
-    .from("devices")
-    .select("id, site_id, timezone")
-    .eq("serial_number", serialNumber)
-    .single<DeviceRecord>();
-
-  if (deviceError || !device) {
+  const device = await recordDeviceContact(serialNumber);
+  if (!device) {
     throw new Error(`Unknown terminal serial number: ${serialNumber}`);
   }
-
-  await supabase
-    .from("devices")
-    .update({ last_seen_at: new Date().toISOString(), status: "online" })
-    .eq("id", device.id);
 
   if (punches.length === 0) {
     return { accepted: 0, duplicates: 0, unmapped: [], recomputedDays: 0 };

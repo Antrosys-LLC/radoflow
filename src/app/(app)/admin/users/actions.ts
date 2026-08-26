@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requirePermission } from "@/lib/auth/session";
+import { cnicLoginEmail, formatCnic, isValidCnic } from "@/lib/cnic";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -29,19 +30,28 @@ function text(form: FormData, key: string): string {
 export async function createUser(_prev: UserResult, form: FormData): Promise<UserResult> {
   await requirePermission("people.manage");
 
-  const email = text(form, "email").toLowerCase();
+  const cnic = formatCnic(text(form, "cnic"));
   const password = text(form, "password");
   const fullName = text(form, "full_name");
   const employeeCode = text(form, "employee_code");
   const roleId = text(form, "role_id");
   const siteId = text(form, "site_id");
 
-  if (!email || !fullName || !employeeCode) {
-    return { ok: false, message: "Name, employee code and email are required." };
+  if (!fullName || !employeeCode || !cnic) {
+    return { ok: false, message: "Name, employee code and CNIC are required." };
+  }
+  if (!isValidCnic(cnic)) {
+    return { ok: false, message: "A CNIC is 13 digits — XXXXX-XXXXXXX-X." };
   }
   if (password.length < 8) {
     return { ok: false, message: "The password must be at least 8 characters." };
   }
+
+  // The CNIC is what the person types to sign in. Auth still needs an address,
+  // so an optional real email is kept for correspondence while the derived one
+  // carries the login.
+  const contactEmail = text(form, "email").toLowerCase();
+  const email = contactEmail || cnicLoginEmail(cnic);
 
   const admin = createServiceClient();
 
@@ -62,7 +72,8 @@ export async function createUser(_prev: UserResult, form: FormData): Promise<Use
     id: created.user.id,
     employee_code: employeeCode,
     full_name: fullName,
-    email,
+    cnic,
+    email: contactEmail || null,
     phone: text(form, "phone") || null,
     site_id: siteId || null,
     department_id: text(form, "department_id") || null,
@@ -79,7 +90,12 @@ export async function createUser(_prev: UserResult, form: FormData): Promise<Use
     // that can sign in but has no employee record.
     await admin.auth.admin.deleteUser(created.user.id);
     if (profileError.code === "23505") {
-      return { ok: false, message: `Employee code ${employeeCode} is already in use.` };
+      // Either unique column can collide, and telling the operator which one
+      // saves them re-typing the whole form to find out.
+      const field = profileError.message.includes("cnic")
+        ? `CNIC ${cnic}`
+        : `Employee code ${employeeCode}`;
+      return { ok: false, message: `${field} is already in use.` };
     }
     return { ok: false, message: profileError.message };
   }
@@ -89,7 +105,32 @@ export async function createUser(_prev: UserResult, form: FormData): Promise<Use
   }
 
   revalidatePath("/admin/users");
-  return { ok: true, message: `${fullName} can now sign in as ${email}.` };
+  return { ok: true, message: `${fullName} can now sign in with CNIC ${cnic}.` };
+}
+
+/**
+ * Sets someone's password to a value the administrator chooses.
+ *
+ * Workers forget passwords and have no mailbox to receive a reset link, so the
+ * office sets a new one and tells them in person. The value is written to the
+ * auth record and never stored anywhere readable — it is echoed back to the
+ * administrator once, in the response, so they can pass it on.
+ */
+export async function setUserPassword(userId: string, password: string): Promise<UserResult> {
+  await requirePermission("people.manage");
+
+  if (!userId) return { ok: false, message: "No user selected." };
+  if (password.length < 8) {
+    return { ok: false, message: "The password must be at least 8 characters." };
+  }
+
+  const admin = createServiceClient();
+  const { error } = await admin.auth.admin.updateUserById(userId, { password });
+
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath("/admin/users");
+  return { ok: true, message: `Password set to ${password} — tell them before you close this.` };
 }
 
 /** Replaces a person's role. */
@@ -104,7 +145,9 @@ export async function setUserRole(_prev: UserResult, form: FormData): Promise<Us
   await supabase.from("user_roles").delete().eq("user_id", userId);
 
   if (roleId) {
-    const { error } = await supabase.from("user_roles").insert({ user_id: userId, role_id: roleId });
+    const { error } = await supabase
+      .from("user_roles")
+      .insert({ user_id: userId, role_id: roleId });
     if (error) return { ok: false, message: error.message };
   }
 
@@ -136,10 +179,12 @@ export async function setUserOverride(
       .eq("permission_id", permissionId);
     if (error) return { ok: false, message: error.message };
   } else {
-    const { error } = await supabase.from("user_permission_overrides").upsert(
-      { user_id: userId, permission_id: permissionId, effect },
-      { onConflict: "user_id,permission_id,site_id" },
-    );
+    const { error } = await supabase
+      .from("user_permission_overrides")
+      .upsert(
+        { user_id: userId, permission_id: permissionId, effect },
+        { onConflict: "user_id,permission_id,site_id" },
+      );
     if (error) return { ok: false, message: error.message };
   }
 

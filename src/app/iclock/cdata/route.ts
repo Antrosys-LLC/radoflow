@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { ingestPunches } from "@/lib/devices/ingest";
+import { ingestPunches, recordDeviceContact } from "@/lib/devices/ingest";
 import { ackResponse, buildHandshakeResponse, parseAttlog } from "@/lib/devices/zkteco/iclock";
 
 /**
@@ -48,6 +48,10 @@ function readSecret(request: NextRequest): string | null {
 /**
  * Handshake. The terminal calls this on boot to collect its upload settings,
  * then keeps calling it to prove it is alive.
+ *
+ * That repetition is the only regular signal a push-mode terminal gives, so it
+ * is recorded as the heartbeat. Waiting for an upload instead would leave a
+ * working device showing offline until the first finger touches it.
  */
 export async function GET(request: NextRequest) {
   const serialNumber = request.nextUrl.searchParams.get("SN");
@@ -55,6 +59,15 @@ export async function GET(request: NextRequest) {
     return new NextResponse("Missing SN", { status: 400, headers: TEXT_HEADERS });
   }
   if (!secretMatches(readSecret(request))) return unauthorised();
+
+  // An unregistered serial is refused here rather than waved through to fail
+  // later on its first upload: a mistyped serial is a setup error, and it
+  // should be visible in the logs the moment the terminal is switched on.
+  const device = await recordDeviceContact(serialNumber);
+  if (!device) {
+    console.warn(`[iclock] handshake from unregistered serial ${serialNumber}`);
+    return new NextResponse("Unknown device", { status: 404, headers: TEXT_HEADERS });
+  }
 
   return new NextResponse(buildHandshakeResponse({ serialNumber }), {
     status: 200,

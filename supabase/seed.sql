@@ -107,11 +107,12 @@ values
 -- ---------------------------------------------------------------------------
 -- Demo accounts
 --
--- Password for every account below: RadoFlow!2026
+-- Sign in with the CNIC, not the email. Password for every account: antrosys123
 -- ---------------------------------------------------------------------------
 
 create or replace function pg_temp.seed_user(
   p_email        text,
+  p_cnic         text,
   p_full_name    text,
   p_code         text,
   p_role         text,
@@ -140,7 +141,7 @@ begin
     is_sso_user, is_anonymous
   ) values (
     v_user_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-    p_email, crypt('RadoFlow!2026', gen_salt('bf')),
+    p_email, crypt('antrosys123', gen_salt('bf')),
     now(), now(), now(),
     '{"provider":"email","providers":["email"]}'::jsonb,
     jsonb_build_object('full_name', p_full_name, 'email', p_email),
@@ -163,10 +164,10 @@ begin
    where site_id = p_site and code = p_dept_code;
 
   insert into public.profiles (
-    id, employee_code, full_name, email, site_id, department_id,
+    id, employee_code, full_name, cnic, email, site_id, department_id,
     pay_class, monthly_salary, hourly_rate, requires_attendance
   ) values (
-    v_user_id, p_code, p_full_name, p_email, p_site, v_dept,
+    v_user_id, p_code, p_full_name, p_cnic, p_email, p_site, v_dept,
     p_pay_class, p_monthly, p_hourly, p_pay_class = 'hourly'
   );
 
@@ -177,11 +178,11 @@ begin
 end;
 $$;
 
-select pg_temp.seed_user('admin@radoflow.test',      'Rado Administrator',   'RD-0001', 'admin',      '11111111-1111-1111-1111-111111111111', 'ADMIN', 'monthly', 260000, 0);
-select pg_temp.seed_user('ceo@radoflow.test',        'Rado Chief Executive', 'RD-0002', 'ceo',        '11111111-1111-1111-1111-111111111111', 'ADMIN', 'monthly', 900000, 0);
-select pg_temp.seed_user('operations@radoflow.test', 'Rado Operations Head', 'RD-0003', 'operations', '11111111-1111-1111-1111-111111111111', 'ADMIN', 'monthly', 650000, 0);
-select pg_temp.seed_user('manager@radoflow.test',    'Ayesha Khan',          'RD-1041', 'manager',    '11111111-1111-1111-1111-111111111111', 'DYE',   'monthly', 180000, 0);
-select pg_temp.seed_user('worker@radoflow.test',     'Imran Sheikh',         'RD-1042', 'employee',   '11111111-1111-1111-1111-111111111111', 'SPIN',  'hourly',       0, 320);
+select pg_temp.seed_user('admin@radoflow.test',      '35201-1000001-1', 'Rado Administrator',   'RD-0001', 'admin',      '11111111-1111-1111-1111-111111111111', 'ADMIN', 'monthly', 260000, 0);
+select pg_temp.seed_user('ceo@radoflow.test',        '35201-1000002-2', 'Rado Chief Executive', 'RD-0002', 'ceo',        '11111111-1111-1111-1111-111111111111', 'ADMIN', 'monthly', 900000, 0);
+select pg_temp.seed_user('operations@radoflow.test', '35201-1000003-3', 'Rado Operations Head', 'RD-0003', 'operations', '11111111-1111-1111-1111-111111111111', 'ADMIN', 'monthly', 650000, 0);
+select pg_temp.seed_user('manager@radoflow.test',    '35201-1000004-4', 'Ayesha Khan',          'RD-1041', 'manager',    '11111111-1111-1111-1111-111111111111', 'DYE',   'monthly', 180000, 0);
+select pg_temp.seed_user('worker@radoflow.test',     '35201-1000005-5', 'Imran Sheikh',         'RD-1042', 'employee',   '11111111-1111-1111-1111-111111111111', 'SPIN',  'hourly',       0, 320);
 
 -- Imran reports to Ayesha, so the Manager scope has something to resolve.
 update public.profiles

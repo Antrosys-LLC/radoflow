@@ -26,18 +26,25 @@ export default async function UsersPage() {
     { data: departments },
     { data: shifts },
     { data: permissions },
+    { data: payComponents },
   ] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, employee_code, full_name, cnic, email, status")
+      .select(
+        "id, employee_code, full_name, cnic, email, status, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, department_id",
+      )
       .order("full_name"),
     supabase.from("roles").select("id, name, is_superuser").order("rank"),
     supabase.from("user_roles").select("user_id, role_id"),
     supabase.from("user_permission_overrides").select("user_id, permission_id, effect"),
     supabase.from("sites").select("id, name").order("name"),
-    supabase.from("departments").select("id, name").order("name"),
+    supabase.from("departments").select("id, name, default_worker_type").order("name"),
     supabase.from("shifts").select("id, name").order("sort_order"),
     supabase.from("permissions").select("id, module, label").order("module"),
+    supabase
+      .from("profile_pay_components")
+      .select("id, profile_id, label, kind, amount, effective_from, effective_to")
+      .order("effective_from", { ascending: false }),
   ]);
 
   const roleById = new Map((roles ?? []).map((r) => [r.id, r]));
@@ -48,6 +55,21 @@ export default async function UsersPage() {
     const list = overridesByUser.get(row.user_id) ?? [];
     list.push({ permissionId: row.permission_id, effect: row.effect });
     overridesByUser.set(row.user_id, list);
+  }
+
+  // Per-person allowances and deductions, grouped so each card carries its own.
+  const componentsByUser = new Map<string, UserRow["components"]>();
+  for (const row of payComponents ?? []) {
+    const list = componentsByUser.get(row.profile_id) ?? [];
+    list.push({
+      id: row.id,
+      label: row.label,
+      kind: row.kind,
+      amount: Number(row.amount),
+      effectiveFrom: row.effective_from,
+      effectiveTo: row.effective_to,
+    });
+    componentsByUser.set(row.profile_id, list);
   }
 
   const users: UserRow[] = (profiles ?? []).map((profile) => {
@@ -64,6 +86,15 @@ export default async function UsersPage() {
       roleName: role?.name ?? "No role",
       isSuperuser: role?.is_superuser ?? false,
       overrides: overridesByUser.get(profile.id) ?? [],
+      workerType: profile.worker_type,
+      payClass: profile.pay_class,
+      monthlySalary: Number(profile.monthly_salary),
+      hourlyRate: Number(profile.hourly_rate),
+      dutyHours: Number(profile.duty_hours),
+      sundayPolicy: profile.sunday_policy,
+      requiresAttendance: profile.requires_attendance,
+      departmentId: profile.department_id,
+      components: componentsByUser.get(profile.id) ?? [],
     };
   });
 
@@ -72,7 +103,11 @@ export default async function UsersPage() {
       users={users}
       roles={(roles ?? []).map((r) => ({ id: r.id, name: r.name }))}
       sites={sites ?? []}
-      departments={departments ?? []}
+      departments={(departments ?? []).map((d) => ({
+        id: d.id,
+        name: d.name,
+        defaultWorkerType: d.default_worker_type,
+      }))}
       shifts={shifts ?? []}
       permissions={(permissions ?? []) as PermissionOption[]}
       canManageAccess={canManageAccess}

@@ -1,4 +1,5 @@
 import { calculatePayroll, summarisePayroll } from "./engine";
+import { daysInMonthOf } from "./hours";
 import type {
   AttendanceDay,
   DayType,
@@ -60,7 +61,7 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
       supabase
         .from("profiles")
         .select(
-          "id, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id",
+          "id, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, duty_hours, sunday_policy",
         )
         .eq("site_id", period.site_id)
         .eq("status", "active"),
@@ -78,7 +79,11 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
         .eq("is_active", true)
         .lte("effective_from", period.period_end)
         .order("sort_order"),
-      supabase.from("late_penalty_rules").select("*").eq("site_id", period.site_id).eq("is_active", true),
+      supabase
+        .from("late_penalty_rules")
+        .select("*")
+        .eq("site_id", period.site_id)
+        .eq("is_active", true),
     ]);
 
   if (!staff || staff.length === 0) {
@@ -144,13 +149,24 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
   const skipped: RunSummary["skipped"] = [];
   const rows = [];
 
+  /*
+   * The divisor behind every daily rate in this run.
+   *
+   * Taken from the period rather than from anyone's attendance, so a person
+   * who never clocked in is still priced against the right month — and so the
+   * whole run shares one divisor rather than deriving it person by person.
+   */
+  const daysInMonth = daysInMonthOf(period.period_start);
+
   for (const person of staff) {
     const employee = toEmployee(person);
     const days = daysByProfile.get(person.id) ?? [];
 
     // An hourly worker with no punches earns nothing — flag it rather than
     // silently writing a zero line that looks like a completed calculation.
-    if (employee.requiresAttendance && days.length === 0) {
+    // A contractor is exempt: their amount is agreed, not earned by the clock,
+    // so a month with no punches is still a month they are owed.
+    if (employee.workerType !== "contractor" && employee.requiresAttendance && days.length === 0) {
       skipped.push({ name: employee.fullName, reason: "No attendance recorded in this period" });
       continue;
     }
@@ -161,6 +177,7 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
       days,
       components: [...siteComponents, ...(extrasByProfile.get(person.id) ?? [])],
       latePenaltyTiers: tiers,
+      daysInMonth,
     });
 
     results.push(result);
@@ -263,11 +280,16 @@ function toEmployee(row: Record<string, unknown>): Employee {
     employeeCode: String(row["employee_code"]),
     payClass: row["pay_class"] as Employee["payClass"],
     requiresAttendance: Boolean(row["requires_attendance"]),
+    workerType: (row["worker_type"] as Employee["workerType"]) ?? "employee",
+    dutyHours: row["duty_hours"] == null ? null : Number(row["duty_hours"]),
+    sundayPolicy: (row["sunday_policy"] as Employee["sundayPolicy"]) ?? "off",
     monthlySalary: Number(row["monthly_salary"] ?? 0),
     hourlyRate: Number(row["hourly_rate"] ?? 0),
     otHourlyRate: row["ot_hourly_rate"] == null ? null : Number(row["ot_hourly_rate"]),
-    weekendHourlyRate: row["weekend_hourly_rate"] == null ? null : Number(row["weekend_hourly_rate"]),
-    holidayHourlyRate: row["holiday_hourly_rate"] == null ? null : Number(row["holiday_hourly_rate"]),
+    weekendHourlyRate:
+      row["weekend_hourly_rate"] == null ? null : Number(row["weekend_hourly_rate"]),
+    holidayHourlyRate:
+      row["holiday_hourly_rate"] == null ? null : Number(row["holiday_hourly_rate"]),
     departmentId: (row["department_id"] as string | null) ?? null,
     siteId: (row["site_id"] as string | null) ?? null,
   };

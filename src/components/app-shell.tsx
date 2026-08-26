@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Building2, Fingerprint } from "lucide-react";
 
+import { AntrosysRibbon, showsAntrosysRibbon } from "@/components/antrosys-ribbon";
 import { LiveClock } from "@/components/live-clock";
 import { ProfileMenu } from "@/components/profile-menu";
 import { SidebarNav, MobileNav } from "@/components/sidebar-nav";
@@ -16,6 +17,7 @@ import type { Session } from "@/lib/auth/session";
  */
 export function AppShell({ session, children }: { session: Session; children: React.ReactNode }) {
   const sections = navigationFor(session);
+  const showRibbon = showsAntrosysRibbon(session);
 
   return (
     <div className="min-h-screen bg-background">
@@ -49,10 +51,13 @@ export function AppShell({ session, children }: { session: Session; children: Re
           <SidebarNav sections={sections} />
         </aside>
 
-        <main className="min-w-0 flex-1 pb-24 lg:pb-0">{children}</main>
+        <main className={`min-w-0 flex-1 pb-24 ${showRibbon ? "lg:pb-10" : "lg:pb-0"}`}>
+          {children}
+        </main>
       </div>
 
       <MobileNav sections={sections} />
+      {showRibbon ? <AntrosysRibbon /> : null}
     </div>
   );
 }

@@ -1,5 +1,13 @@
 import { applyComponents } from "./components";
-import { accumulateHours, derivedHourlyRate, roundMoney, splitDayHours } from "./hours";
+import {
+  accumulateHours,
+  countWorkingDays,
+  dailyRate as dailyRateOf,
+  daysInMonthOf,
+  overtimeRate,
+  roundMoney,
+  splitDayHours,
+} from "./hours";
 import { calculateLatePenalties } from "./late";
 import type {
   AttendanceDay,
@@ -21,6 +29,26 @@ export interface PayrollInput {
   components?: readonly PayComponent[];
   /** Late-arrival penalty ladder in force for this person's shift. */
   latePenaltyTiers?: readonly LatePenaltyTier[];
+  /**
+   * Calendar days in the period's month — the divisor behind the daily rate.
+   *
+   * Optional because it can be read off the attendance itself, which is what
+   * every caller but the payroll runner wants. The runner passes it explicitly
+   * from the period, so a month where nobody attended still prices correctly.
+   */
+  daysInMonth?: number;
+}
+
+/**
+ * The divisor for the daily rate: 28, 29, 30 or 31.
+ *
+ * Falls back to the month of the first attendance row, then to 30. A period
+ * always sits inside one month, so the first row is as good as any.
+ */
+function resolveDaysInMonth(input: PayrollInput): number {
+  if (input.daysInMonth && input.daysInMonth > 0) return input.daysInMonth;
+  const first = input.days[0];
+  return first ? daysInMonthOf(first.workDate) : 30;
 }
 
 interface DayCounts {
@@ -111,19 +139,41 @@ function premiumPay(
 export function calculatePayroll(input: PayrollInput): PayrollResult {
   const { employee, rule, days, components = [], latePenaltyTiers = [] } = input;
 
-  const hours: HourBuckets = accumulateHours(days, rule);
+  const isContractor = employee.workerType === "contractor";
+  const dutyHours = employee.dutyHours ?? rule.standardHoursPerDay;
+
+  const hours: HourBuckets = accumulateHours(days, rule, dutyHours);
   const counts = countDays(days);
+  const workingDays = countWorkingDays(days);
   const lines: PayslipLine[] = [];
+
+  const daysInMonth = resolveDaysInMonth(input);
+  const perDay = dailyRateOf(employee.monthlySalary, daysInMonth);
 
   const isMonthly = employee.payClass === "monthly";
   const hourlyRate = isMonthly
-    ? derivedHourlyRate(employee.monthlySalary, rule)
+    ? overtimeRate(employee.monthlySalary, daysInMonth)
     : employee.hourlyRate;
 
   // ---- Base pay -----------------------------------------------------------
   let basePay: number;
 
-  if (isMonthly) {
+  if (isContractor) {
+    /*
+     * Nothing is calculated for a contractor. The agreed amount is the whole
+     * of their base pay: no proration for days missed, no overtime, no late
+     * penalty. Hours are still accumulated above, because the terminal data is
+     * what lets the office check the contractor's invoice — it just does not
+     * price anything.
+     */
+    basePay = roundMoney(employee.monthlySalary);
+    lines.push({
+      code: "CONTRACT",
+      label: "Contract amount",
+      kind: "base",
+      amount: basePay,
+    });
+  } else if (isMonthly) {
     if (!employee.requiresAttendance) {
       // Not tracked by the terminal: the contracted salary is paid in full.
       basePay = roundMoney(employee.monthlySalary);
@@ -134,24 +184,20 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
         amount: basePay,
       });
     } else {
-      const perDay = roundMoney(employee.monthlySalary / rule.standardDaysPerMonth);
-      const unpaidDays = counts.absent;
-      basePay = roundMoney(employee.monthlySalary - perDay * unpaidDays);
+      /*
+       * Pay is built up from the days worked rather than docked down from the
+       * salary. Absence is not a deduction — it is simply a day that was never
+       * earned — so the payslip shows one multiplication a worker can check
+       * against a calendar, instead of a full salary followed by a clawback.
+       */
+      basePay = roundMoney(perDay * workingDays);
       lines.push({
         code: "BASIC",
-        label: "Monthly salary",
+        label: `Salary for ${workingDays} working day${workingDays === 1 ? "" : "s"}`,
         kind: "base",
-        amount: roundMoney(employee.monthlySalary),
+        rate: perDay,
+        amount: basePay,
       });
-      if (unpaidDays > 0) {
-        lines.push({
-          code: "ABSENCE",
-          label: `Unpaid absence (${unpaidDays} day${unpaidDays === 1 ? "" : "s"})`,
-          kind: "deduction",
-          rate: perDay,
-          amount: roundMoney(perDay * unpaidDays),
-        });
-      }
     }
   } else {
     basePay = roundMoney(hours.regular * hourlyRate);
@@ -168,11 +214,18 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   // ---- Premiums -----------------------------------------------------------
   // Each premium is an absolute rupee rate: the employee's negotiated figure
   // when set, otherwise the site default.
-  const otRate = employee.otHourlyRate ?? rule.otHourlyRate;
+  /*
+   * Monthly staff take an overtime rate derived from their own salary — a
+   * calendar day divided by eight. Hourly staff keep the negotiated flat rate,
+   * since they have no monthly figure to derive one from.
+   */
+  const otRate = isMonthly
+    ? (employee.otHourlyRate ?? overtimeRate(employee.monthlySalary, daysInMonth))
+    : (employee.otHourlyRate ?? rule.otHourlyRate);
   const weekendRate = employee.weekendHourlyRate ?? rule.weekendHourlyRate;
   const holidayRate = employee.holidayHourlyRate ?? rule.holidayHourlyRate;
 
-  const otPay = roundMoney(hours.overtime * otRate);
+  const otPay = isContractor ? 0 : roundMoney(hours.overtime * otRate);
   if (otPay > 0) {
     lines.push({
       code: "OT",
@@ -184,7 +237,9 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     });
   }
 
-  const { weekendPay, holidayPay } = premiumPay(days, rule, weekendRate, holidayRate);
+  const { weekendPay, holidayPay } = isContractor
+    ? { weekendPay: 0, holidayPay: 0 }
+    : premiumPay(days, rule, weekendRate, holidayRate);
   if (weekendPay > 0) {
     lines.push({
       code: "WEEKEND",
@@ -209,23 +264,19 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   // ---- Late arrivals ------------------------------------------------------
   // Based on the contracted day, not on what they actually earned, so a
   // worker cannot shrink the penalty by also working less.
-  const dayRate = isMonthly
-    ? roundMoney(employee.monthlySalary / rule.standardDaysPerMonth)
-    : roundMoney(employee.hourlyRate * rule.standardHoursPerDay);
+  const dayRate = isMonthly ? perDay : roundMoney(employee.hourlyRate * rule.standardHoursPerDay);
 
-  const late = calculateLatePenalties(days, latePenaltyTiers, dayRate, employee.monthlySalary);
+  // A contractor is not paid by the day, so there is no day to dock.
+  const late = isContractor
+    ? { total: 0, daysLate: 0, lines: [] as PayslipLine[] }
+    : calculateLatePenalties(days, latePenaltyTiers, dayRate, employee.monthlySalary);
   lines.push(...late.lines);
 
   // ---- Components ---------------------------------------------------------
   const earningsBase = basePay;
   const preComponentGross = roundMoney(basePay + otPay + weekendPay + holidayPay);
 
-  const evaluated = applyComponents(
-    components,
-    employee.payClass,
-    earningsBase,
-    preComponentGross,
-  );
+  const evaluated = applyComponents(components, employee.payClass, earningsBase, preComponentGross);
 
   const gross = roundMoney(preComponentGross + evaluated.earnings);
 
@@ -280,6 +331,8 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     daysPresent: counts.present,
     daysAbsent: counts.absent,
     daysLeave: counts.leave,
+    workingDays,
+    dailyRate: perDay,
 
     basePay,
     otPay,

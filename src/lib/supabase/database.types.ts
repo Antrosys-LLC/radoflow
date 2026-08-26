@@ -421,6 +421,7 @@ export type Database = {
         Row: {
           code: string
           created_at: string
+          default_worker_type: Database["public"]["Enums"]["worker_type"]
           id: string
           is_active: boolean
           name: string
@@ -430,6 +431,7 @@ export type Database = {
         Insert: {
           code: string
           created_at?: string
+          default_worker_type?: Database["public"]["Enums"]["worker_type"]
           id?: string
           is_active?: boolean
           name: string
@@ -439,6 +441,7 @@ export type Database = {
         Update: {
           code?: string
           created_at?: string
+          default_worker_type?: Database["public"]["Enums"]["worker_type"]
           id?: string
           is_active?: boolean
           name?: string
@@ -1468,6 +1471,10 @@ export type Database = {
           photo_url: string | null
           pin_hash: string | null
           requires_attendance: boolean
+          worker_type: Database["public"]["Enums"]["worker_type"]
+          duty_hours: number
+          sunday_policy: Database["public"]["Enums"]["sunday_policy"]
+          roles_changed_at: string
           shift_id: string | null
           site_id: string | null
           status: Database["public"]["Enums"]["employment_status"]
@@ -1495,6 +1502,10 @@ export type Database = {
           photo_url?: string | null
           pin_hash?: string | null
           requires_attendance?: boolean
+          worker_type?: Database["public"]["Enums"]["worker_type"]
+          duty_hours?: number
+          sunday_policy?: Database["public"]["Enums"]["sunday_policy"]
+          roles_changed_at?: string
           shift_id?: string | null
           site_id?: string | null
           status?: Database["public"]["Enums"]["employment_status"]
@@ -1522,6 +1533,10 @@ export type Database = {
           photo_url?: string | null
           pin_hash?: string | null
           requires_attendance?: boolean
+          worker_type?: Database["public"]["Enums"]["worker_type"]
+          duty_hours?: number
+          sunday_policy?: Database["public"]["Enums"]["sunday_policy"]
+          roles_changed_at?: string
           shift_id?: string | null
           site_id?: string | null
           status?: Database["public"]["Enums"]["employment_status"]
@@ -2180,6 +2195,8 @@ export type Database = {
       device_status: "online" | "offline" | "unknown" | "disabled"
       employment_status: "active" | "suspended" | "terminated"
       pay_class: "monthly" | "hourly"
+      worker_type: "employee" | "contractor"
+      sunday_policy: "off" | "optional" | "compulsory"
       payroll_status:
         | "draft"
         | "calculating"
@@ -2344,6 +2361,8 @@ export const Constants = {
       device_status: ["online", "offline", "unknown", "disabled"],
       employment_status: ["active", "suspended", "terminated"],
       pay_class: ["monthly", "hourly"],
+      worker_type: ["employee", "contractor"],
+      sunday_policy: ["off", "optional", "compulsory"],
       payroll_status: [
         "draft",
         "calculating",

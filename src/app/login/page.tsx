@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; reason?: string }>;
 }) {
-  const { next } = await searchParams;
-  return <LoginForm next={next ?? "/"} />;
+  const { next, reason } = await searchParams;
+  return <LoginForm next={next ?? "/"} reason={reason ?? null} />;
 }

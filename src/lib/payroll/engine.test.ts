@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { applyComponents, evaluateSlabs } from "./components";
 import { calculatePayroll, summarisePayroll } from "./engine";
-import { accumulateHours, derivedHourlyRate, roundHours, splitDayHours } from "./hours";
+import {
+  accumulateHours,
+  countWorkingDays,
+  dailyRate,
+  daysInMonthOf,
+  isSunday,
+  overtimeRate,
+  roundHours,
+  splitDayHours,
+} from "./hours";
 import {
   DEFAULT_PAY_RULE,
   type AttendanceDay,
@@ -40,6 +49,22 @@ function day(partial: Partial<AttendanceDay> & { workDate: string }): Attendance
     status: "present",
     ...partial,
   };
+}
+
+/**
+ * The non-Sunday dates of August 2026 from the 3rd onwards.
+ *
+ * Exactly 25 of them, which is the worked example the pay model was confirmed
+ * against: 40000 / 31 = 1290.32 a day, 25 days, ₨32,258.
+ */
+const AUGUST_WORKDAYS = Array.from({ length: 29 }, (_, i) =>
+  new Date(Date.UTC(2026, 7, 3 + i)).toISOString().slice(0, 10),
+).filter((date) => new Date(`${date}T00:00:00Z`).getUTCDay() !== 0);
+
+function workdayDate(index: number): string {
+  const date = AUGUST_WORKDAYS[index];
+  if (!date) throw new Error(`no workday at index ${index}`);
+  return date;
 }
 
 describe("hour bucketing", () => {
@@ -84,9 +109,67 @@ describe("hour bucketing", () => {
     expect(roundHours(8.3, 15)).toBe(8.25);
   });
 
-  it("derives a monthly employee's hourly rate from the contracted month", () => {
-    // 180000 / (26 days * 8h) = 865.38
-    expect(derivedHourlyRate(180_000, rule)).toBe(865.38);
+  it("prices a day against the real length of the month", () => {
+    expect(dailyRate(40_000, 31)).toBe(1290.32);
+    expect(dailyRate(40_000, 30)).toBe(1333.33);
+    // The same salary buys a bigger day in a short month.
+    expect(dailyRate(40_000, 28)).toBe(1428.57);
+  });
+
+  it("prices an overtime hour at an eighth of the day", () => {
+    // 40000 / 31 = 1290.32 per day; / 8 = 161.29 per overtime hour.
+    expect(overtimeRate(40_000, 31)).toBe(161.29);
+  });
+
+  it("reads the month length off a work date", () => {
+    expect(daysInMonthOf("2026-08-15")).toBe(31);
+    expect(daysInMonthOf("2026-02-15")).toBe(28);
+  });
+
+  it("identifies Sundays in UTC, not in the server's timezone", () => {
+    expect(isSunday("2026-08-02")).toBe(true);
+    expect(isSunday("2026-08-09")).toBe(true);
+    // Saturday is an ordinary working day here.
+    expect(isSunday("2026-08-08")).toBe(false);
+    expect(isSunday("2026-08-03")).toBe(false);
+  });
+
+  it("pays every Sunday hour as overtime, whatever the day type says", () => {
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-02", dayType: "off", hoursWorked: 12 }),
+      rule,
+    );
+    expect(buckets).toEqual({ regular: 0, overtime: 12, weekend: 0, holiday: 0 });
+  });
+
+  it("treats a twelve-hour duty day as entirely regular for a guard", () => {
+    const buckets = splitDayHours(day({ workDate: "2026-08-03", hoursWorked: 12 }), rule, 12);
+    expect(buckets.regular).toBe(12);
+    expect(buckets.overtime).toBe(0);
+  });
+
+  it("pays the last four of the same shift as overtime on an eight-hour duty", () => {
+    const buckets = splitDayHours(day({ workDate: "2026-08-03", hoursWorked: 12 }), rule, 8);
+    expect(buckets.regular).toBe(8);
+    expect(buckets.overtime).toBe(4);
+  });
+
+  it("counts a working day once, however short it was", () => {
+    const days = [
+      day({ workDate: "2026-08-03", hoursWorked: 2 }),
+      day({ workDate: "2026-08-04", hoursWorked: 8 }),
+    ];
+    expect(countWorkingDays(days)).toBe(2);
+  });
+
+  it("counts neither Sundays, absence nor leave as working days", () => {
+    const days = [
+      day({ workDate: "2026-08-02", hoursWorked: 12 }), // Sunday, worked
+      day({ workDate: "2026-08-03", hoursWorked: 0, status: "absent" }),
+      day({ workDate: "2026-08-04", hoursWorked: 0, status: "leave" }),
+      day({ workDate: "2026-08-05", hoursWorked: 8 }),
+    ];
+    expect(countWorkingDays(days)).toBe(1);
   });
 });
 
@@ -174,25 +257,149 @@ describe("monthly payroll", () => {
     expect(result.basePay).toBe(180_000);
   });
 
-  it("prorates absence when the person is flagged as requiring attendance", () => {
-    const tracked: Employee = { ...monthlyStaff, requiresAttendance: true };
-    const days = [
-      day({ workDate: "2026-08-03", hoursWorked: 0, status: "absent" }),
-      day({ workDate: "2026-08-04", hoursWorked: 0, status: "absent" }),
-    ];
-    const result = calculatePayroll({ employee: tracked, rule, days });
+  it("pays the days worked, priced against the length of the month", () => {
+    // The anchor case: 40000 / 31 = 1290.32 a day, 25 days worked.
+    const tracked: Employee = {
+      ...monthlyStaff,
+      requiresAttendance: true,
+      monthlySalary: 40_000,
+    };
+    const days = Array.from({ length: 25 }, (_, i) =>
+      // 3rd to 27th August 2026, skipping the two Sundays in that span.
+      day({ workDate: workdayDate(i) }),
+    );
+    const result = calculatePayroll({ employee: tracked, rule, days, daysInMonth: 31 });
 
-    // 180000 / 26 = 6923.08 per day, two days unpaid.
-    expect(result.basePay).toBe(180_000 - 6923.08 * 2);
+    expect(result.dailyRate).toBe(1290.32);
+    expect(result.workingDays).toBe(25);
+    expect(result.basePay).toBe(32_258);
   });
 
-  it("does not dock pay for approved leave", () => {
+  it("earns nothing for a day that was not attended", () => {
+    const tracked: Employee = { ...monthlyStaff, requiresAttendance: true };
+    const worked = [day({ workDate: "2026-08-03" }), day({ workDate: "2026-08-04" })];
+    const withAbsence = [
+      ...worked,
+      day({ workDate: "2026-08-05", hoursWorked: 0, status: "absent" }),
+    ];
+
+    const a = calculatePayroll({ employee: tracked, rule, days: worked, daysInMonth: 31 });
+    const b = calculatePayroll({ employee: tracked, rule, days: withAbsence, daysInMonth: 31 });
+
+    // Absence is not a deduction from a full salary — it is simply a day that
+    // was never earned, so adding one changes nothing.
+    expect(b.basePay).toBe(a.basePay);
+    expect(b.daysAbsent).toBe(1);
+  });
+
+  it("pays nothing for approved leave, which is a day not attended", () => {
     const tracked: Employee = { ...monthlyStaff, requiresAttendance: true };
     const days = [day({ workDate: "2026-08-03", hoursWorked: 0, status: "leave" })];
-    const result = calculatePayroll({ employee: tracked, rule, days });
+    const result = calculatePayroll({ employee: tracked, rule, days, daysInMonth: 31 });
 
-    expect(result.basePay).toBe(180_000);
+    expect(result.basePay).toBe(0);
+    expect(result.workingDays).toBe(0);
     expect(result.daysLeave).toBe(1);
+  });
+
+  it("gives the same salary a bigger daily rate in February than in August", () => {
+    const tracked: Employee = { ...monthlyStaff, requiresAttendance: true, monthlySalary: 40_000 };
+    const august = calculatePayroll({
+      employee: tracked,
+      rule,
+      days: [day({ workDate: "2026-08-03" })],
+      daysInMonth: 31,
+    });
+    const february = calculatePayroll({
+      employee: tracked,
+      rule,
+      days: [day({ workDate: "2026-02-02" })],
+      daysInMonth: 28,
+    });
+
+    expect(august.dailyRate).toBe(1290.32);
+    expect(february.dailyRate).toBe(1428.57);
+    expect(february.basePay).toBeGreaterThan(august.basePay);
+  });
+
+  it("pays a guard nothing extra for the twelve hours their salary covers", () => {
+    const guard: Employee = {
+      ...monthlyStaff,
+      requiresAttendance: true,
+      monthlySalary: 40_000,
+      dutyHours: 12,
+    };
+    const result = calculatePayroll({
+      employee: guard,
+      rule,
+      days: [day({ workDate: "2026-08-03", hoursWorked: 12 })],
+      daysInMonth: 31,
+    });
+
+    expect(result.otPay).toBe(0);
+    expect(result.basePay).toBe(1290.32);
+  });
+
+  it("pays four hours of overtime for the same shift on an eight-hour duty", () => {
+    const operator: Employee = {
+      ...monthlyStaff,
+      requiresAttendance: true,
+      monthlySalary: 40_000,
+      dutyHours: 8,
+    };
+    const result = calculatePayroll({
+      employee: operator,
+      rule,
+      days: [day({ workDate: "2026-08-03", hoursWorked: 12 })],
+      daysInMonth: 31,
+    });
+
+    // 4 hours at 1290.32 / 8 = 161.29.
+    expect(result.hours.overtime).toBe(4);
+    expect(result.otPay).toBe(645.16);
+  });
+
+  it("pays a short day three hours of overtime, not the rostered four", () => {
+    const operator: Employee = {
+      ...monthlyStaff,
+      requiresAttendance: true,
+      monthlySalary: 40_000,
+      dutyHours: 8,
+    };
+    const result = calculatePayroll({
+      employee: operator,
+      rule,
+      days: [day({ workDate: "2026-08-03", hoursWorked: 11 })],
+      daysInMonth: 31,
+    });
+
+    expect(result.hours.overtime).toBe(3);
+    expect(result.otPay).toBe(483.87);
+  });
+
+  it("pays a full Sunday the same to a guard and to an operator", () => {
+    const sunday = [day({ workDate: "2026-08-02", dayType: "off", hoursWorked: 12 })];
+    const base: Employee = { ...monthlyStaff, requiresAttendance: true, monthlySalary: 40_000 };
+
+    const guard = calculatePayroll({
+      employee: { ...base, dutyHours: 12 },
+      rule,
+      days: sunday,
+      daysInMonth: 31,
+    });
+    const operator = calculatePayroll({
+      employee: { ...base, dutyHours: 8 },
+      rule,
+      days: sunday,
+      daysInMonth: 31,
+    });
+
+    // Every Sunday hour is overtime at an eighth of the day, for both.
+    expect(guard.otPay).toBe(1935.48);
+    expect(operator.otPay).toBe(1935.48);
+    // And a Sunday is never a working day, so neither earns base pay for it.
+    expect(guard.basePay).toBe(0);
+    expect(operator.workingDays).toBe(0);
   });
 
   it("still pays a monthly supervisor for a weekend shift", () => {
@@ -202,6 +409,81 @@ describe("monthly payroll", () => {
     // Premium hours pay the flat weekend rate regardless of pay class.
     expect(result.weekendPay).toBe(8 * 640);
     expect(result.gross).toBe(180_000 + 5120);
+  });
+});
+
+describe("contractors", () => {
+  const contractor: Employee = {
+    ...monthlyStaff,
+    fullName: "Folding contract",
+    workerType: "contractor",
+    requiresAttendance: true,
+    monthlySalary: 250_000,
+  };
+
+  it("pays the agreed amount flat, whatever the attendance says", () => {
+    const worked = calculatePayroll({
+      employee: contractor,
+      rule,
+      days: [day({ workDate: "2026-08-03" }), day({ workDate: "2026-08-04" })],
+      daysInMonth: 31,
+    });
+    const idle = calculatePayroll({ employee: contractor, rule, days: [], daysInMonth: 31 });
+
+    expect(worked.basePay).toBe(250_000);
+    expect(idle.basePay).toBe(250_000);
+  });
+
+  it("is not prorated by absence", () => {
+    const days = [
+      day({ workDate: "2026-08-03", hoursWorked: 0, status: "absent" }),
+      day({ workDate: "2026-08-04", hoursWorked: 0, status: "absent" }),
+    ];
+    const result = calculatePayroll({ employee: contractor, rule, days, daysInMonth: 31 });
+
+    expect(result.basePay).toBe(250_000);
+    expect(result.net).toBe(250_000);
+  });
+
+  it("earns no overtime, however long the day", () => {
+    const result = calculatePayroll({
+      employee: contractor,
+      rule,
+      days: [day({ workDate: "2026-08-03", hoursWorked: 14 })],
+      daysInMonth: 31,
+    });
+
+    expect(result.otPay).toBe(0);
+    // The hours are still recorded, so the contractor's invoice can be checked.
+    expect(result.hours.overtime).toBe(6);
+  });
+
+  it("earns no Sunday overtime either", () => {
+    const result = calculatePayroll({
+      employee: contractor,
+      rule,
+      days: [day({ workDate: "2026-08-02", dayType: "off", hoursWorked: 12 })],
+      daysInMonth: 31,
+    });
+
+    expect(result.otPay).toBe(0);
+    expect(result.gross).toBe(250_000);
+  });
+
+  it("carries no late penalty, having no day to dock", () => {
+    const tiers: LatePenaltyTier[] = [
+      { label: "Over an hour", fromMinutes: 60, toMinutes: null, penaltyPercent: 50, basis: "day" },
+    ];
+    const result = calculatePayroll({
+      employee: contractor,
+      rule,
+      days: [day({ workDate: "2026-08-03", minutesLate: 90 })],
+      latePenaltyTiers: tiers,
+      daysInMonth: 31,
+    });
+
+    expect(result.latePenalty).toBe(0);
+    expect(result.net).toBe(250_000);
   });
 });
 
@@ -283,20 +565,35 @@ describe("late arrival penalties", () => {
 
   it("does not penalise arriving on time", () => {
     const days = [day({ workDate: "2026-08-03", minutesLate: 0 })];
-    const result = calculatePayroll({ employee: hourlyWorker, rule, days, latePenaltyTiers: tiers });
+    const result = calculatePayroll({
+      employee: hourlyWorker,
+      rule,
+      days,
+      latePenaltyTiers: tiers,
+    });
     expect(result.latePenalty).toBe(0);
     expect(result.daysLate).toBe(0);
   });
 
   it("does not penalise lateness below the first band", () => {
     const days = [day({ workDate: "2026-08-03", minutesLate: 10 })];
-    const result = calculatePayroll({ employee: hourlyWorker, rule, days, latePenaltyTiers: tiers });
+    const result = calculatePayroll({
+      employee: hourlyWorker,
+      rule,
+      days,
+      latePenaltyTiers: tiers,
+    });
     expect(result.latePenalty).toBe(0);
   });
 
   it("applies the matching band only, never the sum of the bands below", () => {
     const days = [day({ workDate: "2026-08-03", minutesLate: 90 })];
-    const result = calculatePayroll({ employee: hourlyWorker, rule, days, latePenaltyTiers: tiers });
+    const result = calculatePayroll({
+      employee: hourlyWorker,
+      rule,
+      days,
+      latePenaltyTiers: tiers,
+    });
 
     expect(result.latePenalty).toBe(roundTo2(dayPay * 0.25));
     expect(result.daysLate).toBe(1);
@@ -325,7 +622,12 @@ describe("late arrival penalties", () => {
       day({ workDate: "2026-08-04", minutesLate: 45 }),
       day({ workDate: "2026-08-05", minutesLate: 0 }),
     ];
-    const result = calculatePayroll({ employee: hourlyWorker, rule, days, latePenaltyTiers: tiers });
+    const result = calculatePayroll({
+      employee: hourlyWorker,
+      rule,
+      days,
+      latePenaltyTiers: tiers,
+    });
 
     expect(result.daysLate).toBe(2);
     expect(result.latePenalty).toBe(roundTo2(dayPay * 0.05 + dayPay * 0.1));
@@ -418,7 +720,15 @@ describe("net pay can never go negative", () => {
     // There is no income to tax, so tax gives way first.
     const withTax: PayComponent[] = [
       ...statutory,
-      { code: "TAX", label: "Tax", kind: "tax", calc: "percent", amount: 0, percent: 50, sortOrder: 90 },
+      {
+        code: "TAX",
+        label: "Tax",
+        kind: "tax",
+        calc: "percent",
+        amount: 0,
+        percent: 50,
+        sortOrder: 90,
+      },
     ];
     const days = [day({ workDate: "2026-08-03", hoursWorked: 1 })];
     const result = calculatePayroll({ employee: hourlyWorker, rule, days, components: withTax });

@@ -1,20 +1,24 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
-import { KeyRound, Plus, UserPlus, X } from "lucide-react";
+import { Banknote, KeyRound, Plus, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { CnicInput, PasswordInput } from "@/components/credential-inputs";
+import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { cn } from "@/lib/utils";
 import {
+  addUserComponent,
   createUser,
+  removeUserComponent,
   setUserOverride,
   setUserPassword,
   setUserRole,
   setUserStatus,
+  updateUserPay,
   type UserResult,
 } from "./actions";
 
@@ -33,6 +37,28 @@ export interface UserRow {
   roleName: string;
   isSuperuser: boolean;
   overrides: { permissionId: string; effect: string }[];
+
+  workerType: "employee" | "contractor";
+  payClass: "monthly" | "hourly";
+  monthlySalary: number;
+  hourlyRate: number;
+  /** Hours this person's salary covers. Work beyond it is overtime. */
+  dutyHours: number;
+  sundayPolicy: "off" | "optional" | "compulsory";
+  requiresAttendance: boolean;
+  departmentId: string | null;
+  components: {
+    id: string;
+    label: string;
+    kind: string;
+    amount: number;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+  }[];
+}
+
+export interface DepartmentOption extends Option {
+  defaultWorkerType: "employee" | "contractor";
 }
 
 export interface Option {
@@ -58,13 +84,14 @@ export function UsersManager({
   users: UserRow[];
   roles: Option[];
   sites: Option[];
-  departments: Option[];
+  departments: DepartmentOption[];
   shifts: Option[];
   permissions: PermissionOption[];
   canManageAccess: boolean;
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [tuning, setTuning] = useState<UserRow | null>(null);
+  const [paying, setPaying] = useState<UserRow | null>(null);
 
   return (
     <div className="space-y-5">
@@ -93,6 +120,7 @@ export function UsersManager({
               roles={roles}
               canManageAccess={canManageAccess}
               onTune={() => setTuning(user)}
+              onPay={() => setPaying(user)}
             />
           ))}
         </div>
@@ -111,6 +139,8 @@ export function UsersManager({
       {tuning ? (
         <AccessDialog user={tuning} permissions={permissions} onClose={() => setTuning(null)} />
       ) : null}
+
+      {paying ? <PayDialog user={paying} onClose={() => setPaying(null)} /> : null}
     </div>
   );
 }
@@ -120,15 +150,28 @@ function UserCard({
   roles,
   canManageAccess,
   onTune,
+  onPay,
 }: {
   user: UserRow;
   roles: Option[];
   canManageAccess: boolean;
   onTune: () => void;
+  onPay: () => void;
 }) {
   const [state, formAction] = useActionState(setUserRole, INITIAL);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  /*
+   * The role select is held here rather than submitted on change, so choosing
+   * a role and committing to it are two separate acts. The swipe below only
+   * appears once the choice differs from what is saved.
+   */
+  const roleForm = useRef<HTMLFormElement>(null);
+  const [roleId, setRoleId] = useState(user.roleId ?? "");
+  const roleChanged = roleId !== (user.roleId ?? "");
+
+  const [confirmingStatus, setConfirmingStatus] = useState(false);
 
   useEffect(() => {
     if (!state.message) return;
@@ -169,11 +212,13 @@ function UserCard({
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {canManageAccess ? (
-          <form action={formAction} className="flex items-center gap-2">
+          <form ref={roleForm} action={formAction} className="flex items-center gap-2">
             <input type="hidden" name="user_id" value={user.id} />
+            <input type="hidden" name="role_id" value={roleId} />
             <select
-              name="role_id"
-              defaultValue={user.roleId ?? ""}
+              value={roleId}
+              onChange={(event) => setRoleId(event.target.value)}
+              aria-label={`Role for ${user.full_name}`}
               className="rounded-xl border border-input bg-card px-3 py-2 text-xs font-semibold outline-none focus:border-primary"
             >
               <option value="">No role</option>
@@ -183,7 +228,6 @@ function UserCard({
                 </option>
               ))}
             </select>
-            <RoleSubmit />
           </form>
         ) : (
           <span className="rounded-full bg-card px-3 py-1.5 text-xs font-bold text-foreground">
@@ -202,38 +246,70 @@ function UserCard({
           </button>
         ) : null}
 
+        <button
+          type="button"
+          onClick={onPay}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-card px-3 py-2 text-xs font-semibold text-foreground transition-all hover:text-primary"
+        >
+          <Banknote className="size-3.5" />
+          Pay &amp; duty
+        </button>
+
         <PasswordReset userId={user.id} name={user.full_name} />
 
         <button
           type="button"
-          disabled={pending}
-          onClick={() =>
-            startTransition(async () => {
-              const result = await setUserStatus(user.id, suspended ? "active" : "suspended");
-              if (result.ok) toast.success(result.message);
-              else toast.error(result.message);
-              router.refresh();
-            })
-          }
+          disabled={pending || confirmingStatus}
+          onClick={() => setConfirmingStatus(true)}
           className="ml-auto rounded-xl px-3 py-2 text-xs font-semibold text-muted-foreground transition-all hover:text-danger disabled:opacity-50"
         >
           {suspended ? "Reactivate" : "Suspend"}
         </button>
       </div>
-    </div>
-  );
-}
 
-function RoleSubmit() {
-  const { pending } = useFormStatus();
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="rounded-xl bg-charcoal px-3 py-2 text-xs font-bold text-charcoal-foreground transition-all hover:opacity-90 disabled:opacity-50"
-    >
-      {pending ? "…" : "Set role"}
-    </button>
+      {/* Both commitments live below the row so the swipe has full width to
+          travel — a short track is easy to complete by accident, which is the
+          one thing this control exists to prevent. */}
+      {roleChanged ? (
+        <div className="mt-3">
+          <SwipeToConfirm
+            label={`Swipe to set ${user.full_name.split(" ")[0]}'s role`}
+            confirmedLabel="Updating role…"
+            onConfirm={() => roleForm.current?.requestSubmit()}
+          />
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            They will be signed out and must sign in again for this to take effect.
+          </p>
+        </div>
+      ) : null}
+
+      {confirmingStatus ? (
+        <div className="mt-3">
+          <SwipeToConfirm
+            tone={suspended ? "default" : "danger"}
+            label={suspended ? "Swipe to reactivate" : "Swipe to suspend"}
+            confirmedLabel={suspended ? "Reactivating…" : "Suspending…"}
+            pending={pending}
+            onConfirm={() =>
+              startTransition(async () => {
+                const result = await setUserStatus(user.id, suspended ? "active" : "suspended");
+                if (result.ok) toast.success(result.message);
+                else toast.error(result.message);
+                setConfirmingStatus(false);
+                router.refresh();
+              })
+            }
+          />
+          <button
+            type="button"
+            onClick={() => setConfirmingStatus(false)}
+            className="mt-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -317,13 +393,23 @@ function AddUserDialog({
 }: {
   roles: Option[];
   sites: Option[];
-  departments: Option[];
+  departments: DepartmentOption[];
   shifts: Option[];
   onClose: () => void;
 }) {
   const [state, formAction] = useActionState(createUser, INITIAL);
   const [payClass, setPayClass] = useState("hourly");
   const router = useRouter();
+
+  /*
+   * Worker type follows the department by default — adding someone to Folding
+   * should not require remembering that Folding is contracted out — but stays
+   * overridable, because a directly-employed supervisor inside a contractor
+   * department is a real case.
+   */
+  const [departmentId, setDepartmentId] = useState("");
+  const [workerType, setWorkerType] = useState<"employee" | "contractor">("employee");
+  const isContractor = workerType === "contractor";
 
   useEffect(() => {
     if (!state.message) return;
@@ -411,11 +497,21 @@ function AddUserDialog({
               </select>
             </Field>
             <Field label="Department">
-              <select name="department_id" defaultValue="" className={INPUT}>
+              <select
+                name="department_id"
+                value={departmentId}
+                onChange={(event) => {
+                  setDepartmentId(event.target.value);
+                  const chosen = departments.find((d) => d.id === event.target.value);
+                  if (chosen) setWorkerType(chosen.defaultWorkerType);
+                }}
+                className={INPUT}
+              >
                 <option value="">Unassigned</option>
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
+                    {d.defaultWorkerType === "contractor" ? " (contractors)" : ""}
                   </option>
                 ))}
               </select>
@@ -428,6 +524,43 @@ function AddUserDialog({
                     {s.name}
                   </option>
                 ))}
+              </select>
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Paid as">
+              <select
+                name="worker_type"
+                value={workerType}
+                onChange={(event) => setWorkerType(event.target.value as "employee" | "contractor")}
+                className={INPUT}
+              >
+                <option value="employee">Employee</option>
+                <option value="contractor">Contractor — flat amount</option>
+              </select>
+            </Field>
+            <Field label="Salary covers">
+              <select
+                name="duty_hours"
+                defaultValue="8"
+                disabled={isContractor}
+                className={cn(INPUT, isContractor && "opacity-50")}
+              >
+                <option value="8">8 hours — beyond is overtime</option>
+                <option value="12">12 hours — all duty, no overtime</option>
+              </select>
+            </Field>
+            <Field label="Sunday">
+              <select
+                name="sunday_policy"
+                defaultValue="off"
+                disabled={isContractor}
+                className={cn(INPUT, isContractor && "opacity-50")}
+              >
+                <option value="off">Off</option>
+                <option value="optional">Optional</option>
+                <option value="compulsory">Compulsory</option>
               </select>
             </Field>
           </div>
@@ -609,5 +742,349 @@ function CreateUserButton() {
       <UserPlus className="size-4" />
       {pending ? "Creating…" : "Create user"}
     </button>
+  );
+}
+
+/**
+ * The modal frame the dialogs on this screen share.
+ *
+ * Extracted when a third dialog was added rather than pasting the same
+ * backdrop, sizing and close button a third time — three copies is where a
+ * detail like the scroll cap starts drifting between them.
+ */
+function Dialog({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-3 backdrop-blur-sm sm:items-center">
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-card p-6 shadow-[0_18px_40px_rgb(0_0_0/0.18)]">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <h2 className="text-lg font-bold tracking-tight text-foreground">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-xl p-1.5 text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Everything about what one person is paid, in one place.
+ *
+ * Salary, the duty boundary, Sunday, and the individual deductions attached to
+ * them. Kept together because they are read together: "why is this payslip this
+ * number" is answered by all four at once, and splitting them across screens is
+ * how a wrong duty figure survives a salary review.
+ */
+function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
+  const [state, formAction] = useActionState(updateUserPay, INITIAL);
+  const [pending, startTransition] = useTransition();
+  const router = useRouter();
+  const form = useRef<HTMLFormElement>(null);
+
+  const [workerType, setWorkerType] = useState(user.workerType);
+  const [dutyHours, setDutyHours] = useState(String(user.dutyHours));
+  const [salary, setSalary] = useState(String(user.monthlySalary));
+
+  useEffect(() => {
+    if (!state.message) return;
+    if (state.ok) toast.success(state.message);
+    else toast.error(state.message);
+    router.refresh();
+  }, [state, router]);
+
+  const isContractor = workerType === "contractor";
+
+  /*
+   * The same arithmetic payroll will do, shown while the figures are being
+   * typed. A duty boundary is abstract until you can see what an hour of
+   * overtime is worth beside it.
+   */
+  const monthly = Number(salary) || 0;
+  const daysThisMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const perDay = monthly > 0 ? monthly / daysThisMonth : 0;
+  const perOtHour = perDay / 8;
+  const money = (value: number) =>
+    value.toLocaleString("en-PK", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+
+  return (
+    <Dialog title={`Pay & duty · ${user.full_name}`} onClose={onClose}>
+      <form ref={form} action={formAction} className="space-y-4">
+        <input type="hidden" name="user_id" value={user.id} />
+
+        <div>
+          <label className="text-sm font-semibold text-foreground">Paid as</label>
+          <select
+            name="worker_type"
+            value={workerType}
+            onChange={(event) => setWorkerType(event.target.value as UserRow["workerType"])}
+            className={INPUT}
+          >
+            <option value="employee">Employee — calculated from attendance</option>
+            <option value="contractor">Contractor — flat agreed amount</option>
+          </select>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="text-sm font-semibold text-foreground">
+              {isContractor ? "Agreed amount (PKR)" : "Monthly salary (PKR)"}
+            </label>
+            <input
+              name="monthly_salary"
+              type="number"
+              min={0}
+              step="0.01"
+              value={salary}
+              onChange={(event) => setSalary(event.target.value)}
+              className={INPUT}
+            />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-foreground">Hourly rate (PKR)</label>
+            <input
+              name="hourly_rate"
+              type="number"
+              min={0}
+              step="0.01"
+              defaultValue={user.hourlyRate}
+              className={INPUT}
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">Only used for hourly staff.</p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="text-sm font-semibold text-foreground">Pay class</label>
+            <select name="pay_class" defaultValue={user.payClass} className={INPUT}>
+              <option value="monthly">Monthly</option>
+              <option value="hourly">Hourly</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-foreground">Salary covers</label>
+            <select
+              name="duty_hours"
+              value={dutyHours}
+              onChange={(event) => setDutyHours(event.target.value)}
+              disabled={isContractor}
+              className={cn(INPUT, isContractor && "opacity-50")}
+            >
+              <option value="8">8 hours — anything beyond is overtime</option>
+              <option value="12">12 hours — all twelve are duty, no overtime</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-foreground">Sunday</label>
+          <select
+            name="sunday_policy"
+            defaultValue={user.sundayPolicy}
+            disabled={isContractor}
+            className={cn(INPUT, isContractor && "opacity-50")}
+          >
+            <option value="off">Off — not expected in</option>
+            <option value="optional">Optional — may come in</option>
+            <option value="compulsory">Compulsory — expected in</option>
+          </select>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Sunday is never a working day. Every hour worked on one is overtime, whatever this says.
+          </p>
+        </div>
+
+        <label className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
+          <input
+            type="checkbox"
+            name="requires_attendance"
+            defaultChecked={user.requiresAttendance}
+            className="size-4 rounded border-input"
+          />
+          Requires attendance
+        </label>
+
+        {isContractor ? (
+          <p className="rounded-2xl bg-warning-soft px-4 py-3 text-xs text-warning">
+            Nothing is calculated for a contractor. They receive the agreed amount in full — no
+            proration for days missed, no overtime, no late penalty.
+          </p>
+        ) : monthly > 0 ? (
+          <div className="rounded-2xl bg-secondary px-4 py-3 text-xs text-muted-foreground">
+            <p>
+              <span className="font-bold text-foreground">Rs {money(perDay)}</span> a day
+              <span className="opacity-60">
+                {" "}
+                ({money(monthly)} ÷ {daysThisMonth} days this month)
+              </span>
+            </p>
+            <p className="mt-1">
+              <span className="font-bold text-foreground">Rs {money(perOtHour)}</span> an overtime
+              hour<span className="opacity-60"> (the daily rate ÷ 8)</span>
+            </p>
+            <p className="mt-1 opacity-80">
+              Beyond {dutyHours} hours on a weekday, and every hour on a Sunday.
+            </p>
+          </div>
+        ) : null}
+
+        <SwipeToConfirm
+          label="Swipe to save pay settings"
+          confirmedLabel="Saving…"
+          onConfirm={() => form.current?.requestSubmit()}
+        />
+      </form>
+
+      <div className="mt-6 border-t border-border pt-5">
+        <p className="text-sm font-bold text-foreground">Allowances &amp; deductions</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Applied to this person only, every period, until removed.
+        </p>
+
+        {user.components.length > 0 ? (
+          <ul className="mt-3 space-y-2">
+            {user.components.map((component) => (
+              <li
+                key={component.id}
+                className="flex items-center gap-3 rounded-2xl bg-secondary px-4 py-2.5"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {component.label}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    From {component.effectiveFrom}
+                    {component.effectiveTo ? ` to ${component.effectiveTo}` : " — ongoing"}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    "text-sm font-bold",
+                    component.kind === "earning" ? "text-success" : "text-danger",
+                  )}
+                >
+                  {component.kind === "earning" ? "+" : "−"} Rs {money(component.amount)}
+                </span>
+                <button
+                  type="button"
+                  disabled={pending}
+                  aria-label={`Remove ${component.label}`}
+                  onClick={() =>
+                    startTransition(async () => {
+                      const result = await removeUserComponent(component.id);
+                      if (result.ok) toast.success(result.message);
+                      else toast.error(result.message);
+                      router.refresh();
+                    })
+                  }
+                  className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:text-danger disabled:opacity-50"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 rounded-2xl bg-secondary px-4 py-3 text-xs text-muted-foreground">
+            Nothing attached to this person yet.
+          </p>
+        )}
+
+        <AddComponentForm userId={user.id} />
+      </div>
+    </Dialog>
+  );
+}
+
+/** Attaches one recurring line — an advance being recovered, a bonus — to a person. */
+function AddComponentForm({ userId }: { userId: string }) {
+  const router = useRouter();
+  const form = useRef<HTMLFormElement>(null);
+  const [pending, startTransition] = useTransition();
+  const [label, setLabel] = useState("");
+  const [amount, setAmount] = useState("");
+
+  /*
+   * Submitted by hand rather than through useActionState, because the fields
+   * have to be cleared on success. Reacting to a result in an effect means
+   * setting state during render, which cascades; doing it here keeps the reset
+   * in the same callback that knows the save worked.
+   */
+  function submit() {
+    const element = form.current;
+    if (!element) return;
+
+    const data = new FormData(element);
+    startTransition(async () => {
+      const result = await addUserComponent(INITIAL, data);
+      if (result.ok) {
+        toast.success(result.message);
+        setLabel("");
+        setAmount("");
+      } else {
+        toast.error(result.message);
+      }
+      router.refresh();
+    });
+  }
+
+  const ready = label.trim().length > 0 && Number(amount) > 0;
+
+  return (
+    <form ref={form} onSubmit={(event) => event.preventDefault()} className="mt-4 space-y-3">
+      <input type="hidden" name="user_id" value={userId} />
+
+      <div className="grid gap-3 sm:grid-cols-[1fr_10rem_9rem]">
+        <input
+          name="label"
+          value={label}
+          onChange={(event) => setLabel(event.target.value)}
+          placeholder="Advance recovery"
+          aria-label="Name"
+          className={INPUT}
+        />
+        <input
+          name="amount"
+          type="number"
+          min={0}
+          step="0.01"
+          value={amount}
+          onChange={(event) => setAmount(event.target.value)}
+          placeholder="Amount"
+          aria-label="Amount"
+          className={INPUT}
+        />
+        <select name="kind" defaultValue="deduction" aria-label="Kind" className={INPUT}>
+          <option value="deduction">Deduction</option>
+          <option value="earning">Allowance</option>
+        </select>
+      </div>
+
+      {ready ? (
+        <SwipeToConfirm
+          label="Swipe to attach this line"
+          confirmedLabel="Attaching…"
+          pending={pending}
+          onConfirm={submit}
+        />
+      ) : (
+        <p className="text-[11px] text-muted-foreground">
+          Enter a name and an amount to attach it.
+        </p>
+      )}
+    </form>
   );
 }

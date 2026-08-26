@@ -9,7 +9,7 @@ import { signIn, type LoginState } from "./actions";
 
 const INITIAL: LoginState = { error: null };
 
-export function LoginForm({ next }: { next: string }) {
+export function LoginForm({ next, reason }: { next: string; reason?: string | null }) {
   const [state, formAction] = useActionState(signIn, INITIAL);
 
   return (
@@ -32,6 +32,14 @@ export function LoginForm({ next }: { next: string }) {
           className="rounded-3xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_rgb(0_0_0/0.05)] sm:p-7"
         >
           <input type="hidden" name="next" value={next} />
+
+          {/* Explains an unexpected trip back here: the session was ended on
+              purpose, not lost. */}
+          {reason === "access-changed" ? (
+            <p className="mb-5 rounded-2xl bg-warning-soft px-4 py-3 text-sm text-warning">
+              Your access was changed. Sign in again to continue.
+            </p>
+          ) : null}
 
           <label htmlFor="cnic" className="block text-sm font-semibold text-foreground">
             CNIC

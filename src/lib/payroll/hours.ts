@@ -16,7 +16,7 @@ export function roundHours(hours: number, roundToMinutes: number): number {
 export function round2(value: number): number {
   const scaled = value * 100;
   // 1.005 * 100 is 100.49999999999999 in IEEE-754; nudge before rounding.
-  const corrected = Math.round(scaled + (Math.sign(scaled) * Number.EPSILON * Math.abs(scaled)));
+  const corrected = Math.round(scaled + Math.sign(scaled) * Number.EPSILON * Math.abs(scaled));
   return corrected / 100;
 }
 
@@ -26,19 +26,81 @@ export const roundMoney = round2;
 const EMPTY_BUCKETS: HourBuckets = { regular: 0, overtime: 0, weekend: 0, holiday: 0 };
 
 /**
+ * True when a `YYYY-MM-DD` work date falls on a Sunday.
+ *
+ * Parsed as UTC deliberately. `new Date("2026-08-30")` is already UTC midnight,
+ * but `new Date(2026, 7, 30)` is local midnight, and west of Greenwich those
+ * two land on different weekdays. Payroll must not decide that a Sunday was a
+ * Saturday because of where the server happens to be.
+ */
+export function isSunday(workDate: string): boolean {
+  const parsed = new Date(`${workDate}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.getUTCDay() === 0;
+}
+
+/** Calendar days in the month a `YYYY-MM-DD` date falls in: 28, 29, 30 or 31. */
+export function daysInMonthOf(workDate: string): number {
+  const parsed = new Date(`${workDate}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return 30;
+  // Day 0 of the next month is the last day of this one.
+  return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth() + 1, 0)).getUTCDate();
+}
+
+/**
+ * What one day of a monthly salary is worth.
+ *
+ * Divided by the real length of the month, so the same salary is worth more
+ * per day in February than in August. The salary figure is a daily rate rather
+ * than a guaranteed take-home: Sundays are never working days, so nobody is
+ * paid for all 30 or 31 of them.
+ */
+export function dailyRate(monthlySalary: number, daysInMonth: number): number {
+  if (daysInMonth <= 0) return 0;
+  return round2(monthlySalary / daysInMonth);
+}
+
+/**
+ * The rupee value of one overtime hour: an eighth of the daily rate.
+ *
+ * Always an eighth, including for someone whose duty day is twelve hours. Their
+ * overtime hour is therefore worth more than their duty hour, which is the
+ * point — otherwise the extra time carries no reward.
+ *
+ * This deliberately derives a premium from basic pay, reversing the rule the
+ * rest of this module follows for weekend and holiday rates. See the design
+ * note in docs/superpowers/specs/2026-08-25-duty-hours-and-salary-formula-design.md.
+ */
+export function overtimeRate(monthlySalary: number, daysInMonth: number): number {
+  return round2(dailyRate(monthlySalary, daysInMonth) / 8);
+}
+
+/**
  * Splits a day's worked hours into the buckets that attract different rates.
  *
- * The day type decides the shape of the split:
- *  - workday / special_working → up to the standard day is regular, the rest
- *    is overtime (only once it clears the overtime threshold).
+ * Sunday is decided first and overrides everything: it is never a working day,
+ * so every hour worked on one is overtime, whatever the calendar says the day
+ * type is. The rest of the week falls to the day type:
+ *  - workday / special_working → up to the person's duty hours is regular, the
+ *    rest is overtime (only once it clears the overtime threshold).
  *  - weekend_working, or any work on an `off` day → every hour is weekend-rated.
- *    Overtime is deliberately *not* stacked on top, since the weekend
- *    multiplier already exceeds the overtime multiplier.
+ *    Overtime is deliberately *not* stacked on top, since the weekend rate
+ *    already exceeds the overtime rate.
  *  - holiday → every hour is holiday-rated.
+ *
+ * `dutyHours` is how many hours this person's salary covers. A guard's twelve
+ * are all duty; an operator's salary covers eight and their last four on the
+ * same shift are overtime. Omitted, it falls back to the site's standard day,
+ * which is what every caller wanted before duty hours existed.
  */
-export function splitDayHours(day: AttendanceDay, rule: PayRule): HourBuckets {
+export function splitDayHours(day: AttendanceDay, rule: PayRule, dutyHours?: number): HourBuckets {
   const worked = roundHours(Math.max(0, day.hoursWorked), rule.roundToMinutes);
   if (worked <= 0) return { ...EMPTY_BUCKETS };
+
+  // Sunday first: the day type would otherwise route these hours to the
+  // weekend bucket and pay them at the weekend rate instead of overtime.
+  if (isSunday(day.workDate)) {
+    return { ...EMPTY_BUCKETS, overtime: worked };
+  }
 
   switch (day.dayType) {
     case "holiday":
@@ -52,7 +114,7 @@ export function splitDayHours(day: AttendanceDay, rule: PayRule): HourBuckets {
 
     case "workday":
     case "special_working": {
-      const standard = rule.standardHoursPerDay;
+      const standard = dutyHours && dutyHours > 0 ? dutyHours : rule.standardHoursPerDay;
       if (worked <= standard) {
         return { ...EMPTY_BUCKETS, regular: worked };
       }
@@ -82,21 +144,29 @@ export function addBuckets(total: HourBuckets, day: HourBuckets): HourBuckets {
 }
 
 /** Sums a period's attendance into hour buckets. */
-export function accumulateHours(days: readonly AttendanceDay[], rule: PayRule): HourBuckets {
+export function accumulateHours(
+  days: readonly AttendanceDay[],
+  rule: PayRule,
+  dutyHours?: number,
+): HourBuckets {
   return days.reduce<HourBuckets>(
-    (total, day) => addBuckets(total, splitDayHours(day, rule)),
+    (total, day) => addBuckets(total, splitDayHours(day, rule, dutyHours)),
     { ...EMPTY_BUCKETS },
   );
 }
 
 /**
- * The hourly rate used for a monthly-salaried person's overtime.
+ * Days that earn base pay: attended, and not a Sunday.
  *
- * Derived from the contracted month so that overtime scales with salary
- * without needing a second rate field per employee.
+ * Length does not matter here. Someone who clocks two hours and someone who
+ * clocks eight both earn one working day; hours only count above the duty
+ * boundary, where they become overtime. Absence and leave earn nothing,
+ * because neither was attended.
  */
-export function derivedHourlyRate(monthlySalary: number, rule: PayRule): number {
-  const hoursPerMonth = rule.standardDaysPerMonth * rule.standardHoursPerDay;
-  if (hoursPerMonth <= 0) return 0;
-  return round2(monthlySalary / hoursPerMonth);
+export function countWorkingDays(days: readonly AttendanceDay[]): number {
+  return days.reduce((total, day) => {
+    if (isSunday(day.workDate)) return total;
+    const attended = day.status === "present" || day.status === "partial";
+    return attended ? total + 1 : total;
+  }, 0);
 }

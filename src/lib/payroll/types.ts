@@ -7,6 +7,21 @@
 
 export type PayClass = "monthly" | "hourly";
 
+/**
+ * Contractors are paid an agreed amount and nothing is calculated for them:
+ * no day proration, no overtime, no late penalty.
+ */
+export type WorkerType = "employee" | "contractor";
+
+/**
+ * Whether Sunday is expected of someone.
+ *
+ * It never affects the rate. Sunday is not a working day for anyone, so every
+ * hour worked on one is overtime regardless. `compulsory` only marks a missed
+ * Sunday as a violation — the money is already lost with the overtime.
+ */
+export type SundayPolicy = "off" | "optional" | "compulsory";
+
 export type DayType =
   /** Normal working day. */
   | "workday"
@@ -20,13 +35,7 @@ export type DayType =
   | "special_working";
 
 export type AttendanceStatus =
-  | "present"
-  | "absent"
-  | "leave"
-  | "holiday"
-  | "off"
-  | "partial"
-  | "pending";
+  "present" | "absent" | "leave" | "holiday" | "off" | "partial" | "pending";
 
 /**
  * Effective-dated rate configuration for one site.
@@ -37,6 +46,11 @@ export type AttendanceStatus =
  */
 export interface PayRule {
   standardHoursPerDay: number;
+  /**
+   * @deprecated Monthly pay divides by the real length of the month, not by a
+   * fixed figure. Kept because the column still exists and hourly rules read
+   * it; it no longer influences base pay, overtime, or late penalties.
+   */
   standardDaysPerMonth: number;
   /** Rupees per overtime hour. */
   otHourlyRate: number;
@@ -116,8 +130,22 @@ export interface Employee {
    * in, but this is set per person rather than derived from payClass.
    */
   requiresAttendance: boolean;
+  /**
+   * For an employee, the monthly figure their daily rate is derived from. For
+   * a contractor, the agreed amount paid flat.
+   */
   monthlySalary: number;
   hourlyRate: number;
+  /** Contractors are paid `monthlySalary` flat. Defaults to employee. */
+  workerType?: WorkerType;
+  /**
+   * Hours this person's salary covers on a duty day. Work beyond it is
+   * overtime; work below it is still one full working day. Defaults to the
+   * site's standard day.
+   */
+  dutyHours?: number | null;
+  /** Defaults to `off`. Never changes the rate — see {@link SundayPolicy}. */
+  sundayPolicy?: SundayPolicy;
   /** Negotiated premium rates. Null falls back to the site rule. */
   otHourlyRate?: number | null;
   weekendHourlyRate?: number | null;
@@ -171,6 +199,13 @@ export interface PayrollResult {
   daysPresent: number;
   daysAbsent: number;
   daysLeave: number;
+  /**
+   * Days that earned base pay: attended, and not a Sunday. Published so a
+   * worker can check their own payslip by counting days on a calendar.
+   */
+  workingDays: number;
+  /** What one day of the month was worth: salary ÷ calendar days. */
+  dailyRate: number;
 
   basePay: number;
   otPay: number;

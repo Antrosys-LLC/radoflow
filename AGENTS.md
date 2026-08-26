@@ -33,6 +33,13 @@ Rules worth knowing before editing:
   is paid for eight, with the last four as overtime.
 - **Contractors have nothing calculated for them.** The agreed amount in
   `monthly_salary` is paid flat: no proration, no overtime, no late penalty.
+- **Overtime stops at four hours a working day** (`pay_rules.ot_daily_cap_hours`).
+  Hours past the ceiling are recorded but dropped, never moved into the duty
+  bucket — paying them at the duty rate would reintroduce the uncapped cost the
+  ceiling exists to prevent. Sundays are exempt: every Sunday hour is overtime.
+- **`flexible_hours` means no in or out time is enforced.** Lateness is never
+  recorded for that person, whatever shift they are rostered to. Hours and
+  overtime are still counted from the punches.
 - **Net pay can never be negative.** Withholding is capped at gross earnings.
 
 The reasoning behind the pay model is in

@@ -205,6 +205,7 @@ export async function updateUserPay(_prev: UserResult, form: FormData): Promise<
       duty_hours: dutyHours,
       sunday_policy: sundayPolicy,
       requires_attendance: form.get("requires_attendance") !== null,
+      flexible_hours: form.get("flexible_hours") !== null,
     })
     .eq("id", userId);
 

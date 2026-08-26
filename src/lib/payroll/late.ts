@@ -19,8 +19,7 @@ export function findTier(
   // open-ended "beyond 2 hours" rule cannot swallow the tighter bands.
   const matching = tiers.filter(
     (tier) =>
-      minutesLate >= tier.fromMinutes &&
-      (tier.toMinutes === null || minutesLate < tier.toMinutes),
+      minutesLate >= tier.fromMinutes && (tier.toMinutes === null || minutesLate < tier.toMinutes),
   );
 
   if (matching.length === 0) return null;

@@ -46,6 +46,8 @@ export interface UserRow {
   dutyHours: number;
   sundayPolicy: "off" | "optional" | "compulsory";
   requiresAttendance: boolean;
+  /** No in or out time enforced: never recorded late. */
+  flexibleHours: boolean;
   departmentId: string | null;
   components: {
     id: string;
@@ -917,15 +919,37 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
           </p>
         </div>
 
-        <label className="flex items-center gap-2.5 text-sm font-semibold text-foreground">
-          <input
-            type="checkbox"
-            name="requires_attendance"
-            defaultChecked={user.requiresAttendance}
-            className="size-4 rounded border-input"
-          />
-          Requires attendance
-        </label>
+        <div className="space-y-2.5">
+          <label className="flex items-start gap-2.5 text-sm font-semibold text-foreground">
+            <input
+              type="checkbox"
+              name="requires_attendance"
+              defaultChecked={user.requiresAttendance}
+              className="mt-0.5 size-4 rounded border-input"
+            />
+            <span>
+              Pay from attendance
+              <span className="block text-xs font-normal text-muted-foreground">
+                Unticked, the salary is paid in full and punches are only a record of presence.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2.5 text-sm font-semibold text-foreground">
+            <input
+              type="checkbox"
+              name="flexible_hours"
+              defaultChecked={user.flexibleHours}
+              className="mt-0.5 size-4 rounded border-input"
+            />
+            <span>
+              No fixed in or out time
+              <span className="block text-xs font-normal text-muted-foreground">
+                Never recorded late, whatever the shift says. Hours and overtime are still counted.
+              </span>
+            </span>
+          </label>
+        </div>
 
         {isContractor ? (
           <p className="rounded-2xl bg-warning-soft px-4 py-3 text-xs text-warning">

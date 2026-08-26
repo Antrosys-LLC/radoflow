@@ -63,6 +63,14 @@ export interface PayRule {
   lateGraceMinutes: number;
   /** Overtime below this many minutes in a day is not paid as overtime. */
   otThresholdMinutes: number;
+  /**
+   * Most overtime hours payable on one working day.
+   *
+   * Sundays are deliberately exempt: every hour of a Sunday is overtime, and a
+   * Sunday shift is the whole reason someone gave up the day. Zero disables
+   * weekday overtime entirely.
+   */
+  otDailyCapHours: number;
   /** Worked time is rounded to this granularity. */
   roundToMinutes: number;
 }
@@ -76,6 +84,7 @@ export const DEFAULT_PAY_RULE: PayRule = {
   nightHourlyRate: 400,
   lateGraceMinutes: 10,
   otThresholdMinutes: 30,
+  otDailyCapHours: 4,
   roundToMinutes: 15,
 };
 

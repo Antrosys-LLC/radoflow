@@ -949,6 +949,7 @@ export type Database = {
           id: string
           late_grace_minutes: number
           night_hourly_rate: number
+          ot_daily_cap_hours: number
           ot_hourly_rate: number
           ot_threshold_minutes: number
           round_to_minutes: number
@@ -965,6 +966,7 @@ export type Database = {
           id?: string
           late_grace_minutes?: number
           night_hourly_rate?: number
+          ot_daily_cap_hours?: number
           ot_hourly_rate?: number
           ot_threshold_minutes?: number
           round_to_minutes?: number
@@ -981,6 +983,7 @@ export type Database = {
           id?: string
           late_grace_minutes?: number
           night_hourly_rate?: number
+          ot_daily_cap_hours?: number
           ot_hourly_rate?: number
           ot_threshold_minutes?: number
           round_to_minutes?: number
@@ -1463,6 +1466,7 @@ export type Database = {
           duty_hours: number
           email: string | null
           employee_code: string
+          flexible_hours: boolean
           full_name: string
           holiday_hourly_rate: number | null
           hourly_rate: number
@@ -1494,6 +1498,7 @@ export type Database = {
           duty_hours?: number
           email?: string | null
           employee_code: string
+          flexible_hours?: boolean
           full_name: string
           holiday_hourly_rate?: number | null
           hourly_rate?: number
@@ -1525,6 +1530,7 @@ export type Database = {
           duty_hours?: number
           email?: string | null
           employee_code?: string
+          flexible_hours?: boolean
           full_name?: string
           holiday_hourly_rate?: number | null
           hourly_rate?: number

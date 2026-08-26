@@ -125,7 +125,18 @@ export function splitDayHours(day: AttendanceDay, rule: PayRule, dutyHours?: num
         // generating a few paisa of overtime.
         return { ...EMPTY_BUCKETS, regular: worked };
       }
-      return { ...EMPTY_BUCKETS, regular: standard, overtime: excess };
+
+      /*
+       * Overtime stops at the daily ceiling. Hours past it are dropped rather
+       * than moved into the regular bucket: paying them at the duty rate would
+       * quietly reintroduce the uncapped cost the ceiling exists to prevent,
+       * and a terminal left running overnight would show up as a raise.
+       */
+      const cap = rule.otDailyCapHours;
+      const payable = cap >= 0 ? Math.min(excess, cap) : excess;
+
+      if (payable <= 0) return { ...EMPTY_BUCKETS, regular: standard };
+      return { ...EMPTY_BUCKETS, regular: standard, overtime: round2(payable) };
     }
 
     default:

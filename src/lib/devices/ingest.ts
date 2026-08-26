@@ -208,7 +208,7 @@ export async function recomputeAttendanceDay(
       .order("punched_at", { ascending: true }),
     supabase
       .from("profiles")
-      .select("requires_attendance, shift_id, site_id")
+      .select("requires_attendance, shift_id, site_id, flexible_hours")
       .eq("id", profileId)
       .single(),
     resolveDayType(siteId, workDate),
@@ -223,12 +223,19 @@ export async function recomputeAttendanceDay(
     requiresAttendance: profile?.requires_attendance ?? true,
   });
 
-  // Lateness is judged against the shift the person is rostered on, anchored
-  // to Pakistan time — the clock the factory floor actually works to.
+  /*
+   * Lateness is judged against the shift the person is rostered on, anchored
+   * to Pakistan time — the clock the factory floor actually works to.
+   *
+   * Staff on flexible hours keep no in or out time, so nothing here applies to
+   * them. They stay on their shift for the roster: knowing a fitter works
+   * nights is useful even when he is never marked late for arriving at ten.
+   */
   let minutesLate = 0;
+  const flexible = profile?.flexible_hours ?? false;
   const shiftId = profile?.shift_id ?? null;
 
-  if (shiftId && computed.firstIn) {
+  if (shiftId && computed.firstIn && !flexible) {
     const { data: shift } = await supabase
       .from("shifts")
       .select("starts_at, grace_minutes")

@@ -245,6 +245,7 @@ function toPayRule(row: Record<string, unknown> | undefined): PayRule {
     nightHourlyRate: Number(row["night_hourly_rate"] ?? 0),
     lateGraceMinutes: Number(row["late_grace_minutes"] ?? 10),
     otThresholdMinutes: Number(row["ot_threshold_minutes"] ?? 30),
+    otDailyCapHours: Number(row["ot_daily_cap_hours"] ?? DEFAULT_PAY_RULE.otDailyCapHours),
     roundToMinutes: Number(row["round_to_minutes"] ?? 15),
   };
 }

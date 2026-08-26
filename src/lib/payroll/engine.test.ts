@@ -154,6 +154,45 @@ describe("hour bucketing", () => {
     expect(buckets.overtime).toBe(4);
   });
 
+  it("stops paying overtime past the daily ceiling", () => {
+    // 16 hours on an 8-hour duty is 8 hours over, but only 4 are payable.
+    const buckets = splitDayHours(day({ workDate: "2026-08-03", hoursWorked: 16 }), rule, 8);
+    expect(buckets.regular).toBe(8);
+    expect(buckets.overtime).toBe(4);
+  });
+
+  it("applies the ceiling from the duty boundary, not from eight hours", () => {
+    // A guard's salary covers 12; the ceiling allows 4 more, so 16 is the most
+    // that is ever payable in a day.
+    expect(splitDayHours(day({ workDate: "2026-08-03", hoursWorked: 18 }), rule, 12)).toEqual({
+      regular: 12,
+      overtime: 4,
+      weekend: 0,
+      holiday: 0,
+    });
+  });
+
+  it("leaves overtime below the ceiling untouched", () => {
+    const buckets = splitDayHours(day({ workDate: "2026-08-03", hoursWorked: 11 }), rule, 8);
+    expect(buckets.overtime).toBe(3);
+  });
+
+  it("does not cap a Sunday, where every hour is overtime", () => {
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-02", dayType: "off", hoursWorked: 12 }),
+      rule,
+      8,
+    );
+    expect(buckets.overtime).toBe(12);
+  });
+
+  it("pays no overtime at all when the ceiling is zero", () => {
+    const noOvertime = { ...rule, otDailyCapHours: 0 };
+    const buckets = splitDayHours(day({ workDate: "2026-08-03", hoursWorked: 12 }), noOvertime, 8);
+    expect(buckets.regular).toBe(8);
+    expect(buckets.overtime).toBe(0);
+  });
+
   it("counts a working day once, however short it was", () => {
     const days = [
       day({ workDate: "2026-08-03", hoursWorked: 2 }),
@@ -454,8 +493,10 @@ describe("contractors", () => {
     });
 
     expect(result.otPay).toBe(0);
-    // The hours are still recorded, so the contractor's invoice can be checked.
-    expect(result.hours.overtime).toBe(6);
+    // The hours are still recorded, so the contractor's invoice can be checked
+    // — capped at the daily ceiling like anyone else's, though nothing is paid
+    // on them either way.
+    expect(result.hours.overtime).toBe(4);
   });
 
   it("earns no Sunday overtime either", () => {

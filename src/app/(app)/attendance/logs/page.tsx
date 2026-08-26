@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarDays, Clock, ScrollText, TriangleAlert, Users } from "lucide-react";
 
+import { matchesPerson } from "@/components/filter-bar";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requirePermission } from "@/lib/auth/session";
 import {
@@ -86,7 +87,13 @@ interface Summary {
 export default async function AttendanceLogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; person?: string; dept?: string | string[] }>;
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    person?: string;
+    dept?: string | string[];
+    q?: string;
+  }>;
 }) {
   const session = await requirePermission("attendance.view");
   const params = await searchParams;
@@ -127,10 +134,12 @@ export default async function AttendanceLogPage({
   // Without the wider permission the only log on offer is your own.
   const visible = canSeeEveryone ? allPeople : allPeople.filter((p) => p.id === session.userId);
 
-  const scoped =
+  const byDept =
     selectedDepts.length > 0
       ? visible.filter((p) => p.department_id && selectedDepts.includes(p.department_id))
       : visible;
+
+  const scoped = byDept.filter((p) => matchesPerson(p, params.q ?? ""));
 
   const personId = params.person || (canSeeEveryone ? "" : session.userId);
   const person = personId ? allPeople.find((p) => p.id === personId) : undefined;
@@ -210,7 +219,7 @@ export default async function AttendanceLogPage({
         {/* A plain GET form: the filters belong in the URL so a log can be
             linked to in a message about a disputed payslip. */}
         <form className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-[1fr_10rem_10rem_auto]">
+          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_9rem_9rem_auto]">
             <label className="block">
               <span className="text-xs font-semibold text-muted-foreground">Person</span>
               <select
@@ -228,6 +237,16 @@ export default async function AttendanceLogPage({
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="block sm:col-span-1">
+              <span className="text-xs font-semibold text-muted-foreground">Search</span>
+              <input
+                type="search"
+                name="q"
+                defaultValue={params.q ?? ""}
+                placeholder="Name, code or CNIC"
+                className="mt-1 w-full rounded-2xl border border-input bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
+              />
             </label>
             <label className="block">
               <span className="text-xs font-semibold text-muted-foreground">From</span>

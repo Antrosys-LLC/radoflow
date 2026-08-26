@@ -3,22 +3,21 @@
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
-import { Banknote, KeyRound, Plus, Trash2, UserPlus, X } from "lucide-react";
+import { Banknote, KeyRound, Plus, Search, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { CnicInput, PasswordInput } from "@/components/credential-inputs";
+import { matchesPerson } from "@/components/filter-bar";
 import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { cn } from "@/lib/utils";
+import { addUserComponent, removeUserComponent, updateUserPay } from "@/lib/pay/actions";
 import {
-  addUserComponent,
   createUser,
-  removeUserComponent,
   setUserOverride,
   setUserPassword,
   setUserRole,
   setUserStatus,
-  updateUserPay,
   type UserResult,
 } from "./actions";
 
@@ -95,6 +94,23 @@ export function UsersManager({
   const [tuning, setTuning] = useState<UserRow | null>(null);
   const [paying, setPaying] = useState<UserRow | null>(null);
 
+  /*
+   * Filtered here rather than through the URL, because this list is already a
+   * client component holding every row — a round trip to the server would only
+   * hand back rows the browser is holding anyway.
+   */
+  const [query, setQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+
+  const shown = users.filter((user) => {
+    if (roleFilter && user.roleId !== roleFilter) return false;
+    if (statusFilter === "active" && user.status !== "active") return false;
+    if (statusFilter === "suspended" && user.status === "active") return false;
+    if (statusFilter === "no-cnic" && user.cnic) return false;
+    return matchesPerson(user, query);
+  });
+
   return (
     <div className="space-y-5">
       <Card className="p-4 sm:p-6">
@@ -114,8 +130,54 @@ export function UsersManager({
           }
         />
 
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[14rem] flex-1">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search by name, employee code or CNIC"
+              aria-label="Search people"
+              className="w-full rounded-2xl border border-input bg-background py-2.5 pl-10 pr-4 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+
+          <select
+            value={roleFilter}
+            onChange={(event) => setRoleFilter(event.target.value)}
+            aria-label="Filter by role"
+            className="rounded-2xl border border-input bg-background px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary"
+          >
+            <option value="">Every role</option>
+            {roles.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            aria-label="Filter by status"
+            className="rounded-2xl border border-input bg-background px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary"
+          >
+            <option value="">Any status</option>
+            <option value="active">Active</option>
+            <option value="suspended">Suspended</option>
+            <option value="no-cnic">Cannot sign in — no CNIC</option>
+          </select>
+
+          {shown.length !== users.length ? (
+            <span className="text-xs text-muted-foreground">
+              Showing {shown.length} of {users.length}
+            </span>
+          ) : null}
+        </div>
+
         <div className="grid gap-2 lg:grid-cols-2">
-          {users.map((user) => (
+          {shown.map((user) => (
             <UserCard
               key={user.id}
               user={user}
@@ -126,6 +188,12 @@ export function UsersManager({
             />
           ))}
         </div>
+
+        {shown.length === 0 ? (
+          <p className="rounded-2xl bg-secondary px-4 py-8 text-center text-sm text-muted-foreground">
+            Nobody matches these filters.
+          </p>
+        ) : null}
       </Card>
 
       {showAdd ? (

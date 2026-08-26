@@ -217,16 +217,56 @@ async function main() {
    * reason someone runs this a second time is almost always that nobody can
    * sign in, and failing here would leave them exactly as stuck as before.
    */
-  const { data: existingProfile } = await supabase
+  let { data: existingProfile } = await supabase
     .from("profiles")
-    .select("id, full_name")
+    .select("id, full_name, cnic")
     .eq("cnic", cnic)
     .maybeSingle();
 
+  /*
+   * An account provisioned before CNIC sign-in has no cnic, and therefore no
+   * way in: the login box looks people up by a number this row does not carry.
+   * Adopt it rather than creating a second administrator beside it, which is
+   * what the unique employee code would reject anyway.
+   */
+  if (!existingProfile) {
+    const { data: legacy } = await supabase
+      .from("profiles")
+      .select("id, full_name, cnic")
+      .eq("employee_code", employeeCode)
+      .maybeSingle();
+
+    if (legacy?.cnic) {
+      throw new SetupError(
+        `Employee code ${employeeCode} already belongs to ${legacy.full_name}, whose CNIC is ${legacy.cnic}.\n` +
+          `  Pass a different code as the fourth argument, or use that CNIC to reset that account.`,
+      );
+    }
+
+    if (legacy) {
+      const { error: backfillError } = await supabase
+        .from("profiles")
+        .update({ cnic })
+        .eq("id", legacy.id);
+
+      if (backfillError) {
+        throw new SetupError(`Could not attach the CNIC: ${backfillError.message}`);
+      }
+
+      console.log(`  ✓ ${legacy.full_name} predates CNIC sign-in — attached ${cnic}`);
+      existingProfile = legacy;
+    }
+  }
+
   if (existingProfile) {
+    /*
+     * The auth email is left as it is. Sign-in reads the address off the auth
+     * row after finding the person by CNIC, so an account created with a real
+     * address keeps working — rewriting it to the synthetic one would only
+     * discard a working mailbox.
+     */
     const { error: resetError } = await supabase.auth.admin.updateUserById(existingProfile.id, {
       password,
-      email,
       email_confirm: true,
     });
 

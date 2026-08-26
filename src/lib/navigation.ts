@@ -69,6 +69,13 @@ const WORK_MODULES: readonly NavItem[] = [
     description: "Overtime, weekend and late-arrival rules",
   },
   {
+    href: "/reports",
+    label: "Reports",
+    icon: "reports",
+    requires: ["reports.view"],
+    description: "Attendance and pay across the factory",
+  },
+  {
     href: "/payroll",
     label: "Payroll",
     icon: "payroll",

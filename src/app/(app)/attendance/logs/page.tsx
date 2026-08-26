@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarDays, Clock, ScrollText, TriangleAlert, Users } from "lucide-react";
 
+import { ExportButtons } from "@/components/export-buttons";
 import { matchesPerson } from "@/lib/people/match";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requirePermission } from "@/lib/auth/session";
@@ -207,12 +208,15 @@ export default async function AttendanceLogPage({
               : "Every punch of yours, and the pay it produces."
           }
           action={
-            <Link
-              href="/attendance"
-              className="rounded-xl bg-secondary px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:text-primary"
-            >
-              Live board
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <ExportButtons kind="attendance" params={{ from, to, dept: selectedDepts[0] }} />
+              <Link
+                href="/attendance"
+                className="rounded-xl bg-secondary px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:text-primary"
+              >
+                Live board
+              </Link>
+            </div>
           }
         />
 
@@ -619,6 +623,17 @@ function PersonLog({
             No in or out time is enforced for this person, so they are never recorded late.
           </p>
         ) : null}
+
+        {/* The payslip is the document this screen exists to justify, so it is
+            downloadable from beside the days that produced it. */}
+        <div className="mt-3">
+          <ExportButtons
+            kind="payslip"
+            params={{ person: person.id, from, to }}
+            label="Payslip"
+            formats={["pdf"]}
+          />
+        </div>
 
         <Link
           href={`/attendance/logs?from=${from}&to=${to}`}

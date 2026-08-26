@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Fingerprint } from "lucide-react";
+import { Building2, CreditCard, Fingerprint, KeyRound, ScanFace } from "lucide-react";
 
 import { AntrosysRibbon, showsAntrosysRibbon } from "@/components/antrosys-ribbon";
 import { LiveClock } from "@/components/live-clock";
@@ -36,9 +36,17 @@ export function AppShell({ session, children }: { session: Session; children: Re
           </Link>
 
           <div className="ml-auto flex items-center gap-3">
-            <span className="hidden items-center gap-2 rounded-2xl bg-success-soft px-3 py-2 text-xs font-semibold text-success lg:inline-flex">
-              <Fingerprint className="size-4" />
-              ZKTeco K50
+            {/* How staff can identify themselves at a terminal. The model name
+                meant nothing to anyone on the floor; the four methods do. */}
+            <span
+              className="hidden items-center gap-2 rounded-2xl bg-success-soft px-3 py-2 text-success lg:inline-flex"
+              title="Fingerprint, card, face or passcode"
+            >
+              <Fingerprint className="size-4" aria-hidden />
+              <CreditCard className="size-4" aria-hidden />
+              <ScanFace className="size-4" aria-hidden />
+              <KeyRound className="size-4" aria-hidden />
+              <span className="sr-only">Terminals accept fingerprint, card, face or passcode</span>
             </span>
             <LiveClock />
             <ProfileMenu session={session} />
@@ -56,8 +64,8 @@ export function AppShell({ session, children }: { session: Session; children: Re
         </main>
       </div>
 
-      <MobileNav sections={sections} />
       {showRibbon ? <AntrosysRibbon /> : null}
+      <MobileNav sections={sections} />
     </div>
   );
 }

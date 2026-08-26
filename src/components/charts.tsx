@@ -2,12 +2,18 @@
 
 import { useId, useState } from "react";
 
+import { cn } from "@/lib/utils";
+
 import {
+  arcs,
   axisMax,
   axisTicks,
   barPercent,
   linePath,
   plotArea,
+  radialBar,
+  scaleLinear,
+  scatterBounds,
   stackedBars,
   xForIndex,
   yFor,
@@ -28,6 +34,38 @@ import {
  */
 
 /*
+ * The eight categorical slots, in fixed order.
+ *
+ * Validated against both surfaces on the adjacent pairlist — which is the one
+ * that applies to slices and stacks, where only neighbours touch. Three of the
+ * eight fall below 3:1 against the surface, so every chart using them carries
+ * visible labels and a table, which is the relief that permits it.
+ *
+ * A ninth category is never a generated hue: it folds into "Other".
+ */
+const CATEGORICAL = [
+  "#2a78d6",
+  "#eb6834",
+  "#1baf7a",
+  "#eda100",
+  "#e87ba4",
+  "#008300",
+  "#4a3aa7",
+  "#e34948",
+] as const;
+
+const CATEGORICAL_DARK = [
+  "#3987e5",
+  "#d95926",
+  "#199e70",
+  "#c98500",
+  "#d55181",
+  "#008300",
+  "#9085e9",
+  "#e66767",
+] as const;
+
+/*
  * Two categorical hues, validated for colour-vision deficiency against both
  * surfaces (worst adjacent ΔE 24.7 light / 26.8 dark, well past the 8 target).
  * Slot order is fixed: duty is always blue, overtime always orange, so a
@@ -41,6 +79,7 @@ const TOKENS = `
   --viz-seq-500: #256abf;
   --viz-seq-400: #3987e5;
   --viz-seq-250: #86b6ef;
+${CATEGORICAL.map((hex, i) => `  --viz-cat-${i}: ${hex};`).join("\n")}
 `;
 
 const DARK_TOKENS = `
@@ -49,6 +88,7 @@ const DARK_TOKENS = `
   --viz-seq-500: #3987e5;
   --viz-seq-400: #2a78d6;
   --viz-seq-250: #256abf;
+${CATEGORICAL_DARK.map((hex, i) => `  --viz-cat-${i}: ${hex};`).join("\n")}
 `;
 
 /** Wraps a chart so the tokens resolve, in both modes. */
@@ -69,6 +109,30 @@ export function VizRoot({ children }: { children: React.ReactNode }) {
 
 const fmt = (value: number, digits = 0) =>
   value.toLocaleString("en-PK", { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+
+/**
+ * How a chart writes its numbers.
+ *
+ * A name rather than a formatter function, because these components are client
+ * components and the pages using them are server components — React cannot
+ * serialise a function across that boundary, and it fails at request time with
+ * "Functions cannot be passed directly to Client Components" while typecheck
+ * and build both stay green.
+ */
+export type NumberFormat = "plain" | "money" | "hours" | "count";
+
+function formatWith(format: NumberFormat, value: number): string {
+  switch (format) {
+    case "money":
+      return `Rs ${fmt(value, 0)}`;
+    case "hours":
+      return `${fmt(value, 1)} h`;
+    case "count":
+      return fmt(value, 0);
+    default:
+      return fmt(value, 2);
+  }
+}
 
 function Frame({
   title,
@@ -645,6 +709,514 @@ export function RankedBars({
           {hidden} more not shown — open the table for all {sorted.length}.
         </p>
       ) : null}
+    </Frame>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export interface Slice {
+  label: string;
+  value: number;
+}
+
+/** At most this many slices before the tail folds into one. */
+const SLICE_LIMIT = 7;
+
+/**
+ * Folds a long tail into "Other".
+ *
+ * Eight hues is the ceiling of the palette, and a ninth generated colour is
+ * indistinguishable from an existing one under colour-vision deficiency. A
+ * long tail is better read as one slice than as six unnameable ones.
+ */
+function foldTail(data: Slice[]): Slice[] {
+  const sorted = [...data].filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+  if (sorted.length <= SLICE_LIMIT + 1) return sorted;
+
+  const head = sorted.slice(0, SLICE_LIMIT);
+  const tail = sorted.slice(SLICE_LIMIT);
+  return [
+    ...head,
+    { label: `Other (${tail.length})`, value: tail.reduce((t, d) => t + d.value, 0) },
+  ];
+}
+
+/**
+ * A donut of shares, with slices that can be switched off.
+ *
+ * Clicking a slice or its legend entry removes it and the rest re-proportion,
+ * which is how a reader answers "and without the big one?" — the question a
+ * pie chart normally cannot take. Colour follows the category, not its rank,
+ * so the survivors never repaint when one is dropped.
+ */
+export function DonutChart({
+  data,
+  title,
+  subtitle,
+  unit = "",
+  format = "count",
+}: {
+  data: Slice[];
+  title: string;
+  subtitle?: string | undefined;
+  unit?: string;
+  format?: NumberFormat;
+}) {
+  const show = (value: number) => formatWith(format, value);
+  const [hover, setHover] = useState<string | null>(null);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+
+  const folded = foldTail(data);
+  // Hue is keyed to position in the folded list, before anything is hidden.
+  const hueOf = new Map(folded.map((d, i) => [d.label, i % 8]));
+
+  const shown = folded.filter((d) => !hidden.has(d.label));
+  const slices = arcs(
+    shown.map((d) => d.value),
+    100,
+    62,
+  );
+  const total = shown.reduce((t, d) => t + d.value, 0);
+
+  function toggle(label: string) {
+    setHidden((was) => {
+      const next = new Set(was);
+      // Never let the last slice be switched off: an empty donut is not a
+      // state anyone chose, it is a chart that looks broken.
+      if (next.has(label)) next.delete(label);
+      else if (shown.length > 1) next.add(label);
+      return next;
+    });
+  }
+
+  if (folded.length === 0) {
+    return (
+      <Frame title={title} subtitle={subtitle} table={null}>
+        <Empty message="Nothing recorded in this period." />
+      </Frame>
+    );
+  }
+
+  const active = hover ? shown.find((d) => d.label === hover) : undefined;
+
+  return (
+    <Frame
+      title={title}
+      subtitle={subtitle}
+      table={
+        <DataTable head={["Name", unit || "Value"]} rows={folded.map((d) => [d.label, d.value])} />
+      }
+    >
+      <div className="flex flex-wrap items-center gap-5">
+        <svg
+          viewBox="0 0 200 200"
+          className="h-44 w-44 shrink-0"
+          role="img"
+          aria-label={`${title}. ${shown.length} categories.`}
+          onMouseLeave={() => setHover(null)}
+        >
+          {slices.map((slice, i) => {
+            const entry = shown[i]!;
+            const hue = hueOf.get(entry.label) ?? 0;
+            const dim = hover !== null && hover !== entry.label;
+
+            return (
+              <path
+                key={entry.label}
+                d={slice.path}
+                fill={`var(--viz-cat-${hue})`}
+                // A 2px surface ring between slices, so neighbouring hues never
+                // read as one shape.
+                stroke="var(--card)"
+                strokeWidth={2}
+                opacity={dim ? 0.35 : 1}
+                className="cursor-pointer transition-opacity duration-200"
+                onMouseEnter={() => setHover(entry.label)}
+                onClick={() => toggle(entry.label)}
+              >
+                <title>{`${entry.label}: ${show(entry.value)}`}</title>
+              </path>
+            );
+          })}
+
+          {/* The hole carries the reading, so the eye never has to estimate an
+              angle. */}
+          <text
+            x="100"
+            y="94"
+            textAnchor="middle"
+            className="fill-foreground text-[15px] font-bold"
+          >
+            {show(active ? active.value : total)}
+          </text>
+          <text x="100" y="112" textAnchor="middle" className="fill-muted-foreground text-[9px]">
+            {active
+              ? `${Math.round((active.value / (total || 1)) * 100)}% · ${active.label.slice(0, 18)}`
+              : hidden.size > 0
+                ? `${shown.length} of ${folded.length} shown`
+                : unit || "total"}
+          </text>
+        </svg>
+
+        <ul className="min-w-[10rem] flex-1 space-y-1">
+          {folded.map((entry) => {
+            const hue = hueOf.get(entry.label) ?? 0;
+            const off = hidden.has(entry.label);
+            const share = total > 0 && !off ? (entry.value / total) * 100 : 0;
+
+            return (
+              <li key={entry.label}>
+                <button
+                  type="button"
+                  onClick={() => toggle(entry.label)}
+                  onMouseEnter={() => setHover(entry.label)}
+                  onMouseLeave={() => setHover(null)}
+                  aria-pressed={!off}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left text-xs transition-colors hover:bg-secondary",
+                    off && "opacity-40",
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className="size-2.5 shrink-0 rounded-[3px]"
+                    style={{ background: `var(--viz-cat-${hue})` }}
+                  />
+                  <span
+                    className={cn("min-w-0 flex-1 truncate text-foreground", off && "line-through")}
+                  >
+                    {entry.label}
+                  </span>
+                  {/* A visible label on every entry: three of the eight hues sit
+                      below 3:1 on this surface, and this is the relief. */}
+                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                    {off ? "hidden" : `${share.toFixed(0)}%`}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      {hidden.size > 0 ? (
+        <button
+          type="button"
+          onClick={() => setHidden(new Set())}
+          className="mt-2 text-[11px] font-semibold text-primary hover:underline"
+        >
+          Show all {folded.length}
+        </button>
+      ) : null}
+    </Frame>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export interface ScatterPoint {
+  label: string;
+  x: number;
+  y: number;
+  /** Optional grouping, shown in the tooltip rather than encoded as colour. */
+  group?: string;
+}
+
+/**
+ * One dot per person, against two measures.
+ *
+ * A single hue, deliberately: colouring four hundred people by department
+ * would need thirty hues, and past three the all-pairs separation cannot hold.
+ * Identity lives in the tooltip and in the click-to-pin, where it can be read
+ * exactly rather than guessed from a shade.
+ */
+export function ScatterPlot({
+  data,
+  title,
+  subtitle,
+  xLabel,
+  yLabel,
+  formatX = "plain",
+  formatY = "plain",
+}: {
+  data: ScatterPoint[];
+  title: string;
+  subtitle?: string | undefined;
+  xLabel: string;
+  yLabel: string;
+  formatX?: NumberFormat;
+  formatY?: NumberFormat;
+}) {
+  const showX = (value: number) => formatWith(formatX, value);
+  const showY = (value: number) => formatWith(formatY, value);
+  const [hover, setHover] = useState<number | null>(null);
+  const [pinned, setPinned] = useState<number | null>(null);
+
+  if (data.length === 0) {
+    return (
+      <Frame title={title} subtitle={subtitle} table={null}>
+        <Empty message="Nothing to plot in this period." />
+      </Frame>
+    );
+  }
+
+  const BOX: PlotBox = {
+    width: 720,
+    height: 280,
+    padTop: 12,
+    padRight: 14,
+    padBottom: 34,
+    padLeft: 52,
+  };
+  const area = plotArea(BOX);
+
+  const xb = scatterBounds(data.map((d) => d.x));
+  const yb = scatterBounds(data.map((d) => d.y));
+
+  const px = (v: number) => area.left + scaleLinear(v, xb.min, xb.max, area.plotWidth);
+  const py = (v: number) => area.bottom - scaleLinear(v, yb.min, yb.max, area.plotHeight);
+
+  const shown = pinned ?? hover;
+
+  return (
+    <Frame
+      title={title}
+      subtitle={subtitle}
+      table={
+        <DataTable head={["Name", xLabel, yLabel]} rows={data.map((d) => [d.label, d.x, d.y])} />
+      }
+    >
+      <div className="relative">
+        <svg
+          viewBox={`0 0 ${BOX.width} ${BOX.height}`}
+          className="w-full"
+          role="img"
+          aria-label={`${title}. ${data.length} points of ${yLabel} against ${xLabel}.`}
+          onMouseLeave={() => setHover(null)}
+        >
+          {[0, 0.5, 1].map((t) => {
+            const y = area.bottom - t * area.plotHeight;
+            return (
+              <g key={t}>
+                <line
+                  x1={area.left}
+                  x2={BOX.width - BOX.padRight}
+                  y1={y}
+                  y2={y}
+                  stroke="var(--viz-grid)"
+                  strokeWidth={1}
+                />
+                <text
+                  x={area.left - 6}
+                  y={y + 3}
+                  textAnchor="end"
+                  className="fill-muted-foreground text-[9px]"
+                >
+                  {showY(yb.min + t * (yb.max - yb.min))}
+                </text>
+              </g>
+            );
+          })}
+
+          {[0, 0.5, 1].map((t) => (
+            <text
+              key={t}
+              x={area.left + t * area.plotWidth}
+              y={BOX.height - 14}
+              textAnchor={t === 0 ? "start" : t === 1 ? "end" : "middle"}
+              className="fill-muted-foreground text-[9px]"
+            >
+              {showX(xb.min + t * (xb.max - xb.min))}
+            </text>
+          ))}
+
+          <text
+            x={area.left + area.plotWidth / 2}
+            y={BOX.height - 2}
+            textAnchor="middle"
+            className="fill-muted-foreground text-[9px] font-semibold"
+          >
+            {xLabel}
+          </text>
+
+          {data.map((point, i) => {
+            const isShown = shown === i;
+            return (
+              <circle
+                key={`${point.label}-${i}`}
+                cx={px(point.x)}
+                cy={py(point.y)}
+                r={isShown ? 7 : 4.5}
+                fill="var(--viz-series-1)"
+                // A surface ring keeps overlapping dots countable.
+                stroke="var(--card)"
+                strokeWidth={isShown ? 2 : 1}
+                opacity={shown === null || isShown ? 0.85 : 0.3}
+                className="cursor-pointer transition-all duration-150"
+                onMouseEnter={() => setHover(i)}
+                onClick={() => setPinned(pinned === i ? null : i)}
+              >
+                <title>{`${point.label}: ${showX(point.x)} ${xLabel}, ${showY(point.y)} ${yLabel}`}</title>
+              </circle>
+            );
+          })}
+        </svg>
+
+        {shown !== null && data[shown] ? (
+          <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 rounded-xl border border-border bg-card px-3 py-2 text-xs shadow-lg">
+            <p className="font-bold text-foreground">{data[shown]!.label}</p>
+            <p className="text-muted-foreground">
+              {showX(data[shown]!.x)} {xLabel} · {showY(data[shown]!.y)} {yLabel}
+              {data[shown]!.group ? ` · ${data[shown]!.group}` : ""}
+            </p>
+            {pinned === shown ? (
+              <p className="mt-0.5 text-[10px] text-primary">Pinned — click again to release</p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        {data.length} people · click a dot to pin it
+      </p>
+    </Frame>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Concentric arcs, one per category.
+ *
+ * Bars bent around a circle rather than shares of a whole: length is the value
+ * against the largest, so a reader compares ring lengths the way they would
+ * compare bar lengths. Chosen over a bar chart only where the categories are
+ * few and the shape earns its place on a dashboard.
+ */
+export function RadialArea({
+  data,
+  title,
+  subtitle,
+  format = "count",
+}: {
+  data: Slice[];
+  title: string;
+  subtitle?: string | undefined;
+  format?: NumberFormat;
+}) {
+  const show = (value: number) => formatWith(format, value);
+  const [hover, setHover] = useState<string | null>(null);
+
+  const shown = [...data]
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+
+  if (shown.length === 0) {
+    return (
+      <Frame title={title} subtitle={subtitle} table={null}>
+        <Empty message="Nothing recorded in this period." />
+      </Frame>
+    );
+  }
+
+  const SIZE = 200;
+  const centre = SIZE / 2;
+  const max = Math.max(...shown.map((d) => d.value));
+  const outer = 88;
+  const step = 13;
+
+  const active = hover ? shown.find((d) => d.label === hover) : undefined;
+
+  return (
+    <Frame
+      title={title}
+      subtitle={subtitle}
+      table={<DataTable head={["Name", "Value"]} rows={shown.map((d) => [d.label, d.value])} />}
+    >
+      <div className="flex flex-wrap items-center gap-5">
+        <svg
+          viewBox={`0 0 ${SIZE} ${SIZE}`}
+          className="h-48 w-48 shrink-0"
+          role="img"
+          aria-label={`${title}. ${shown.length} categories.`}
+          onMouseLeave={() => setHover(null)}
+        >
+          {shown.map((entry, i) => {
+            const radius = outer - i * step;
+            const track = radialBar(max, max, radius, centre);
+            const arc = radialBar(entry.value, max, radius, centre);
+            const dim = hover !== null && hover !== entry.label;
+
+            return (
+              <g key={entry.label} onMouseEnter={() => setHover(entry.label)}>
+                {/* The full ring behind each arc, so a short one still reads as
+                    a share of something rather than as a stray stroke. */}
+                <path
+                  d={track.path}
+                  fill="none"
+                  stroke="var(--viz-grid)"
+                  strokeWidth={9}
+                  strokeLinecap="round"
+                />
+                <path
+                  d={arc.path}
+                  fill="none"
+                  stroke={`var(--viz-cat-${i % 8})`}
+                  strokeWidth={9}
+                  strokeLinecap="round"
+                  opacity={dim ? 0.3 : 1}
+                  className="cursor-pointer transition-opacity duration-200"
+                >
+                  <title>{`${entry.label}: ${show(entry.value)}`}</title>
+                </path>
+              </g>
+            );
+          })}
+
+          <text
+            x={centre}
+            y={centre - 2}
+            textAnchor="middle"
+            className="fill-foreground text-[13px] font-bold"
+          >
+            {show(active ? active.value : max)}
+          </text>
+          <text
+            x={centre}
+            y={centre + 13}
+            textAnchor="middle"
+            className="fill-muted-foreground text-[8px]"
+          >
+            {active ? active.label.slice(0, 20) : "highest"}
+          </text>
+        </svg>
+
+        <ul className="min-w-[9rem] flex-1 space-y-1">
+          {shown.map((entry, i) => (
+            <li
+              key={entry.label}
+              onMouseEnter={() => setHover(entry.label)}
+              onMouseLeave={() => setHover(null)}
+              className={cn(
+                "flex items-center gap-2 rounded-lg px-1.5 py-1 text-xs transition-colors",
+                hover === entry.label && "bg-secondary",
+              )}
+            >
+              <span
+                aria-hidden
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ background: `var(--viz-cat-${i % 8})` }}
+              />
+              <span className="min-w-0 flex-1 truncate text-foreground">{entry.label}</span>
+              <span className="shrink-0 font-semibold tabular-nums text-muted-foreground">
+                {show(entry.value)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </Frame>
   );
 }

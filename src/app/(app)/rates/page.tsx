@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Banknote, Clock, Coins } from "lucide-react";
 
+import { ExportButtons } from "@/components/export-buttons";
 import { FilterBar } from "@/components/filter-bar";
 import { matchesPerson } from "@/lib/people/match";
 import { Card, SectionTitle } from "@/components/ui-kit";
@@ -101,6 +102,7 @@ export default async function RatesPage({
           icon={Banknote}
           title={`Pay by person · ${everyone.length}`}
           subtitle="What each person earns, how many hours their salary covers, and the lines attached to them. Grouped by department."
+          action={<ExportButtons kind="pay" params={{ dept: filters.dept }} />}
         />
 
         <FilterBar

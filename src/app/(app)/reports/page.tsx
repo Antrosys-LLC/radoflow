@@ -3,13 +3,19 @@ import { BarChart3, Banknote, Clock, TrendingUp, Users } from "lucide-react";
 
 import {
   DailyHours,
+  DonutChart,
   PunchTrend,
+  RadialArea,
   RankedBars,
+  ScatterPlot,
   VizRoot,
   type DayPoint,
   type PunchPoint,
   type RankedItem,
+  type ScatterPoint,
+  type Slice,
 } from "@/components/charts";
+import { ExportButtons } from "@/components/export-buttons";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requirePermission } from "@/lib/auth/session";
 import {
@@ -60,7 +66,7 @@ export default async function ReportsPage({
     supabase
       .from("profiles")
       .select(
-        "id, full_name, employee_code, department_id, duty_hours, monthly_salary, worker_type, requires_attendance",
+        "id, full_name, employee_code, department_id, duty_hours, monthly_salary, worker_type, requires_attendance, overtime_eligible, sunday_policy",
       )
       .eq("status", "active"),
   ]);
@@ -126,7 +132,12 @@ export default async function ReportsPage({
   const totals: PersonTotals[] = people.map((person) => {
     const mine = byPerson.get(person.id) ?? [];
     const duty = dutyOf.get(person.id) ?? 8;
-    const buckets = mine.map((d) => splitDayHours(d, rule, duty));
+    const buckets = mine.map((d) =>
+      splitDayHours(d, rule, duty, {
+        overtimeEligible: person.overtime_eligible,
+        sundayPolicy: person.sunday_policy,
+      }),
+    );
 
     const workingDays = countWorkingDays(mine);
     const overtime = buckets.reduce((total, b) => total + b.overtime, 0);
@@ -175,7 +186,10 @@ export default async function ReportsPage({
   for (const person of people) {
     const duty = dutyOf.get(person.id) ?? 8;
     for (const d of byPerson.get(person.id) ?? []) {
-      const buckets = splitDayHours(d, rule, duty);
+      const buckets = splitDayHours(d, rule, duty, {
+        overtimeEligible: person.overtime_eligible,
+        sundayPolicy: person.sunday_policy,
+      });
       const entry = dayTotals.get(d.workDate) ?? { duty: 0, overtime: 0 };
       entry.duty += buckets.regular;
       entry.overtime += buckets.overtime;
@@ -244,6 +258,62 @@ export default async function ReportsPage({
     .filter((t) => t.earned > 0)
     .map((t) => ({ label: t.name, value: Math.round(t.earned), display: `Rs ${money(t.earned)}` }));
 
+  // Headcount by department, as shares — the question a pie actually answers.
+  const headcountByDept: Slice[] = [...deptTotals.keys()].map((label) => ({
+    label,
+    value: totals.filter(
+      (t) =>
+        (t.departmentId ? (deptName.get(t.departmentId) ?? "Unassigned") : "Unassigned") === label,
+    ).length,
+  }));
+
+  const salaryByDept: Slice[] = [...deptTotals.entries()].map(([label, v]) => ({
+    label,
+    value: Math.round(v.earned),
+  }));
+
+  /*
+   * How each arrangement is spread across the workforce. Five categories at
+   * most, which is what a donut can carry without becoming a colour quiz.
+   */
+  const arrangements: Slice[] = [
+    { label: "8h duty, with overtime", value: 0 },
+    { label: "12h duty", value: 0 },
+    { label: "No overtime", value: 0 },
+    { label: "Contractors", value: 0 },
+    { label: "Not paid from attendance", value: 0 },
+  ];
+
+  for (const person of people) {
+    if (person.worker_type === "contractor") arrangements[3]!.value++;
+    else if (!person.requires_attendance) arrangements[4]!.value++;
+    else if (!person.overtime_eligible) arrangements[2]!.value++;
+    else if (Number(person.duty_hours) >= 12) arrangements[1]!.value++;
+    else arrangements[0]!.value++;
+  }
+
+  /*
+   * Salary against hours worked, one dot per person.
+   *
+   * The outliers are the point: somebody high on the salary axis and flat on
+   * the hours axis is either not tracked by a terminal or is not turning up,
+   * and the two look identical on a table of averages.
+   */
+  const scatter: ScatterPoint[] = totals
+    .filter((t) => !t.contractor)
+    .map((t) => ({
+      label: t.name,
+      x: Math.round((t.duty + t.overtime) * 10) / 10,
+      y: Math.round(t.earned),
+      group: t.departmentId ? (deptName.get(t.departmentId) ?? "Unassigned") : "Unassigned",
+    }));
+
+  const overtimeByDept: Slice[] = [...deptTotals.entries()]
+    .map(([label, v]) => ({ label, value: Math.round(v.overtime * 100) / 100 }))
+    .filter((d) => d.value > 0);
+
+  const exportParams = { from, to, dept: params.dept };
+
   const scopeLabel = params.dept ? (deptName.get(params.dept) ?? "Department") : "Whole factory";
 
   return (
@@ -253,6 +323,7 @@ export default async function ReportsPage({
           icon={BarChart3}
           title={`Reports · ${scopeLabel}`}
           subtitle={`${from} to ${to} — every figure derived from the same calculations the payroll run uses.`}
+          action={<ExportButtons kind="payroll" params={exportParams} />}
         />
 
         <form className="grid gap-3 sm:grid-cols-[1fr_10rem_10rem_auto]">
@@ -372,7 +443,46 @@ export default async function ReportsPage({
               subtitle="Contractors show their agreed amount."
               unit="Rupees"
             />
+
+            <DonutChart
+              data={headcountByDept}
+              title="Headcount by department"
+              subtitle="Click a slice to drop it and see the rest re-proportion."
+              unit="people"
+            />
+
+            <DonutChart
+              data={arrangements}
+              title="How people are paid"
+              subtitle="Every arrangement on the floor, as a share of the workforce."
+              unit="people"
+            />
+
+            <DonutChart
+              data={salaryByDept}
+              title="Wage bill by department"
+              subtitle="Earned this period, before deductions."
+              unit="rupees"
+              format="money"
+            />
+
+            <RadialArea
+              data={overtimeByDept}
+              title="Overtime by department"
+              subtitle="The six departments working the most hours past duty."
+              format="hours"
+            />
           </div>
+
+          <ScatterPlot
+            data={scatter}
+            title="Earnings against hours worked"
+            subtitle="One dot per employee. A high dot with few hours is someone no terminal is tracking — or someone not turning up."
+            xLabel="hours"
+            yLabel="earned"
+            formatY="money"
+            formatX="hours"
+          />
         </div>
       </VizRoot>
     </div>

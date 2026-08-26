@@ -178,7 +178,7 @@ begin
 end;
 $$;
 
-select pg_temp.seed_user('admin@radoflow.test',      '35201-1000001-1', 'Rado Administrator',   'RD-0001', 'admin',      '11111111-1111-1111-1111-111111111111', 'ADMIN', 'monthly', 260000, 0);
+select pg_temp.seed_user('admin@radoflow.test',      '35201-1000001-1', 'Rado Administrator',   'RD-0001', 'admin-antrosys',      '11111111-1111-1111-1111-111111111111', 'ADMIN', 'monthly', 260000, 0);
 select pg_temp.seed_user('ceo@radoflow.test',        '35201-1000002-2', 'Rado Chief Executive', 'RD-0002', 'ceo',        '11111111-1111-1111-1111-111111111111', 'ADMIN', 'monthly', 900000, 0);
 select pg_temp.seed_user('operations@radoflow.test', '35201-1000003-3', 'Rado Operations Head', 'RD-0003', 'operations', '11111111-1111-1111-1111-111111111111', 'ADMIN', 'monthly', 650000, 0);
 select pg_temp.seed_user('manager@radoflow.test',    '35201-1000004-4', 'Ayesha Khan',          'RD-1041', 'manager',    '11111111-1111-1111-1111-111111111111', 'DYE',   'monthly', 180000, 0);

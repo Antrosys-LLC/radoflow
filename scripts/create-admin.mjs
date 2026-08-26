@@ -141,12 +141,23 @@ async function main() {
 
   console.log(`Creating the first Admin on ${url}\n`);
 
-  // The migrations must have run: without them there is no roles table to grant.
-  const { data: adminRole, error: roleError } = await supabase
+  /*
+   * The migrations must have run: without them there is no roles table to grant.
+   *
+   * Matched on the superuser flag rather than on a key. The unrestricted role
+   * has been renamed once already ("admin" to "admin-antrosys"), and hunting a
+   * literal key means this script breaks silently the next time — it would
+   * report the schema as missing on a database that is perfectly healthy.
+   * Lowest rank wins, which is the most senior role by this schema's ordering.
+   */
+  const { data: adminRoles, error: roleError } = await supabase
     .from("roles")
-    .select("id, name")
-    .eq("key", "admin")
-    .maybeSingle();
+    .select("id, name, key")
+    .eq("is_superuser", true)
+    .order("rank")
+    .limit(1);
+
+  const adminRole = adminRoles?.[0];
 
   if (roleError) {
     /*
@@ -177,7 +188,12 @@ async function main() {
 
     throw new SetupError(`Cannot read public.roles: ${message}`);
   }
-  if (!adminRole) throw new SetupError('No "admin" role found. Did every migration apply?');
+  if (!adminRole) {
+    throw new SetupError(
+      "No unrestricted role exists. Did every migration apply?\n" +
+        "  Expected a role flagged is_superuser, such as admin-antrosys.",
+    );
+  }
 
   console.log(`  ✓ schema present, found the ${adminRole.name} role`);
 

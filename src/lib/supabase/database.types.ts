@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.17"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -1455,6 +1460,7 @@ export type Database = {
           created_at: string
           department_id: string | null
           designation: string | null
+          duty_hours: number
           email: string | null
           employee_code: string
           full_name: string
@@ -1471,21 +1477,21 @@ export type Database = {
           photo_url: string | null
           pin_hash: string | null
           requires_attendance: boolean
-          worker_type: Database["public"]["Enums"]["worker_type"]
-          duty_hours: number
-          sunday_policy: Database["public"]["Enums"]["sunday_policy"]
           roles_changed_at: string
           shift_id: string | null
           site_id: string | null
           status: Database["public"]["Enums"]["employment_status"]
+          sunday_policy: Database["public"]["Enums"]["sunday_policy"]
           updated_at: string
           weekend_hourly_rate: number | null
+          worker_type: Database["public"]["Enums"]["worker_type"]
         }
         Insert: {
           cnic?: string | null
           created_at?: string
           department_id?: string | null
           designation?: string | null
+          duty_hours?: number
           email?: string | null
           employee_code: string
           full_name: string
@@ -1502,21 +1508,21 @@ export type Database = {
           photo_url?: string | null
           pin_hash?: string | null
           requires_attendance?: boolean
-          worker_type?: Database["public"]["Enums"]["worker_type"]
-          duty_hours?: number
-          sunday_policy?: Database["public"]["Enums"]["sunday_policy"]
           roles_changed_at?: string
           shift_id?: string | null
           site_id?: string | null
           status?: Database["public"]["Enums"]["employment_status"]
+          sunday_policy?: Database["public"]["Enums"]["sunday_policy"]
           updated_at?: string
           weekend_hourly_rate?: number | null
+          worker_type?: Database["public"]["Enums"]["worker_type"]
         }
         Update: {
           cnic?: string | null
           created_at?: string
           department_id?: string | null
           designation?: string | null
+          duty_hours?: number
           email?: string | null
           employee_code?: string
           full_name?: string
@@ -1533,15 +1539,14 @@ export type Database = {
           photo_url?: string | null
           pin_hash?: string | null
           requires_attendance?: boolean
-          worker_type?: Database["public"]["Enums"]["worker_type"]
-          duty_hours?: number
-          sunday_policy?: Database["public"]["Enums"]["sunday_policy"]
           roles_changed_at?: string
           shift_id?: string | null
           site_id?: string | null
           status?: Database["public"]["Enums"]["employment_status"]
+          sunday_policy?: Database["public"]["Enums"]["sunday_policy"]
           updated_at?: string
           weekend_hourly_rate?: number | null
+          worker_type?: Database["public"]["Enums"]["worker_type"]
         }
         Relationships: [
           {
@@ -2195,8 +2200,6 @@ export type Database = {
       device_status: "online" | "offline" | "unknown" | "disabled"
       employment_status: "active" | "suspended" | "terminated"
       pay_class: "monthly" | "hourly"
-      worker_type: "employee" | "contractor"
-      sunday_policy: "off" | "optional" | "compulsory"
       payroll_status:
         | "draft"
         | "calculating"
@@ -2209,6 +2212,8 @@ export type Database = {
       punch_direction: "in" | "out" | "unknown"
       punch_source: "device" | "manual" | "import"
       request_status: "pending" | "approved" | "rejected" | "cancelled"
+      sunday_policy: "off" | "optional" | "compulsory"
+      worker_type: "employee" | "contractor"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2361,8 +2366,6 @@ export const Constants = {
       device_status: ["online", "offline", "unknown", "disabled"],
       employment_status: ["active", "suspended", "terminated"],
       pay_class: ["monthly", "hourly"],
-      worker_type: ["employee", "contractor"],
-      sunday_policy: ["off", "optional", "compulsory"],
       payroll_status: [
         "draft",
         "calculating",
@@ -2376,7 +2379,8 @@ export const Constants = {
       punch_direction: ["in", "out", "unknown"],
       punch_source: ["device", "manual", "import"],
       request_status: ["pending", "approved", "rejected", "cancelled"],
+      sunday_policy: ["off", "optional", "compulsory"],
+      worker_type: ["employee", "contractor"],
     },
   },
 } as const
-

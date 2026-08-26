@@ -14,7 +14,8 @@
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
-    "db:types": "supabase gen types typescript --local > src/lib/supabase/database.types.ts",
+    "db:types": "node scripts/gen-types.mjs",
+    "db:types:local": "node scripts/gen-types.mjs --local",
     "agent": "node scripts/rado-agent.mjs",
     "agent:check": "node scripts/rado-agent.mjs --check",
     "create-admin": "node scripts/create-admin.mjs"

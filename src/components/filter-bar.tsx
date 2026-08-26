@@ -136,27 +136,3 @@ export function FilterBar({
     </div>
   );
 }
-
-/**
- * Whether one person matches a free-text search.
- *
- * Matches name, employee code and CNIC, because the office searches by
- * whichever of the three is in front of them — a card, a payslip, or a
- * terminal display.
- */
-export function matchesPerson(
-  person: { full_name: string; employee_code: string; cnic?: string | null },
-  query: string,
-): boolean {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-
-  // Digits only, so "3520112345678" finds a CNIC stored with dashes.
-  const digits = needle.replace(/\D/g, "");
-
-  return (
-    person.full_name.toLowerCase().includes(needle) ||
-    person.employee_code.toLowerCase().includes(needle) ||
-    (digits.length > 0 && (person.cnic ?? "").replace(/\D/g, "").includes(digits))
-  );
-}

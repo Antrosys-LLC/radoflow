@@ -20,7 +20,7 @@ export type WorkerType = "employee" | "contractor";
  * hour worked on one is overtime regardless. `compulsory` only marks a missed
  * Sunday as a violation — the money is already lost with the overtime.
  */
-export type SundayPolicy = "off" | "optional" | "compulsory";
+export type SundayPolicy = "off" | "optional" | "compulsory" | "adjust_in_leave";
 
 export type DayType =
   /** Normal working day. */
@@ -153,8 +153,10 @@ export interface Employee {
    * site's standard day.
    */
   dutyHours?: number | null;
-  /** Defaults to `off`. Never changes the rate — see {@link SundayPolicy}. */
+  /** Defaults to `off`. See {@link SundayPolicy}. */
   sundayPolicy?: SundayPolicy;
+  /** False pays no overtime at all. Defaults to true. */
+  overtimeEligible?: boolean;
   /** Negotiated premium rates. Null falls back to the site rule. */
   otHourlyRate?: number | null;
   weekendHourlyRate?: number | null;

@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Banknote, Clock, Coins } from "lucide-react";
 
-import { FilterBar, matchesPerson } from "@/components/filter-bar";
+import { FilterBar } from "@/components/filter-bar";
+import { matchesPerson } from "@/lib/people/match";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requirePermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
@@ -43,7 +44,7 @@ export default async function RatesPage({
     supabase
       .from("profiles")
       .select(
-        "id, full_name, employee_code, cnic, department_id, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours",
+        "id, full_name, employee_code, cnic, department_id, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours, overtime_eligible",
       )
       .eq("status", "active")
       .order("full_name"),
@@ -80,6 +81,7 @@ export default async function RatesPage({
     sundayPolicy: row.sunday_policy,
     requiresAttendance: row.requires_attendance,
     flexibleHours: row.flexible_hours,
+    overtimeEligible: row.overtime_eligible,
     components: componentsByPerson.get(row.id) ?? [],
   }));
 

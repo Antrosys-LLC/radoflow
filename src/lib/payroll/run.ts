@@ -61,7 +61,7 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
       supabase
         .from("profiles")
         .select(
-          "id, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, duty_hours, sunday_policy",
+          "id, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, duty_hours, sunday_policy, overtime_eligible",
         )
         .eq("site_id", period.site_id)
         .eq("status", "active"),
@@ -284,6 +284,7 @@ function toEmployee(row: Record<string, unknown>): Employee {
     workerType: (row["worker_type"] as Employee["workerType"]) ?? "employee",
     dutyHours: row["duty_hours"] == null ? null : Number(row["duty_hours"]),
     sundayPolicy: (row["sunday_policy"] as Employee["sundayPolicy"]) ?? "off",
+    overtimeEligible: row["overtime_eligible"] == null ? true : Boolean(row["overtime_eligible"]),
     monthlySalary: Number(row["monthly_salary"] ?? 0),
     hourlyRate: Number(row["hourly_rate"] ?? 0),
     otHourlyRate: row["ot_hourly_rate"] == null ? null : Number(row["ot_hourly_rate"]),

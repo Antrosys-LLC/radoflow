@@ -142,7 +142,12 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   const isContractor = employee.workerType === "contractor";
   const dutyHours = employee.dutyHours ?? rule.standardHoursPerDay;
 
-  const hours: HourBuckets = accumulateHours(days, rule, dutyHours);
+  const terms = {
+    overtimeEligible: employee.overtimeEligible ?? true,
+    sundayPolicy: employee.sundayPolicy ?? ("off" as const),
+  };
+
+  const hours: HourBuckets = accumulateHours(days, rule, dutyHours, terms);
   const counts = countDays(days);
   const workingDays = countWorkingDays(days);
   const lines: PayslipLine[] = [];

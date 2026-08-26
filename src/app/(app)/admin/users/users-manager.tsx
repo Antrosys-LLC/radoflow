@@ -7,7 +7,7 @@ import { Banknote, KeyRound, Plus, Search, Trash2, UserPlus, X } from "lucide-re
 import { toast } from "sonner";
 
 import { CnicInput, PasswordInput } from "@/components/credential-inputs";
-import { matchesPerson } from "@/components/filter-bar";
+import { matchesPerson } from "@/lib/people/match";
 import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { cn } from "@/lib/utils";
@@ -43,7 +43,9 @@ export interface UserRow {
   hourlyRate: number;
   /** Hours this person's salary covers. Work beyond it is overtime. */
   dutyHours: number;
-  sundayPolicy: "off" | "optional" | "compulsory";
+  sundayPolicy: "off" | "optional" | "compulsory" | "adjust_in_leave";
+  /** False pays no overtime at all, on any day. */
+  overtimeEligible: boolean;
   requiresAttendance: boolean;
   /** No in or out time enforced: never recorded late. */
   flexibleHours: boolean;
@@ -981,6 +983,7 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
             <option value="off">Off — not expected in</option>
             <option value="optional">Optional — may come in</option>
             <option value="compulsory">Compulsory — expected in</option>
+            <option value="adjust_in_leave">Adjust in leave — not paid</option>
           </select>
           <p className="mt-1 text-[11px] text-muted-foreground">
             Sunday is never a working day. Every hour worked on one is overtime, whatever this says.
@@ -1014,6 +1017,21 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
               No fixed in or out time
               <span className="block text-xs font-normal text-muted-foreground">
                 Never recorded late, whatever the shift says. Hours and overtime are still counted.
+              </span>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2.5 text-sm font-semibold text-foreground">
+            <input
+              type="checkbox"
+              name="overtime_eligible"
+              defaultChecked={user.overtimeEligible}
+              className="mt-0.5 size-4 rounded border-input"
+            />
+            <span>
+              Earns overtime
+              <span className="block text-xs font-normal text-muted-foreground">
+                Unticked, hours past the duty boundary are recorded but never paid.
               </span>
             </span>
           </label>

@@ -1476,6 +1476,7 @@ export type Database = {
           manager_id: string | null
           monthly_salary: number
           ot_hourly_rate: number | null
+          overtime_eligible: boolean
           pay_class: Database["public"]["Enums"]["pay_class"]
           phone: string | null
           photo_url: string | null
@@ -1508,6 +1509,7 @@ export type Database = {
           manager_id?: string | null
           monthly_salary?: number
           ot_hourly_rate?: number | null
+          overtime_eligible?: boolean
           pay_class?: Database["public"]["Enums"]["pay_class"]
           phone?: string | null
           photo_url?: string | null
@@ -1540,6 +1542,7 @@ export type Database = {
           manager_id?: string | null
           monthly_salary?: number
           ot_hourly_rate?: number | null
+          overtime_eligible?: boolean
           pay_class?: Database["public"]["Enums"]["pay_class"]
           phone?: string | null
           photo_url?: string | null
@@ -2218,7 +2221,7 @@ export type Database = {
       punch_direction: "in" | "out" | "unknown"
       punch_source: "device" | "manual" | "import"
       request_status: "pending" | "approved" | "rejected" | "cancelled"
-      sunday_policy: "off" | "optional" | "compulsory"
+      sunday_policy: "off" | "optional" | "compulsory" | "adjust_in_leave"
       worker_type: "employee" | "contractor"
     }
     CompositeTypes: {
@@ -2385,7 +2388,7 @@ export const Constants = {
       punch_direction: ["in", "out", "unknown"],
       punch_source: ["device", "manual", "import"],
       request_status: ["pending", "approved", "rejected", "cancelled"],
-      sunday_policy: ["off", "optional", "compulsory"],
+      sunday_policy: ["off", "optional", "compulsory", "adjust_in_leave"],
       worker_type: ["employee", "contractor"],
     },
   },

@@ -166,7 +166,7 @@ export default async function DashboardPage() {
           />
           <StatPill
             icon={Users}
-            label="On the roster"
+            label="Tracked staff"
             value={String(live.length)}
             hint="Requiring attendance"
             tone="primary"
@@ -180,7 +180,7 @@ export default async function DashboardPage() {
             <SectionTitle
               icon={Users}
               title="Attendance by department"
-              subtitle="Present against roster strength, right now"
+              subtitle="Present against expected headcount, right now"
               action={
                 <Link
                   href="/attendance"
@@ -194,7 +194,7 @@ export default async function DashboardPage() {
             </SectionTitle>
 
             {byDepartment.size === 0 ? (
-              <Empty text="No one on the roster requires attendance yet." />
+              <Empty text="Nobody is set to require attendance yet." />
             ) : (
               <div className="grid gap-5 sm:grid-cols-2">
                 {[...byDepartment.entries()].map(([id, stats]) => (

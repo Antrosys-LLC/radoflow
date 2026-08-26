@@ -1,4 +1,4 @@
-import type { AttendanceDay, HourBuckets, PayRule } from "./types";
+import type { AttendanceDay, HourBuckets, PayRule, SundayPolicy } from "./types";
 
 /**
  * Rounds worked hours to the site's configured granularity.
@@ -24,6 +24,20 @@ export function round2(value: number): number {
 export const roundMoney = round2;
 
 const EMPTY_BUCKETS: HourBuckets = { regular: 0, overtime: 0, weekend: 0, holiday: 0 };
+
+/**
+ * The parts of one person's arrangement that change how a day is split.
+ *
+ * Passed as an object rather than as more positional arguments: both are
+ * optional and both are about overtime, and a call reading
+ * `splitDayHours(day, rule, 8, false, "off")` says nothing about which is which.
+ */
+export interface DutyTerms {
+  /** False pays no overtime at all, on any day. Defaults to true. */
+  overtimeEligible?: boolean;
+  /** `adjust_in_leave` repays a worked Sunday with a day off, not with money. */
+  sundayPolicy?: SundayPolicy;
+}
 
 /**
  * True when a `YYYY-MM-DD` work date falls on a Sunday.
@@ -92,13 +106,30 @@ export function overtimeRate(monthlySalary: number, daysInMonth: number): number
  * same shift are overtime. Omitted, it falls back to the site's standard day,
  * which is what every caller wanted before duty hours existed.
  */
-export function splitDayHours(day: AttendanceDay, rule: PayRule, dutyHours?: number): HourBuckets {
+export function splitDayHours(
+  day: AttendanceDay,
+  rule: PayRule,
+  dutyHours?: number,
+  terms: DutyTerms = {},
+): HourBuckets {
   const worked = roundHours(Math.max(0, day.hoursWorked), rule.roundToMinutes);
   if (worked <= 0) return { ...EMPTY_BUCKETS };
+
+  const earnsOvertime = terms.overtimeEligible ?? true;
 
   // Sunday first: the day type would otherwise route these hours to the
   // weekend bucket and pay them at the weekend rate instead of overtime.
   if (isSunday(day.workDate)) {
+    /*
+     * Two arrangements pay nothing for a Sunday. Someone on no overtime at all
+     * earns none here either; someone whose Sunday is "adjusted in leave" is
+     * repaid with a day off rather than with money. The hours are still
+     * dropped rather than moved to another bucket, so a Sunday cannot quietly
+     * become paid duty time.
+     */
+    if (!earnsOvertime || terms.sundayPolicy === "adjust_in_leave") {
+      return { ...EMPTY_BUCKETS };
+    }
     return { ...EMPTY_BUCKETS, overtime: worked };
   }
 
@@ -132,6 +163,9 @@ export function splitDayHours(day: AttendanceDay, rule: PayRule, dutyHours?: num
        * quietly reintroduce the uncapped cost the ceiling exists to prevent,
        * and a terminal left running overnight would show up as a raise.
        */
+      // Someone on no overtime keeps the duty hours and nothing more.
+      if (!earnsOvertime) return { ...EMPTY_BUCKETS, regular: standard };
+
       const cap = rule.otDailyCapHours;
       const payable = cap >= 0 ? Math.min(excess, cap) : excess;
 
@@ -159,9 +193,10 @@ export function accumulateHours(
   days: readonly AttendanceDay[],
   rule: PayRule,
   dutyHours?: number,
+  terms: DutyTerms = {},
 ): HourBuckets {
   return days.reduce<HourBuckets>(
-    (total, day) => addBuckets(total, splitDayHours(day, rule, dutyHours)),
+    (total, day) => addBuckets(total, splitDayHours(day, rule, dutyHours, terms)),
     { ...EMPTY_BUCKETS },
   );
 }

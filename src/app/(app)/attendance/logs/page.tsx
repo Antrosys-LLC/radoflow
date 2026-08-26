@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarDays, Clock, ScrollText, TriangleAlert, Users } from "lucide-react";
 
-import { matchesPerson } from "@/components/filter-bar";
+import { matchesPerson } from "@/lib/people/match";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requirePermission } from "@/lib/auth/session";
 import {

@@ -193,6 +193,48 @@ describe("hour bucketing", () => {
     expect(buckets.overtime).toBe(0);
   });
 
+  it("records but does not pay overtime for staff who earn none", () => {
+    // "8 Hours Duty" with no "+ Over time" on the workers list.
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-03", hoursWorked: 12 }),
+      rule,
+      8,
+      { overtimeEligible: false },
+    );
+    expect(buckets.regular).toBe(8);
+    expect(buckets.overtime).toBe(0);
+  });
+
+  it("pays no Sunday overtime either, for the same staff", () => {
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-02", dayType: "off", hoursWorked: 12 }),
+      rule,
+      8,
+      { overtimeEligible: false },
+    );
+    expect(buckets.overtime).toBe(0);
+  });
+
+  it("does not pay a Sunday that is taken as leave instead", () => {
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-02", dayType: "off", hoursWorked: 12 }),
+      rule,
+      8,
+      { sundayPolicy: "adjust_in_leave" },
+    );
+    expect(buckets.overtime).toBe(0);
+  });
+
+  it("still pays that person's weekday overtime normally", () => {
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-03", hoursWorked: 12 }),
+      rule,
+      8,
+      { sundayPolicy: "adjust_in_leave" },
+    );
+    expect(buckets.overtime).toBe(4);
+  });
+
   it("counts a working day once, however short it was", () => {
     const days = [
       day({ workDate: "2026-08-03", hoursWorked: 2 }),

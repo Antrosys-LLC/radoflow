@@ -40,7 +40,9 @@ export interface PayPerson {
   monthlySalary: number;
   hourlyRate: number;
   dutyHours: number;
-  sundayPolicy: "off" | "optional" | "compulsory";
+  sundayPolicy: "off" | "optional" | "compulsory" | "adjust_in_leave";
+  /** False pays no overtime at all, on any day. */
+  overtimeEligible: boolean;
   requiresAttendance: boolean;
   flexibleHours: boolean;
   components: {
@@ -208,6 +210,7 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
               ) : null}
               {!person.requiresAttendance ? <Tag tone="muted">Not from attendance</Tag> : null}
               {person.flexibleHours ? <Tag tone="muted">Flexible</Tag> : null}
+              {!person.overtimeEligible ? <Tag tone="muted">No overtime</Tag> : null}
             </>
           )}
           {deductions > 0 ? <Tag tone="danger">−{money(deductions)}</Tag> : null}
@@ -284,6 +287,7 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
                   <option value="off">Off</option>
                   <option value="optional">Optional</option>
                   <option value="compulsory">Compulsory</option>
+                  <option value="adjust_in_leave">Adjust in leave — not paid</option>
                 </select>
               </Field>
             </div>
@@ -322,6 +326,15 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
                   className="size-4 rounded border-input"
                 />
                 No fixed in/out time
+              </label>
+              <label className="flex items-center gap-2 self-end pb-2 text-xs font-semibold text-foreground">
+                <input
+                  type="checkbox"
+                  name="overtime_eligible"
+                  defaultChecked={person.overtimeEligible}
+                  className="size-4 rounded border-input"
+                />
+                Earns overtime
               </label>
             </div>
 

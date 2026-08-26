@@ -28,6 +28,12 @@ create index on public.profiles (cnic);
 -- own password loses it and must be told the new one.
 -- ---------------------------------------------------------------------------
 
+-- crypt() and gen_salt() are schema-qualified deliberately. Supabase installs
+-- pgcrypto into the `extensions` schema, which is not on the search_path a
+-- migration runs under on a hosted project - unqualified calls resolve locally
+-- and then fail on push with "function gen_salt(unknown) does not exist".
+create extension if not exists pgcrypto with schema extensions;
+
 update auth.users
-   set encrypted_password = crypt('antrosys123', gen_salt('bf')),
+   set encrypted_password = extensions.crypt('antrosys123', extensions.gen_salt('bf')),
        updated_at         = now();

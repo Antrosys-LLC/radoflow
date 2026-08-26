@@ -28,6 +28,35 @@
 
 import { createClient } from "@supabase/supabase-js";
 
+import { existsSync } from "node:fs";
+
+/**
+ * Loads .env.local, the way `next dev` does.
+ *
+ * A plain node script gets no .env handling for free, so a project configured
+ * only in .env.local would report its configuration as missing. Variables
+ * already present in the real environment win, so the inline form documented
+ * above still overrides the file.
+ */
+function loadLocalEnv() {
+  const file = new URL("../.env.local", import.meta.url);
+  if (!existsSync(file)) return;
+
+  const explicit = { ...process.env };
+  try {
+    process.loadEnvFile(file);
+  } catch {
+    // An unreadable or malformed file is not worth failing over: the caller
+    // may well have passed the values inline instead.
+    return;
+  }
+
+  // loadEnvFile overwrites, so put back anything that was set deliberately.
+  for (const [key, value] of Object.entries(explicit)) process.env[key] = value;
+}
+
+loadLocalEnv();
+
 /** Thrown to abort with a readable message rather than a stack trace. */
 class SetupError extends Error {}
 

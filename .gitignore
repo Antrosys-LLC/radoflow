@@ -36,3 +36,7 @@ supabase/.branches/
 *.njsproj
 *.sln
 *.sw?
+
+# Backups of env files — *.local does not cover .env.local.bak
+.env*.bak
+.env.local.backup*

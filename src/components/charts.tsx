@@ -239,10 +239,20 @@ export function DailyHours({
   data,
   title,
   subtitle,
+  dutyColor = "var(--viz-series-1)",
+  overtimeColor = "var(--viz-series-2)",
 }: {
   data: DayPoint[];
   title: string;
   subtitle?: string | undefined;
+  /*
+   * The palette defaults to the colourblind-safe blue/orange pair the rest of
+   * the app uses. Overriding is for a caller that has a reason — the dashboard
+   * asks for green duty — and leaving these unset keeps every existing chart
+   * exactly as it was.
+   */
+  dutyColor?: string;
+  overtimeColor?: string;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const clipId = useId();
@@ -288,8 +298,8 @@ export function DailyHours({
     >
       <Legend
         items={[
-          { label: "Duty hours", color: "var(--viz-series-1)" },
-          { label: "Overtime", color: "var(--viz-series-2)" },
+          { label: "Duty hours", color: dutyColor },
+          { label: "Overtime", color: overtimeColor },
         ]}
       />
 
@@ -353,7 +363,7 @@ export function DailyHours({
                     width={bar.width}
                     height={bar.lowerHeight}
                     rx={2}
-                    fill="var(--viz-series-1)"
+                    fill={dutyColor}
                   />
                 ) : null}
                 {bar.upperHeight > 0 ? (
@@ -363,7 +373,7 @@ export function DailyHours({
                     width={bar.width}
                     height={bar.upperHeight}
                     rx={2}
-                    fill="var(--viz-series-2)"
+                    fill={overtimeColor}
                   />
                 ) : null}
               </g>

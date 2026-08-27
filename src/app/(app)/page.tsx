@@ -12,7 +12,11 @@ import {
   Wallet,
 } from "lucide-react";
 
+import { AutoRefresh } from "@/components/auto-refresh";
+import { DailyHours, VizRoot } from "@/components/charts";
 import { BarMeter, Card, SectionTitle, StatPill } from "@/components/ui-kit";
+import { dailyHourTotals } from "@/lib/attendance/daily-hours";
+import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
 import { requireSession } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatHours, formatPKR, formatTime, todayInPakistan } from "@/lib/time";
@@ -89,11 +93,70 @@ export default async function DashboardPage() {
     byDepartment.set(key, entry);
   }
 
+  /*
+   * Hours per day for the month so far.
+   *
+   * A manager sees the whole factory and everyone else sees themselves, the
+   * same way every other block on this page is gated. Run through the shared
+   * helper rather than summing the stored columns, so this chart, the reports
+   * screen and the payroll run cannot tell three different stories about the
+   * same month.
+   */
+  const monthStart = today.slice(0, 7) + "-01";
+  const canSeeEveryone = session.isSuperuser || session.permissions.has("attendance.view.all");
+
+  const staffQuery = supabase
+    .from("profiles")
+    .select("id, duty_hours, overtime_eligible, sunday_policy")
+    .eq("status", "active");
+
+  const { data: chartPeople } = canSeeEveryone
+    ? await staffQuery
+    : await staffQuery.eq("id", session.userId);
+
+  const chartIds = (chartPeople ?? []).map((p) => p.id);
+
+  const { data: monthDays } =
+    chartIds.length > 0
+      ? await supabase
+          .from("attendance_days")
+          .select("profile_id, work_date, day_type, regular_hours, status")
+          .in("profile_id", chartIds)
+          .gte("work_date", monthStart)
+          .lte("work_date", today)
+      : { data: [] };
+
+  const monthByPerson = new Map<string, AttendanceDay[]>();
+  for (const row of monthDays ?? []) {
+    const list = monthByPerson.get(row.profile_id) ?? [];
+    list.push({
+      workDate: row.work_date,
+      dayType: (row.day_type ?? "workday") as DayType,
+      hoursWorked: Number(row.regular_hours ?? 0),
+      status: (row.status ?? "pending") as AttendanceDay["status"],
+    });
+    monthByPerson.set(row.profile_id, list);
+  }
+
+  const monthHours = dailyHourTotals(
+    (chartPeople ?? []).map((person) => ({
+      id: person.id,
+      dutyHours: Number(person.duty_hours ?? 8),
+      overtimeEligible: person.overtime_eligible,
+      sundayPolicy: person.sunday_policy,
+    })),
+    monthByPerson,
+    DEFAULT_PAY_RULE,
+  );
+
   const roleLabel = session.roles.map((r) => r.name).join(" · ") || "No role";
   const firstName = session.profile.fullName.split(" ")[0] ?? session.profile.fullName;
 
   return (
     <div className="space-y-5 pb-6">
+      {/* The floor changes while this page is open; nobody should have to reload. */}
+      <AutoRefresh seconds={30} />
+
       <div className="rounded-3xl bg-charcoal p-7 text-charcoal-foreground shadow-[0_18px_40px_rgb(0_0_0/0.12)]">
         <p className="text-xs font-semibold uppercase tracking-widest text-primary">
           {roleLabel} · {formatDate(today)}
@@ -173,6 +236,19 @@ export default async function DashboardPage() {
           />
         </div>
       ) : null}
+
+      <VizRoot>
+        <DailyHours
+          data={monthHours}
+          title={canSeeEveryone ? "Hours worked this month" : "Your hours this month"}
+          subtitle={
+            canSeeEveryone
+              ? "Every day this month across the factory. Green is duty, orange is overtime."
+              : "Your hours each day this month. Green is duty, orange is overtime."
+          }
+          dutyColor="var(--success)"
+        />
+      </VizRoot>
 
       <div className="grid gap-5 xl:grid-cols-3">
         {seesFloor ? (

@@ -18,6 +18,7 @@ import {
 import { ExportButtons } from "@/components/export-buttons";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requirePermission } from "@/lib/auth/session";
+import { dailyHourTotals } from "@/lib/attendance/daily-hours";
 import {
   countWorkingDays,
   dailyRate,
@@ -182,28 +183,17 @@ export default async function ReportsPage({
   const attended = new Set((days ?? []).map((d) => d.profile_id)).size;
 
   // ---- Per day, for the two trends ---------------------------------------
-  const dayTotals = new Map<string, { duty: number; overtime: number }>();
-  for (const person of people) {
-    const duty = dutyOf.get(person.id) ?? 8;
-    for (const d of byPerson.get(person.id) ?? []) {
-      const buckets = splitDayHours(d, rule, duty, {
-        overtimeEligible: person.overtime_eligible,
-        sundayPolicy: person.sunday_policy,
-      });
-      const entry = dayTotals.get(d.workDate) ?? { duty: 0, overtime: 0 };
-      entry.duty += buckets.regular;
-      entry.overtime += buckets.overtime;
-      dayTotals.set(d.workDate, entry);
-    }
-  }
-
-  const dailyHours: DayPoint[] = [...dayTotals.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, v]) => ({
-      date,
-      duty: Math.round(v.duty * 100) / 100,
-      overtime: Math.round(v.overtime * 100) / 100,
-    }));
+  // Shared with the dashboard so the two screens cannot disagree about a month.
+  const dailyHours: DayPoint[] = dailyHourTotals(
+    people.map((person) => ({
+      id: person.id,
+      dutyHours: dutyOf.get(person.id) ?? 8,
+      overtimeEligible: person.overtime_eligible,
+      sundayPolicy: person.sunday_policy,
+    })),
+    byPerson,
+    rule,
+  );
 
   const punchTotals = new Map<string, { checkIns: number; checkOuts: number }>();
   for (const punch of punches ?? []) {

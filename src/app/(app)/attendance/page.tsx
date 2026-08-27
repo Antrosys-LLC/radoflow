@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { CircleDot, Clock, LogIn, TriangleAlert, UserCheck, Users } from "lucide-react";
 
+import { AutoRefresh } from "@/components/auto-refresh";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { requirePermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
@@ -45,6 +46,9 @@ export default async function AttendancePage() {
 
   return (
     <div className="space-y-5 pb-6">
+      {/* The whole point of this board is what is true now. */}
+      <AutoRefresh seconds={15} />
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile
           icon={UserCheck}

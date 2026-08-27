@@ -48,6 +48,13 @@ const WORK_MODULES: readonly NavItem[] = [
     description: "Daily attendance and corrections",
   },
   {
+    href: "/attendance/register",
+    label: "Check In / Out",
+    icon: "attendance",
+    requires: ["attendance.view", "attendance.view.all"],
+    description: "Who came in today, and when",
+  },
+  {
     href: "/attendance/logs",
     label: "Attendance Log",
     icon: "attendance",

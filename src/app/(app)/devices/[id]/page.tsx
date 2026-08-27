@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Fingerprint, LogIn, LogOut, Users } from "lucide-react";
 
+import { AutoRefresh } from "@/components/auto-refresh";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { requirePermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
@@ -73,6 +74,9 @@ export default async function DeviceDetailPage({
 
   return (
     <div className="space-y-5 pb-6">
+      {/* Heartbeat and punches both land here without any action on this page. */}
+      <AutoRefresh seconds={20} />
+
       <Link
         href="/devices"
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"

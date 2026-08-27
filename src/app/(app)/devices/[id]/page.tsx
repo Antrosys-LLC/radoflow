@@ -127,9 +127,18 @@ export default async function DeviceDetailPage({
               Terminal setup
             </p>
             <p className="mt-1.5 text-sm text-foreground">
-              On the K50: <strong>Menu → Comm → Cloud Server</strong>. Set the server address to
-              this machine&apos;s IP and port <strong>3000</strong>. The firmware appends{" "}
+              On the terminal: <strong>Menu → Comm. → Cloud Server Setting</strong>. Set{" "}
+              <strong>Server Mode</strong> to ADMS, then enter the address and port of whatever this
+              terminal pushes to — the relay&apos;s static IP in a hosted setup, or this server
+              directly if it shares the factory network. The firmware appends{" "}
               <code className="rounded bg-card px-1.5 py-0.5 text-xs">/iclock/cdata</code> itself.
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Most ADMS builds accept digits only in that field, so a domain cannot be entered — and
+              the address above is not the terminal&apos;s own{" "}
+              <code className="rounded bg-card px-1.5 py-0.5 text-xs">192.168.x.x</code>, which is a
+              common and silent mistake. Set <strong>Gateway</strong> under Ethernet too; without it
+              the terminal never leaves the local network.
             </p>
           </div>
         ) : null}

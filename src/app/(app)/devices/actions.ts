@@ -82,7 +82,7 @@ export async function testConnection(deviceId: string): Promise<ActionResult> {
   const admin = createServiceClient();
   const { data: device } = await admin
     .from("devices")
-    .select("id, name, ip_address, port, comm_key")
+    .select("id, name, mode, ip_address, port, comm_key")
     .eq("id", deviceId)
     .single();
 
@@ -116,6 +116,25 @@ export async function testConnection(deviceId: string): Promise<ActionResult> {
     };
   } catch (error) {
     const message = error instanceof ZktecoError ? error.message : String(error);
+
+    /*
+     * A push-mode terminal is *expected* to fail this probe: it sits behind the
+     * factory NAT with no route in, and delivers punches perfectly well by
+     * calling out to us instead. Recording that as "offline" overwrites a
+     * status the terminal's own uploads had just proved correct, and leaves a
+     * red error on a device that is working. So the result is reported to
+     * whoever pressed the button and nothing is written.
+     */
+    if (device.mode === "push") {
+      return {
+        ok: false,
+        message:
+          "This terminal is in push mode, so it cannot be reached from here — " +
+          "that is expected and does not mean it is down. Its status comes from " +
+          "the punches it uploads.",
+      };
+    }
+
     await admin
       .from("devices")
       .update({ status: "offline", last_error: message })
@@ -137,7 +156,7 @@ export async function syncDevice(deviceId: string): Promise<ActionResult> {
   const admin = createServiceClient();
   const { data: device } = await admin
     .from("devices")
-    .select("id, serial_number, ip_address, port, comm_key")
+    .select("id, serial_number, mode, ip_address, port, comm_key")
     .eq("id", deviceId)
     .single();
 
@@ -180,6 +199,18 @@ export async function syncDevice(deviceId: string): Promise<ActionResult> {
     };
   } catch (error) {
     const message = error instanceof ZktecoError ? error.message : String(error);
+
+    // Same reasoning as testConnection: a push-mode terminal is unreachable by
+    // design, and saying so must not overwrite a status its uploads earned.
+    if (device.mode === "push") {
+      return {
+        ok: false,
+        message:
+          "This terminal is in push mode and cannot be polled from here. " +
+          "It uploads on its own — nothing needs to be pulled.",
+      };
+    }
+
     await admin.from("devices").update({ status: "offline", last_error: message }).eq("id", deviceId);
     revalidatePath("/devices");
     return { ok: false, message };

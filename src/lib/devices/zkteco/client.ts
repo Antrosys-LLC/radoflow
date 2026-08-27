@@ -325,7 +325,15 @@ export class ZktecoClient {
     if (reply.command !== CMD.ACK_OK) return null;
     const text = reply.data.toString("ascii").replace(/\0/g, "").trim();
     const separator = text.indexOf("=");
-    return separator >= 0 ? text.slice(separator + 1).trim() : text || null;
+    const value = separator >= 0 ? text.slice(separator + 1).trim() : text;
+    /*
+     * Some firmware terminates the value with a second "=" — an MB460 was
+     * seen answering "~SerialNumber=QWC5254900090=" on one read and without
+     * the trailing byte on the next. No ZKTeco identifier contains "=", and
+     * a serial that differs by one character is refused on every upload, so
+     * the padding is stripped rather than carried into the devices table.
+     */
+    return value.replace(/=+$/, "") || null;
   }
 }
 

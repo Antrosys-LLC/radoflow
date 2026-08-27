@@ -22,6 +22,7 @@
  */
 
 import { Socket } from "node:net";
+import { networkInterfaces } from "node:os";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -33,7 +34,14 @@ const DEVICES_RAW = process.env.RADO_DEVICES ?? "";
 const INTERVAL_MS = Number(process.env.RADO_INTERVAL_SECONDS ?? 60) * 1000;
 const CLEAR_AFTER_SYNC = process.env.RADO_CLEAR_DEVICE_LOG === "true";
 
-if (!BASE_URL || !SECRET || !DEVICES_RAW) {
+/**
+ * `--scan` only reads the local network, so it deliberately runs before — and
+ * without — any server configuration. It is the first thing you reach for on a
+ * factory floor, when the terminal's address is the unknown.
+ */
+const SCAN_ONLY = process.argv.some((arg) => arg === "--scan" || arg.startsWith("--scan="));
+
+if (!SCAN_ONLY && (!BASE_URL || !SECRET || !DEVICES_RAW)) {
   console.error(
     "Missing configuration. Required:\n" +
       "  RADO_URL            e.g. https://rado.example.com\n" +
@@ -42,7 +50,9 @@ if (!BASE_URL || !SECRET || !DEVICES_RAW) {
       "                      e.g. K50-DYE-0001@192.168.1.201\n" +
       "Optional:\n" +
       "  RADO_INTERVAL_SECONDS  default 60\n" +
-      "  RADO_CLEAR_DEVICE_LOG  'true' to wipe the terminal log after a successful sync",
+      "  RADO_CLEAR_DEVICE_LOG  'true' to wipe the terminal log after a successful sync\n" +
+      "\nTo find terminals on this network instead, no configuration needed:\n" +
+      "  node scripts/rado-agent.mjs --scan",
   );
   process.exit(1);
 }
@@ -408,7 +418,10 @@ function inspect(device) {
     const readParam = (data) => {
       const text = data.toString("ascii").replace(/\0/g, "").trim();
       const eq = text.indexOf("=");
-      return eq >= 0 ? text.slice(eq + 1).trim() : text || null;
+      const value = eq >= 0 ? text.slice(eq + 1).trim() : text;
+      // Mirrors client.ts: some firmware pads the value with a trailing "=",
+      // and a serial off by one character is refused on every upload.
+      return value.replace(/=+$/, "") || null;
     };
 
     socket.on("timeout", () => finish(new Error(`${device.host}: timed out`)));
@@ -621,6 +634,123 @@ async function check() {
       : `\n${failures} problem(s) found. Fix these before relying on attendance.`,
   );
   process.exit(failures === 0 ? 0 : 1);
+}
+
+/**
+ * Finds ZKTeco terminals on the local network.
+ *
+ * On a factory floor the terminal's address is usually the unknown: it was set
+ * months ago, DHCP may have moved it, and the menu is three levels deep on a
+ * device bolted to a wall. This sweeps every address on the subnet this machine
+ * is already on, then asks anything listening on 4370 for its serial — which is
+ * the value RadoFlow keys attendance on, and the one most often mistyped.
+ *
+ * Reads only; it never sends a command that changes the terminal.
+ */
+async function scan() {
+  const arg = process.argv.find((entry) => entry.startsWith("--scan="));
+  const explicit = arg ? arg.slice("--scan=".length).trim() : null;
+
+  const local = Object.entries(networkInterfaces())
+    .flatMap(([name, addresses]) => (addresses ?? []).map((address) => ({ name, ...address })))
+    .filter((address) => address.family === "IPv4" && !address.internal);
+
+  console.log("This machine:");
+  if (local.length === 0) {
+    console.log("  no IPv4 network interface found — is the cable in?");
+  }
+  for (const address of local) {
+    console.log(`  ${address.address}  (${address.name})`);
+  }
+
+  /*
+   * A /24 is what every one of these factory networks uses, and sweeping 254
+   * addresses takes about a second. Wider ranges are not worth the wait.
+   */
+  const prefixes = explicit
+    ? [explicit.replace(/\.$/, "").split(".").slice(0, 3).join(".")]
+    : [...new Set(local.map((address) => address.address.split(".").slice(0, 3).join(".")))];
+
+  if (prefixes.length === 0) {
+    console.log("");
+    console.log("Nothing to scan. Pass a subnet explicitly, e.g. --scan=192.168.1");
+    process.exit(1);
+  }
+
+  const targets = prefixes.flatMap((prefix) =>
+    Array.from({ length: 254 }, (_, index) => `${prefix}.${index + 1}`),
+  );
+
+  console.log("");
+  console.log(`Scanning ${prefixes.map((prefix) => prefix + ".0/24").join(", ")} on port 4370...`);
+
+  const open = [];
+  const queue = [...targets];
+
+  /*
+   * 64 probes at a time: fast enough to finish in about a second, gentle
+   * enough that a cheap factory switch does not start dropping them.
+   */
+  await Promise.all(
+    Array.from({ length: 64 }, async () => {
+      for (let host = queue.shift(); host; host = queue.shift()) {
+        const reachable = await new Promise((resolve) => {
+          const socket = new Socket();
+          socket.setTimeout(1200);
+          const done = (value) => {
+            socket.destroy();
+            resolve(value);
+          };
+          socket.once("error", () => done(false));
+          socket.once("timeout", () => done(false));
+          socket.connect(4370, host, () => done(true));
+        });
+        if (reachable) open.push(host);
+      }
+    }),
+  );
+
+  if (open.length === 0) {
+    console.log("");
+    console.log("No terminal answered on port 4370.");
+    console.log("  - Confirm this machine is on the same subnet as the terminals");
+    console.log("  - Check the terminal's address in Menu → Comm. → Ethernet");
+    process.exit(1);
+  }
+
+  open.sort((a, b) => Number(a.split(".")[3]) - Number(b.split(".")[3]));
+  console.log("");
+  console.log(`Found ${open.length} terminal(s):`);
+
+  const found = [];
+  for (const host of open) {
+    console.log("");
+    console.log(`${host}:4370`);
+    try {
+      const info = await inspect({ host, port: 4370, commKey: 0 });
+      console.log(`  serial         ${info.serialNumber ?? "unreadable"}`);
+      console.log(`  firmware       ${info.firmware ?? "unknown"}`);
+      console.log(`  enrolled users ${info.users ?? "?"}`);
+      console.log(`  stored records ${info.records ?? "?"}`);
+      if (info.serialNumber) found.push(`${info.serialNumber}@${host}`);
+    } catch (error) {
+      console.log(`  ✗ ${error.message}`);
+      console.log("    Reachable, but not answering the ZKTeco protocol — a COMM KEY may be set.");
+    }
+  }
+
+  if (found.length > 0) {
+    console.log("");
+    console.log("Use these exact serials in RadoFlow. To sync now:");
+    console.log("");
+    console.log(`  RADO_DEVICES='${found.join(",")}'`);
+  }
+
+  process.exit(0);
+}
+
+if (SCAN_ONLY) {
+  await scan();
 }
 
 if (process.argv.includes("--check")) {

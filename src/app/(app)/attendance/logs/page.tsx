@@ -289,23 +289,34 @@ export default async function AttendanceLogPage({
                 {(departments ?? []).map((d) => {
                   const checked = selectedDepts.includes(d.id);
                   return (
-                    <label
-                      key={d.id}
-                      className={cn(
-                        "cursor-pointer rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors",
-                        checked
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-card text-muted-foreground hover:text-foreground",
-                      )}
-                    >
+                    /*
+                     * The tick state is styled from the checkbox itself with
+                     * peer-checked, not from the server-rendered value. Styling it
+                     * from `checked` alone left the chip looking identical until the
+                     * form was submitted, so ticking a department appeared to do
+                     * nothing and the filter read as broken. `defaultChecked` still
+                     * seeds the state from the URL on load.
+                     */
+                    <label key={d.id} className="cursor-pointer">
                       <input
                         type="checkbox"
                         name="dept"
                         value={d.id}
                         defaultChecked={checked}
-                        className="sr-only"
+                        className="peer sr-only"
                       />
-                      {d.name}
+                      <span
+                        className={cn(
+                          "block rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors",
+                          "border-border bg-card text-muted-foreground hover:text-foreground",
+                          "peer-checked:border-primary peer-checked:bg-primary/10 peer-checked:text-primary",
+                          // The checkbox is visually hidden, so without this the
+                          // chips cannot be navigated by keyboard.
+                          "peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-1",
+                        )}
+                      >
+                        {d.name}
+                      </span>
                     </label>
                   );
                 })}

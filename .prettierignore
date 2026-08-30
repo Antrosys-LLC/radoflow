@@ -1,6 +1,7 @@
 node_modules
 .next
 out
+supabase/.temp
 next-env.d.ts
 pnpm-lock.yaml
 package-lock.json

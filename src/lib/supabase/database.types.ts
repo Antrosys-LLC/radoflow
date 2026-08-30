@@ -533,6 +533,7 @@ export type Database = {
           model: string
           name: string
           port: number
+          purpose: Database["public"]["Enums"]["device_purpose"]
           serial_number: string | null
           site_id: string
           status: Database["public"]["Enums"]["device_status"]
@@ -556,6 +557,7 @@ export type Database = {
           model?: string
           name: string
           port?: number
+          purpose?: Database["public"]["Enums"]["device_purpose"]
           serial_number?: string | null
           site_id: string
           status?: Database["public"]["Enums"]["device_status"]
@@ -579,6 +581,7 @@ export type Database = {
           model?: string
           name?: string
           port?: number
+          purpose?: Database["public"]["Enums"]["device_purpose"]
           serial_number?: string | null
           site_id?: string
           status?: Database["public"]["Enums"]["device_status"]
@@ -847,6 +850,241 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "leave_types_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meal_claims: {
+        Row: {
+          claimed_at: string
+          device_id: string | null
+          device_user_id: string | null
+          id: string
+          meal_window_id: string
+          note: string | null
+          profile_id: string
+          recorded_by: string | null
+          served_on: string
+          site_id: string | null
+          source: Database["public"]["Enums"]["punch_source"]
+        }
+        Insert: {
+          claimed_at?: string
+          device_id?: string | null
+          device_user_id?: string | null
+          id?: string
+          meal_window_id: string
+          note?: string | null
+          profile_id: string
+          recorded_by?: string | null
+          served_on: string
+          site_id?: string | null
+          source?: Database["public"]["Enums"]["punch_source"]
+        }
+        Update: {
+          claimed_at?: string
+          device_id?: string | null
+          device_user_id?: string | null
+          id?: string
+          meal_window_id?: string
+          note?: string | null
+          profile_id?: string
+          recorded_by?: string | null
+          served_on?: string
+          site_id?: string | null
+          source?: Database["public"]["Enums"]["punch_source"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meal_claims_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meal_claims_meal_window_id_fkey"
+            columns: ["meal_window_id"]
+            isOneToOne: false
+            referencedRelation: "meal_windows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meal_claims_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meal_claims_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "meal_claims_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meal_claims_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meal_claims_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "meal_claims_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meal_claims_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meal_scan_log: {
+        Row: {
+          created_at: string
+          device_id: string | null
+          device_user_id: string | null
+          id: number
+          meal_window_id: string | null
+          outcome: Database["public"]["Enums"]["meal_scan_outcome"]
+          profile_id: string | null
+          scanned_at: string
+          served_on: string | null
+          site_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          device_id?: string | null
+          device_user_id?: string | null
+          id?: number
+          meal_window_id?: string | null
+          outcome: Database["public"]["Enums"]["meal_scan_outcome"]
+          profile_id?: string | null
+          scanned_at?: string
+          served_on?: string | null
+          site_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          device_id?: string | null
+          device_user_id?: string | null
+          id?: number
+          meal_window_id?: string | null
+          outcome?: Database["public"]["Enums"]["meal_scan_outcome"]
+          profile_id?: string | null
+          scanned_at?: string
+          served_on?: string | null
+          site_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meal_scan_log_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meal_scan_log_meal_window_id_fkey"
+            columns: ["meal_window_id"]
+            isOneToOne: false
+            referencedRelation: "meal_windows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meal_scan_log_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meal_scan_log_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "meal_scan_log_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meal_scan_log_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meal_windows: {
+        Row: {
+          code: string
+          created_at: string
+          ends_at: string
+          id: string
+          is_active: boolean
+          name: string
+          site_id: string
+          sort_order: number
+          starts_at: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          ends_at: string
+          id?: string
+          is_active?: boolean
+          name: string
+          site_id: string
+          sort_order?: number
+          starts_at: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          ends_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          site_id?: string
+          sort_order?: number
+          starts_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meal_windows_site_id_fkey"
             columns: ["site_id"]
             isOneToOne: false
             referencedRelation: "sites"
@@ -2245,8 +2483,14 @@ export type Database = {
         | "weekend_working"
         | "special_working"
       device_mode: "push" | "pull"
+      device_purpose: "attendance" | "canteen"
       device_status: "online" | "offline" | "unknown" | "disabled"
       employment_status: "active" | "suspended" | "terminated"
+      meal_scan_outcome:
+        | "served"
+        | "duplicate"
+        | "unknown_person"
+        | "outside_window"
       pay_class: "monthly" | "hourly"
       payroll_status:
         | "draft"
@@ -2411,8 +2655,15 @@ export const Constants = {
         "special_working",
       ],
       device_mode: ["push", "pull"],
+      device_purpose: ["attendance", "canteen"],
       device_status: ["online", "offline", "unknown", "disabled"],
       employment_status: ["active", "suspended", "terminated"],
+      meal_scan_outcome: [
+        "served",
+        "duplicate",
+        "unknown_person",
+        "outside_window",
+      ],
       pay_class: ["monthly", "hourly"],
       payroll_status: [
         "draft",

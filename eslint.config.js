@@ -6,7 +6,10 @@ import eslintPluginPrettier from "eslint-plugin-prettier/recommended";
 // throws on the duplicate definitions.
 /** @type {import("eslint").Linter.Config[]} */
 const config = [
-  { ignores: [".next/**", "out/**", "next-env.d.ts"] },
+  // supabase/.temp holds scratch files the CLI writes during `db push` —
+  // minified bundles that are git-ignored but would otherwise fail lint for
+  // anyone who has run it locally.
+  { ignores: [".next/**", "out/**", "next-env.d.ts", "supabase/.temp/**"] },
   ...next,
   eslintPluginPrettier,
   {

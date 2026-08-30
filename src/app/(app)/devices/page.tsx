@@ -27,7 +27,9 @@ export default async function DevicesPage() {
   const [{ data: devices }, { data: sites }] = await Promise.all([
     supabase
       .from("devices")
-      .select("id, name, model, serial_number, mode, ip_address, port, status, last_seen_at, last_error, is_active, site_id")
+      .select(
+        "id, name, model, serial_number, mode, purpose, ip_address, port, status, last_seen_at, last_error, is_active, site_id",
+      )
       .order("name"),
     supabase.from("sites").select("id, name").order("name"),
   ]);
@@ -78,13 +80,25 @@ export default async function DevicesPage() {
                       <span
                         className={cn(
                           "flex size-12 items-center justify-center rounded-2xl",
-                          online ? "bg-success-soft text-success" : "bg-muted text-muted-foreground",
+                          online
+                            ? "bg-success-soft text-success"
+                            : "bg-muted text-muted-foreground",
                         )}
                       >
                         {online ? <Wifi className="size-6" /> : <WifiOff className="size-6" />}
                       </span>
                       <div>
-                        <p className="text-sm font-bold text-foreground">{device.name}</p>
+                        <p className="flex items-center gap-2 text-sm font-bold text-foreground">
+                          {device.name}
+                          {/* Worth calling out on the card: a terminal pointed at
+                              the canteen records meals, and its scans will never
+                              appear in the attendance register. */}
+                          {device.purpose === "canteen" ? (
+                            <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                              Canteen
+                            </span>
+                          ) : null}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {siteName.get(device.site_id) ?? "Unassigned"} · {device.model}
                         </p>
@@ -106,7 +120,10 @@ export default async function DevicesPage() {
 
                   <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
                     <Detail label="Serial" value={device.serial_number ?? "—"} />
-                    <Detail label="Mode" value={device.mode === "push" ? "Push (ADMS)" : "Pull (TCP)"} />
+                    <Detail
+                      label="Mode"
+                      value={device.mode === "push" ? "Push (ADMS)" : "Pull (TCP)"}
+                    />
                     <Detail
                       label="Address"
                       value={device.ip_address ? `${device.ip_address}:${device.port}` : "—"}

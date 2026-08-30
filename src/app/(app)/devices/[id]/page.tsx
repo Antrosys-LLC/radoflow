@@ -20,22 +20,14 @@ export const metadata: Metadata = {
   title: { absolute: "Terminal | Rado Dyeing and Textile" },
 };
 
-export default async function DeviceDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function DeviceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requirePermission("devices.view");
   const canManage = session.permissions.has("devices.manage");
 
   const supabase = await createClient();
 
-  const { data: device } = await supabase
-    .from("devices")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  const { data: device } = await supabase.from("devices").select("*").eq("id", id).maybeSingle();
 
   if (!device) notFound();
 
@@ -106,7 +98,11 @@ export default async function DeviceDetailPage({
         />
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Stat label="Status" value={device.status} tone={device.status === "online" ? "good" : "bad"} />
+          <Stat
+            label="Status"
+            value={device.status}
+            tone={device.status === "online" ? "good" : "bad"}
+          />
           <Stat label="Mode" value={device.mode === "push" ? "Push (ADMS)" : "Pull (TCP)"} />
           <Stat
             label="Address"
@@ -122,7 +118,11 @@ export default async function DeviceDetailPage({
         ) : null}
 
         {canManage ? (
-          <DeviceControls deviceId={device.id} mode={device.mode} hasAddress={!!device.ip_address} />
+          <DeviceControls
+            deviceId={device.id}
+            mode={device.mode}
+            hasAddress={!!device.ip_address}
+          />
         ) : null}
 
         {device.mode === "push" ? (
@@ -162,7 +162,9 @@ export default async function DeviceDetailPage({
           // The directory is a view, so every column types as nullable even
           // though these are NOT NULL on the underlying table.
           staff={(staff ?? []).flatMap((s) =>
-            s.id && s.full_name ? [{ id: s.id, name: s.full_name, code: s.employee_code ?? "—" }] : [],
+            s.id && s.full_name
+              ? [{ id: s.id, name: s.full_name, code: s.employee_code ?? "—" }]
+              : [],
           )}
         />
       ) : null}
@@ -200,7 +202,8 @@ export default async function DeviceDetailPage({
                       )}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {formatDate(punch.punched_at)} · {person?.employee_code ?? punch.device_user_id}
+                      {formatDate(punch.punched_at)} ·{" "}
+                      {person?.employee_code ?? punch.device_user_id}
                     </p>
                   </div>
                   <span
@@ -222,15 +225,7 @@ export default async function DeviceDetailPage({
   );
 }
 
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "good" | "bad";
-}) {
+function Stat({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" }) {
   return (
     <div className="rounded-2xl bg-secondary px-4 py-3">
       <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>

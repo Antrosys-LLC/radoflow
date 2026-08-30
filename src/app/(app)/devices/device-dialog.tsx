@@ -20,6 +20,7 @@ export interface DeviceFormValues {
   serial_number?: string | null;
   model?: string | null;
   mode?: string | null;
+  purpose?: string | null;
   ip_address?: unknown;
   port?: number | null;
   comm_key?: string | null;
@@ -94,7 +95,12 @@ export function DeviceDialog({
               </Field>
 
               <Field label="Factory">
-                <select name="site_id" required defaultValue={device?.site_id ?? ""} className={INPUT}>
+                <select
+                  name="site_id"
+                  required
+                  defaultValue={device?.site_id ?? ""}
+                  className={INPUT}
+                >
                   <option value="" disabled>
                     Choose a factory
                   </option>
@@ -117,7 +123,11 @@ export function DeviceDialog({
                   />
                 </Field>
                 <Field label="Model">
-                  <input name="model" defaultValue={device?.model ?? "ZKTeco K50"} className={INPUT} />
+                  <input
+                    name="model"
+                    defaultValue={device?.model ?? "ZKTeco K50"}
+                    className={INPUT}
+                  />
                 </Field>
               </div>
 
@@ -125,6 +135,20 @@ export function DeviceDialog({
                 <select name="mode" defaultValue={device?.mode ?? "push"} className={INPUT}>
                   <option value="push">Push — terminal uploads to us (recommended)</option>
                   <option value="pull">Pull — we connect to the terminal over TCP</option>
+                </select>
+              </Field>
+
+              <Field
+                label="What this terminal records"
+                hint="A canteen scan is a meal, never a clock-in — nobody is paid for eating."
+              >
+                <select
+                  name="purpose"
+                  defaultValue={device?.purpose ?? "attendance"}
+                  className={INPUT}
+                >
+                  <option value="attendance">Attendance — clock in and out</option>
+                  <option value="canteen">Canteen — one meal per person per serving</option>
                 </select>
               </Field>
 
@@ -183,19 +207,15 @@ export function DeviceDialog({
 const INPUT =
   "w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/30";
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: ReactNode;
-}) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div>
       <label className="block text-sm font-semibold text-foreground">{label}</label>
-      {hint ? <p className="mb-1.5 mt-0.5 text-xs text-muted-foreground">{hint}</p> : <div className="h-1.5" />}
+      {hint ? (
+        <p className="mb-1.5 mt-0.5 text-xs text-muted-foreground">{hint}</p>
+      ) : (
+        <div className="h-1.5" />
+      )}
       {children}
     </div>
   );

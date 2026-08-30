@@ -83,6 +83,13 @@ const WORK_MODULES: readonly NavItem[] = [
     description: "Overtime, weekend and late-arrival rules",
   },
   {
+    href: "/canteen",
+    label: "Canteen",
+    icon: "canteen",
+    requires: ["canteen.serve", "canteen.view"],
+    description: "The serving counter, and who has eaten",
+  },
+  {
     href: "/reports",
     label: "Reports",
     icon: "reports",
@@ -120,6 +127,13 @@ const GOVERNANCE_MODULES: readonly NavItem[] = [
     icon: "registers",
     requires: ["registers.import"],
     description: "Photograph a paper register and import it, row by row",
+  },
+  {
+    href: "/canteen/settings",
+    label: "Canteen Settings",
+    icon: "canteen",
+    requires: ["canteen.manage"],
+    description: "Serving times, and which terminals scan for meals",
   },
 ];
 

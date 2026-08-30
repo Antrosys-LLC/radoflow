@@ -43,6 +43,7 @@ export async function saveDevice(_prev: ActionResult, form: FormData): Promise<A
     serial_number: serial,
     model: fieldText(form, "model") || "ZKTeco K50",
     mode: (fieldText(form, "mode") || "push") as "push" | "pull",
+    purpose: (fieldText(form, "purpose") || "attendance") as "attendance" | "canteen",
     ip_address: ip || null,
     port: portValue,
     comm_key: fieldText(form, "comm_key") || null,
@@ -211,17 +212,17 @@ export async function syncDevice(deviceId: string): Promise<ActionResult> {
       };
     }
 
-    await admin.from("devices").update({ status: "offline", last_error: message }).eq("id", deviceId);
+    await admin
+      .from("devices")
+      .update({ status: "offline", last_error: message })
+      .eq("id", deviceId);
     revalidatePath("/devices");
     return { ok: false, message };
   }
 }
 
 /** Links a terminal enrolment number to an employee. */
-export async function linkEnrollment(
-  _prev: ActionResult,
-  form: FormData,
-): Promise<ActionResult> {
+export async function linkEnrollment(_prev: ActionResult, form: FormData): Promise<ActionResult> {
   await requirePermission("devices.manage");
 
   const deviceId = fieldText(form, "device_id");
@@ -256,7 +257,10 @@ export async function linkEnrollment(
   return { ok: true, message: "Employee linked. Existing punches were attributed." };
 }
 
-export async function unlinkEnrollment(deviceId: string, enrollmentId: string): Promise<ActionResult> {
+export async function unlinkEnrollment(
+  deviceId: string,
+  enrollmentId: string,
+): Promise<ActionResult> {
   await requirePermission("devices.manage");
 
   const supabase = await createClient();

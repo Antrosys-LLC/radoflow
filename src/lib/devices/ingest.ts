@@ -3,6 +3,7 @@ import {
   minutesLateAgainstShift,
   type RawPunch,
 } from "@/lib/attendance/compute";
+import { ingestMealScans } from "@/lib/canteen/ingest";
 import { PAKISTAN_TIMEZONE } from "@/lib/time";
 import { createServiceClient } from "@/lib/supabase/service";
 import type { Json } from "@/lib/supabase/database.types";
@@ -48,6 +49,8 @@ export interface DeviceRecord {
   id: string;
   site_id: string;
   timezone: string;
+  /** Canteen terminals record meals, never attendance. */
+  purpose: "attendance" | "canteen";
 }
 
 /**
@@ -67,7 +70,7 @@ export async function recordDeviceContact(serialNumber: string): Promise<DeviceR
 
   const { data: device, error } = await supabase
     .from("devices")
-    .select("id, site_id, timezone")
+    .select("id, site_id, timezone, purpose")
     .eq("serial_number", serialNumber)
     .single<DeviceRecord>();
 
@@ -90,6 +93,23 @@ export async function ingestPunches(
   const device = await recordDeviceContact(serialNumber);
   if (!device) {
     throw new Error(`Unknown terminal serial number: ${serialNumber}`);
+  }
+
+  /*
+   * A canteen terminal's scans are meals, not attendance. Branching here
+   * rather than in each route means both transports — the terminal pushing to
+   * /iclock/cdata and the on-site agent posting to /api/devices/ingest — route
+   * correctly with no change to either, and no path exists that could quietly
+   * turn a lunch queue into a shift's worth of paid hours.
+   */
+  if (device.purpose === "canteen") {
+    const meals = await ingestMealScans(device, punches);
+    return {
+      accepted: meals.served,
+      duplicates: meals.duplicates,
+      unmapped: [],
+      recomputedDays: 0,
+    };
   }
 
   if (punches.length === 0) {

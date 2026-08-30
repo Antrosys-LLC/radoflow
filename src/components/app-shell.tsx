@@ -2,9 +2,11 @@ import Link from "next/link";
 import { Building2, CreditCard, Fingerprint, KeyRound, ScanFace } from "lucide-react";
 
 import { AntrosysRibbon, showsAntrosysRibbon } from "@/components/antrosys-ribbon";
+import { AssistantWidget } from "@/components/assistant/assistant-widget";
 import { LiveClock } from "@/components/live-clock";
 import { ProfileMenu } from "@/components/profile-menu";
 import { SidebarNav, MobileNav } from "@/components/sidebar-nav";
+import { can } from "@/lib/auth/session";
 import { navigationFor } from "@/lib/navigation";
 import type { Session } from "@/lib/auth/session";
 
@@ -18,6 +20,9 @@ import type { Session } from "@/lib/auth/session";
 export function AppShell({ session, children }: { session: Session; children: React.ReactNode }) {
   const sections = navigationFor(session);
   const showRibbon = showsAntrosysRibbon(session);
+  // Same gate as the /assistant page and the API route, so the button is
+  // never rendered for someone whose question would be refused anyway.
+  const showAssistant = session.isSuperuser || can(session, "assistant.ask");
 
   return (
     <div className="min-h-screen bg-background">
@@ -66,6 +71,13 @@ export function AppShell({ session, children }: { session: Session; children: Re
 
       {showRibbon ? <AntrosysRibbon /> : null}
       <MobileNav sections={sections} />
+
+      {showAssistant ? (
+        <AssistantWidget
+          firstName={session.profile.fullName.split(" ")[0] ?? "there"}
+          hasRibbon={showRibbon}
+        />
+      ) : null}
     </div>
   );
 }

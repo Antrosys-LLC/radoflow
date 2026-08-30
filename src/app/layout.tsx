@@ -19,7 +19,19 @@ export const metadata: Metadata = {
   },
   description: "Attendance and payroll management for Rado Dyeing and Textile.",
   authors: [{ name: "Antrosys" }],
-  icons: { icon: "/favicon.ico" },
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "RadoFlow",
+  },
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
   openGraph: { type: "website" },
   twitter: { card: "summary_large_image" },
 };
@@ -27,6 +39,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  themeColor: "#153B44",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

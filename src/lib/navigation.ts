@@ -41,6 +41,13 @@ const WORK_MODULES: readonly NavItem[] = [
     description: "Your day at a glance",
   },
   {
+    href: "/assistant",
+    label: "Ask",
+    icon: "assistant",
+    requires: ["assistant.ask"],
+    description: "Ask a question, by voice or text — Urdu, Roman Urdu or English",
+  },
+  {
     href: "/attendance",
     label: "Attendance",
     icon: "attendance",
@@ -106,6 +113,13 @@ const GOVERNANCE_MODULES: readonly NavItem[] = [
     icon: "roles",
     requires: ["access.manage"],
     description: "Create roles and choose what each can do",
+  },
+  {
+    href: "/admin/registers",
+    label: "Digitize Registers",
+    icon: "registers",
+    requires: ["registers.import"],
+    description: "Photograph a paper register and import it, row by row",
   },
 ];
 

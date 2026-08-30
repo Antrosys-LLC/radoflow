@@ -4,9 +4,11 @@ import {
   countWorkingDays,
   dailyRate as dailyRateOf,
   daysInMonthOf,
+  excessHours,
   overtimeRate,
   roundMoney,
   splitDayHours,
+  type DutyTerms,
 } from "./hours";
 import { calculateLatePenalties } from "./late";
 import type {
@@ -126,6 +128,27 @@ function premiumPay(
 }
 
 /**
+ * Every date in the period where the overtime ceiling is dropping hours.
+ *
+ * Computed once here, from the same `days` the rest of the engine already
+ * walks, rather than asking a caller to run a second pass over attendance —
+ * so a payroll run gets this for free alongside every other total.
+ */
+function flaggedDaysOf(
+  days: readonly AttendanceDay[],
+  rule: PayRule,
+  dutyHours: number,
+  terms: DutyTerms,
+): { workDate: string; hours: number }[] {
+  const flagged: { workDate: string; hours: number }[] = [];
+  for (const day of days) {
+    const hours = excessHours(day, rule, dutyHours, terms);
+    if (hours > 0) flagged.push({ workDate: day.workDate, hours });
+  }
+  return flagged;
+}
+
+/**
  * Calculates one person's pay for one period.
  *
  * The two pay classes differ only in how base pay is derived:
@@ -150,6 +173,8 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   const hours: HourBuckets = accumulateHours(days, rule, dutyHours, terms);
   const counts = countDays(days);
   const workingDays = countWorkingDays(days);
+  const flaggedDays = flaggedDaysOf(days, rule, dutyHours, terms);
+  const flaggedHours = roundMoney(flaggedDays.reduce((total, d) => total + d.hours, 0));
   const lines: PayslipLine[] = [];
 
   const daysInMonth = resolveDaysInMonth(input);
@@ -348,6 +373,9 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     latePenalty: late.total,
     daysLate: late.daysLate,
     uncollectedDeductions: uncollected,
+
+    flaggedHours,
+    flaggedDays,
 
     gross,
     deductions,

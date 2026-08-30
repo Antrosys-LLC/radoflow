@@ -3,15 +3,17 @@
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
-import { BadgeCheck, Banknote, FileText, Play, Plus, X } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Banknote, Check, FileText, Play, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
-import { formatDate, formatHours, formatPKR } from "@/lib/time";
+import { formatDate, formatDateTime, formatHours, formatPKR } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import {
   approvePeriod,
   createPeriod,
+  markItemPaid,
+  markItemUnpaid,
   markPeriodPaid,
   runPeriod,
   type PayrollResultMessage,
@@ -48,7 +50,30 @@ export interface ItemRow {
   deductions: number;
   tax: number;
   net: number;
-  breakdown: { code: string; label: string; kind: string; hours?: number; rate?: number; amount: number }[];
+  breakdown: {
+    code: string;
+    label: string;
+    kind: string;
+    hours?: number;
+    rate?: number;
+    amount: number;
+  }[];
+  /**
+   * Hours the overtime ceiling dropped somewhere in this period — most often
+   * a double-duty day. Nothing here is a wrong calculation; it means these
+   * dates are worth a look before the run is approved.
+   */
+  flaggedHours: number;
+  flaggedDays: { workDate: string; hours: number }[];
+  /**
+   * Plain-language explanation of why this line is worth a look — covers
+   * dropped hours, an attendance anomaly, or a pay swing against this
+   * person's recent history. Null means nothing was flagged, or the review
+   * hasn't run (e.g. the assistant isn't configured).
+   */
+  reviewNote: string | null;
+  /** When this person was actually handed their cash. Null means not yet. */
+  paidAt: string | null;
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -230,6 +255,28 @@ export function PayrollClient({
               subtitle="Hours come from the biometric terminals; tap a row for the full payslip"
             />
 
+            {(() => {
+              const needsReview = items.filter((item) => item.flaggedHours > 0 || item.reviewNote);
+              if (needsReview.length === 0) return null;
+              return (
+                <div className="mb-4 flex items-start gap-3 rounded-2xl bg-warning-soft px-4 py-3">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+                  <p className="text-sm text-foreground">
+                    <span className="font-bold">
+                      {needsReview.length} employee{needsReview.length === 1 ? "" : "s"}
+                    </span>{" "}
+                    worth a look before you approve — dropped hours, an attendance anomaly, or a pay
+                    swing against their recent history. Nothing is calculated wrong; check each
+                    person&apos;s note on their payslip.
+                  </p>
+                </div>
+              );
+            })()}
+
+            {items.length > 0 && (selected.status === "approved" || selected.status === "paid") ? (
+              <CashPaymentTally items={items} />
+            ) : null}
+
             {items.length === 0 ? (
               <div className="rounded-2xl bg-secondary p-8 text-center">
                 <p className="text-sm font-semibold text-foreground">Nothing calculated yet</p>
@@ -250,6 +297,7 @@ export function PayrollClient({
                       <th className="px-4 pb-2 text-right">Deductions</th>
                       <th className="px-4 pb-2 text-right">Tax</th>
                       <th className="px-4 pb-2 text-right">Net</th>
+                      <th className="px-4 pb-2">Paid</th>
                       <th className="px-4 pb-2" />
                     </tr>
                   </thead>
@@ -260,7 +308,14 @@ export function PayrollClient({
                           <div className="flex items-center gap-3">
                             <Avatar name={item.full_name} />
                             <div>
-                              <p className="font-semibold text-foreground">{item.full_name}</p>
+                              <p className="flex items-center gap-1.5 font-semibold text-foreground">
+                                {item.full_name}
+                                {item.reviewNote ? (
+                                  <span title={item.reviewNote}>
+                                    <AlertTriangle className="size-3.5 shrink-0 text-warning" />
+                                  </span>
+                                ) : null}
+                              </p>
                               <p className="text-xs text-muted-foreground">
                                 {item.employee_code} · {item.pay_class}
                               </p>
@@ -270,9 +325,20 @@ export function PayrollClient({
                         <td className="px-4 py-3 text-muted-foreground">{item.department}</td>
                         <td className="px-4 py-3 text-right tabular-nums">{item.regular_hours}</td>
                         <td className="px-4 py-3 text-right font-semibold tabular-nums text-warning">
-                          {item.ot_hours}
+                          <span className="inline-flex items-center gap-1.5">
+                            {item.ot_hours}
+                            {item.flaggedHours > 0 ? (
+                              <span
+                                title={`${item.flaggedHours}h dropped by the overtime ceiling on ${item.flaggedDays.map((d) => d.workDate).join(", ")} — check before approving`}
+                              >
+                                <AlertTriangle className="size-3.5 text-danger" />
+                              </span>
+                            ) : null}
+                          </span>
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums">{formatPKR(item.gross)}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">
+                          {formatPKR(item.gross)}
+                        </td>
                         <td className="px-4 py-3 text-right tabular-nums text-danger">
                           {item.deductions ? `- ${formatPKR(item.deductions)}` : "—"}
                         </td>
@@ -281,6 +347,17 @@ export function PayrollClient({
                         </td>
                         <td className="px-4 py-3 text-right font-bold tabular-nums text-foreground">
                           {formatPKR(item.net)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <PaidCell
+                            item={item}
+                            canPay={
+                              can.pay &&
+                              (selected.status === "approved" || selected.status === "paid")
+                            }
+                            pending={pending}
+                            act={act}
+                          />
                         </td>
                         <td className="rounded-r-2xl px-4 py-3 text-right">
                           <button
@@ -334,6 +411,97 @@ function Total({
   );
 }
 
+/**
+ * A running tally of who has actually been handed their cash.
+ *
+ * Separate from the period totals above, which are what is owed — this is
+ * what has actually left the office, which on a cash payroll can lag the
+ * approved amount by days while the cashier works through the floor.
+ */
+function CashPaymentTally({ items }: { items: ItemRow[] }) {
+  const paid = items.filter((item) => item.paidAt !== null);
+  const paidAmount = paid.reduce((total, item) => total + item.net, 0);
+  const totalAmount = items.reduce((total, item) => total + item.net, 0);
+  const allPaid = paid.length === items.length;
+
+  return (
+    <div
+      className={cn(
+        "mb-4 flex items-center gap-3 rounded-2xl px-4 py-3",
+        allPaid ? "bg-success-soft" : "bg-secondary",
+      )}
+    >
+      {allPaid ? (
+        <Check className="size-4 shrink-0 text-success" />
+      ) : (
+        <Banknote className="size-4 shrink-0 text-muted-foreground" />
+      )}
+      <p className="text-sm text-foreground">
+        <span className="font-bold">
+          {paid.length} of {items.length}
+        </span>{" "}
+        paid in cash · {formatPKR(paidAmount)} of {formatPKR(totalAmount)} disbursed
+        {!allPaid ? (
+          <span className="text-muted-foreground"> — {items.length - paid.length} left</span>
+        ) : null}
+      </p>
+    </div>
+  );
+}
+
+/** One row's cash-handoff mark: a plain status once paid, an action while not. */
+function PaidCell({
+  item,
+  canPay,
+  pending,
+  act,
+}: {
+  item: ItemRow;
+  canPay: boolean;
+  pending: boolean;
+  act: (fn: () => Promise<PayrollResultMessage>, loading: string) => void;
+}) {
+  if (item.paidAt) {
+    return (
+      <div className="flex items-center gap-2">
+        <span
+          title={formatDateTime(item.paidAt)}
+          className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-bold text-success"
+        >
+          <Check className="size-3" />
+          {formatDate(item.paidAt)}
+        </span>
+        {canPay ? (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => act(() => markItemUnpaid(item.id), "Undoing…")}
+            className="text-[11px] font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+          >
+            Undo
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (!canPay) {
+    return <span className="text-xs text-muted-foreground">Not yet</span>;
+  }
+
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => act(() => markItemPaid(item.id), `Marking ${item.full_name} paid…`)}
+      className="inline-flex items-center gap-1.5 rounded-xl bg-success px-3 py-1.5 text-xs font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-50"
+    >
+      <Banknote className="size-3.5" />
+      Mark paid
+    </button>
+  );
+}
+
 function NewPeriodDialog({
   sites,
   onClose,
@@ -379,7 +547,9 @@ function NewPeriodDialog({
             <label className="text-sm font-semibold text-foreground">Factory</label>
             <select name="site_id" required defaultValue={sites[0]?.id ?? ""} className={input}>
               {sites.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
               ))}
             </select>
           </div>
@@ -450,6 +620,30 @@ function PayslipSheet({ item, onClose }: { item: ItemRow; onClose: () => void })
           <Mini label="Overtime" value={formatHours(item.ot_hours)} />
           <Mini label="Weekend" value={formatHours(item.weekend_hours)} />
         </div>
+
+        {item.reviewNote ? (
+          <div className="mt-4 flex items-start gap-3 rounded-2xl bg-warning-soft px-4 py-3">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+            <div className="text-sm text-foreground">
+              <p className="font-bold">Worth a look before approving</p>
+              <p className="mt-0.5 text-muted-foreground">{item.reviewNote}</p>
+            </div>
+          </div>
+        ) : item.flaggedHours > 0 ? (
+          <div className="mt-4 flex items-start gap-3 rounded-2xl bg-warning-soft px-4 py-3">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+            <div className="text-sm text-foreground">
+              <p className="font-bold">
+                {formatHours(item.flaggedHours)} dropped by the overtime ceiling
+              </p>
+              <p className="mt-0.5 text-muted-foreground">
+                Likely a double-duty day, not a wrong number — check the punches for{" "}
+                {item.flaggedDays.map((d) => `${d.workDate} (${formatHours(d.hours)})`).join(", ")}{" "}
+                before approving.
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         <Section title="Earnings" lines={earnings} />
         <Section title="Deductions" lines={deductions} negative />

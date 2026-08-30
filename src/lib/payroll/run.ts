@@ -33,6 +33,12 @@ export interface RunSummary {
   tax: number;
   net: number;
   skipped: { name: string; reason: string }[];
+  /**
+   * People with at least one date the overtime ceiling dropped hours on —
+   * most commonly a double-duty day. Nothing about their pay is wrong; it
+   * means a human should check the listed dates before approving this run.
+   */
+  flagged: { name: string; hours: number; dates: string[] }[];
 }
 
 interface PeriodRow {
@@ -147,6 +153,7 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
 
   const results: PayrollResult[] = [];
   const skipped: RunSummary["skipped"] = [];
+  const flagged: RunSummary["flagged"] = [];
   const rows = [];
 
   /*
@@ -181,6 +188,15 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     });
 
     results.push(result);
+
+    if (result.flaggedHours > 0) {
+      flagged.push({
+        name: employee.fullName,
+        hours: result.flaggedHours,
+        dates: result.flaggedDays.map((d) => d.workDate),
+      });
+    }
+
     rows.push({
       period_id: period.id,
       profile_id: person.id,
@@ -203,6 +219,8 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
       tax: result.tax,
       net: result.net,
       breakdown: JSON.parse(JSON.stringify(result.lines)),
+      flagged_hours: result.flaggedHours,
+      flagged_days: JSON.parse(JSON.stringify(result.flaggedDays)),
       status: "review" as const,
     });
   }
@@ -229,7 +247,7 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     })
     .eq("id", period.id);
 
-  return { periodId: period.id, ...totals, skipped };
+  return { periodId: period.id, ...totals, skipped, flagged };
 }
 
 // -- mappers ----------------------------------------------------------------

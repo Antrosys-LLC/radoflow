@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
-import { Banknote, KeyRound, Plus, Search, Trash2, UserPlus, X } from "lucide-react";
+import { Banknote, KeyRound, Pencil, Plus, Search, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { CnicInput, PasswordInput } from "@/components/credential-inputs";
@@ -18,6 +18,7 @@ import {
   setUserPassword,
   setUserRole,
   setUserStatus,
+  updateUserProfile,
   type UserResult,
 } from "./actions";
 
@@ -31,6 +32,8 @@ export interface UserRow {
   full_name: string;
   cnic: string | null;
   email: string | null;
+  phone: string | null;
+  designation: string | null;
   status: string;
   roleId: string | null;
   roleName: string;
@@ -49,7 +52,9 @@ export interface UserRow {
   requiresAttendance: boolean;
   /** No in or out time enforced: never recorded late. */
   flexibleHours: boolean;
+  siteId: string | null;
   departmentId: string | null;
+  shiftId: string | null;
   components: {
     id: string;
     label: string;
@@ -95,6 +100,7 @@ export function UsersManager({
   const [showAdd, setShowAdd] = useState(false);
   const [tuning, setTuning] = useState<UserRow | null>(null);
   const [paying, setPaying] = useState<UserRow | null>(null);
+  const [editing, setEditing] = useState<UserRow | null>(null);
 
   /*
    * Filtered here rather than through the URL, because this list is already a
@@ -187,6 +193,7 @@ export function UsersManager({
               canManageAccess={canManageAccess}
               onTune={() => setTuning(user)}
               onPay={() => setPaying(user)}
+              onEdit={() => setEditing(user)}
             />
           ))}
         </div>
@@ -213,6 +220,16 @@ export function UsersManager({
       ) : null}
 
       {paying ? <PayDialog user={paying} onClose={() => setPaying(null)} /> : null}
+
+      {editing ? (
+        <EditProfileDialog
+          user={editing}
+          sites={sites}
+          departments={departments}
+          shifts={shifts}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -223,12 +240,14 @@ function UserCard({
   canManageAccess,
   onTune,
   onPay,
+  onEdit,
 }: {
   user: UserRow;
   roles: Option[];
   canManageAccess: boolean;
   onTune: () => void;
   onPay: () => void;
+  onEdit: () => void;
 }) {
   const [state, formAction] = useActionState(setUserRole, INITIAL);
   const [pending, startTransition] = useTransition();
@@ -283,6 +302,15 @@ function UserCard({
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-card px-3 py-2 text-xs font-semibold text-foreground transition-all hover:text-primary"
+        >
+          <Pencil className="size-3.5" />
+          Edit profile
+        </button>
+
         {canManageAccess ? (
           <form ref={roleForm} action={formAction} className="flex items-center gap-2">
             <input type="hidden" name="user_id" value={user.id} />
@@ -699,6 +727,169 @@ function AddUserDialog({
         </form>
       </div>
     </div>
+  );
+}
+
+/**
+ * Edits who someone is and where they sit — name, employee code, CNIC,
+ * contact details, and placement. Kept apart from pay/duty and access, which
+ * have their own dialogs, so a small correction (a fixed department, a typo
+ * in a name) never puts money or permissions in the same swipe-to-confirm.
+ */
+function EditProfileDialog({
+  user,
+  sites,
+  departments,
+  shifts,
+  onClose,
+}: {
+  user: UserRow;
+  sites: Option[];
+  departments: DepartmentOption[];
+  shifts: Option[];
+  onClose: () => void;
+}) {
+  const [state, formAction] = useActionState(updateUserProfile, INITIAL);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!state.message) return;
+    if (state.ok) {
+      toast.success(state.message);
+      onClose();
+      router.refresh();
+    } else {
+      toast.error(state.message);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, router]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-3 backdrop-blur-sm sm:items-center">
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-card p-6 shadow-[0_18px_40px_rgb(0_0_0/0.18)]">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight text-foreground">
+              Edit profile · {user.full_name}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Name, employee code, contact details and placement. Pay, duty terms and access are
+              changed from their own buttons on the card.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <form action={formAction} className="mt-5 space-y-4">
+          <input type="hidden" name="user_id" value={user.id} />
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Full name">
+              <input
+                name="full_name"
+                required
+                defaultValue={user.full_name}
+                className={INPUT}
+                placeholder="Imran Sheikh"
+              />
+            </Field>
+            <Field label="Employee code / K50 ID">
+              <input
+                name="employee_code"
+                required
+                defaultValue={user.employee_code}
+                className={INPUT}
+                placeholder="RD-1043"
+              />
+            </Field>
+            <Field label="CNIC (sign-in)">
+              <CnicInput defaultValue={user.cnic ?? ""} className={INPUT} />
+            </Field>
+            <Field label="Email (optional)">
+              <input
+                name="email"
+                type="email"
+                defaultValue={user.email ?? ""}
+                className={INPUT}
+                placeholder="name@radoflow.test"
+              />
+            </Field>
+            <Field label="Phone">
+              <input
+                name="phone"
+                type="tel"
+                defaultValue={user.phone ?? ""}
+                className={INPUT}
+                placeholder="+92 300 1234567"
+              />
+            </Field>
+            <Field label="Designation">
+              <input
+                name="designation"
+                defaultValue={user.designation ?? ""}
+                className={INPUT}
+                placeholder="Loom Operator"
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Factory">
+              <select name="site_id" defaultValue={user.siteId ?? ""} className={INPUT}>
+                <option value="">Unassigned</option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Department">
+              <select name="department_id" defaultValue={user.departmentId ?? ""} className={INPUT}>
+                <option value="">Unassigned</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Shift">
+              <select name="shift_id" defaultValue={user.shiftId ?? ""} className={INPUT}>
+                <option value="">No shift</option>
+                {shifts.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <SaveProfileButton />
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function SaveProfileButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="w-full rounded-2xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5 disabled:opacity-60"
+    >
+      {pending ? "Saving…" : "Save changes"}
+    </button>
   );
 }
 

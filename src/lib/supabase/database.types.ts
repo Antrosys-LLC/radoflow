@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   graphql_public: {
     Tables: {
@@ -1034,6 +1034,8 @@ export type Database = {
           days_leave: number
           days_present: number
           deductions: number
+          flagged_days: Json
+          flagged_hours: number
           gross: number
           holiday_hours: number
           holiday_pay: number
@@ -1042,10 +1044,14 @@ export type Database = {
           note: string | null
           ot_hours: number
           ot_pay: number
+          paid_at: string | null
+          paid_by: string | null
           pay_class: Database["public"]["Enums"]["pay_class"]
           period_id: string
           profile_id: string
           regular_hours: number
+          review_generated_at: string | null
+          review_note: string | null
           status: Database["public"]["Enums"]["payroll_status"]
           tax: number
           weekend_hours: number
@@ -1061,6 +1067,8 @@ export type Database = {
           days_leave?: number
           days_present?: number
           deductions?: number
+          flagged_days?: Json
+          flagged_hours?: number
           gross?: number
           holiday_hours?: number
           holiday_pay?: number
@@ -1069,10 +1077,14 @@ export type Database = {
           note?: string | null
           ot_hours?: number
           ot_pay?: number
+          paid_at?: string | null
+          paid_by?: string | null
           pay_class: Database["public"]["Enums"]["pay_class"]
           period_id: string
           profile_id: string
           regular_hours?: number
+          review_generated_at?: string | null
+          review_note?: string | null
           status?: Database["public"]["Enums"]["payroll_status"]
           tax?: number
           weekend_hours?: number
@@ -1088,6 +1100,8 @@ export type Database = {
           days_leave?: number
           days_present?: number
           deductions?: number
+          flagged_days?: Json
+          flagged_hours?: number
           gross?: number
           holiday_hours?: number
           holiday_pay?: number
@@ -1096,16 +1110,41 @@ export type Database = {
           note?: string | null
           ot_hours?: number
           ot_pay?: number
+          paid_at?: string | null
+          paid_by?: string | null
           pay_class?: Database["public"]["Enums"]["pay_class"]
           period_id?: string
           profile_id?: string
           regular_hours?: number
+          review_generated_at?: string | null
+          review_note?: string | null
           status?: Database["public"]["Enums"]["payroll_status"]
           tax?: number
           weekend_hours?: number
           weekend_pay?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "payroll_items_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_items_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "payroll_items_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "payroll_items_period_id_fkey"
             columns: ["period_id"]

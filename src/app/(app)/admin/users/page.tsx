@@ -31,7 +31,7 @@ export default async function UsersPage() {
     supabase
       .from("profiles")
       .select(
-        "id, employee_code, full_name, cnic, email, status, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours, overtime_eligible, department_id",
+        "id, employee_code, full_name, cnic, email, phone, designation, status, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours, overtime_eligible, site_id, department_id, shift_id",
       )
       .order("full_name"),
     supabase.from("roles").select("id, name, is_superuser").order("rank"),
@@ -81,6 +81,8 @@ export default async function UsersPage() {
       cnic: profile.cnic,
       full_name: profile.full_name,
       email: profile.email,
+      phone: profile.phone,
+      designation: profile.designation,
       status: profile.status,
       roleId,
       roleName: role?.name ?? "No role",
@@ -95,7 +97,9 @@ export default async function UsersPage() {
       requiresAttendance: profile.requires_attendance,
       flexibleHours: profile.flexible_hours,
       overtimeEligible: profile.overtime_eligible,
+      siteId: profile.site_id,
       departmentId: profile.department_id,
+      shiftId: profile.shift_id,
       components: componentsByUser.get(profile.id) ?? [],
     };
   });

@@ -91,9 +91,17 @@ export function overtimeRate(monthlySalary: number, daysInMonth: number): number
 /**
  * Splits a day's worked hours into the buckets that attract different rates.
  *
- * Sunday is decided first and overrides everything: it is never a working day,
- * so every hour worked on one is overtime, whatever the calendar says the day
- * type is. The rest of the week falls to the day type:
+ * Sunday is decided first, but only when the calendar left it at its default:
+ * a Sunday with `day_type: "off"` is never a working day, so every hour
+ * worked on one is overtime. A *specific* Sunday the calendar has explicitly
+ * overridden — to `workday`, `special_working`, `weekend_working` or
+ * `holiday`, because the factory ran it as an ordinary shift and gave a
+ * different weekday off in exchange — is deliberately not caught by this
+ * branch, and falls through to be treated exactly like that day type on any
+ * other date. `resolve_day_type()` only ever returns something other than
+ * `off`/`workday`-from-the-weekly-pattern when a `calendar_days` row exists
+ * for that exact date, so this cannot be tripped by accident. The rest of the
+ * week falls to the day type:
  *  - workday / special_working → up to the person's duty hours is regular, the
  *    rest is overtime (only once it clears the overtime threshold).
  *  - weekend_working, or any work on an `off` day → every hour is weekend-rated.
@@ -117,9 +125,10 @@ export function splitDayHours(
 
   const earnsOvertime = terms.overtimeEligible ?? true;
 
-  // Sunday first: the day type would otherwise route these hours to the
-  // weekend bucket and pay them at the weekend rate instead of overtime.
-  if (isSunday(day.workDate)) {
+  // Sunday first, but only while the calendar has not overridden this exact
+  // date — otherwise the day type would route these hours to the weekend
+  // bucket and pay them at the weekend rate instead of overtime.
+  if (isSunday(day.workDate) && day.dayType === "off") {
     /*
      * Two arrangements pay nothing for a Sunday. Someone on no overtime at all
      * earns none here either; someone whose Sunday is "adjusted in leave" is
@@ -176,6 +185,59 @@ export function splitDayHours(
     default:
       return { ...EMPTY_BUCKETS, regular: worked };
   }
+}
+
+/**
+ * Worked hours a day's buckets do not account for — dropped by the overtime
+ * ceiling rather than paid or moved anywhere else.
+ *
+ * A normal long day (someone forgot to clock out, a machine breakdown ran
+ * late) is meant to lose hours here — that is what the ceiling in
+ * {@link splitDayHours} exists to do, deliberately. But the same number is
+ * also what a genuine double shift looks like from the outside: two real
+ * duty periods back to back collapse into one `hoursWorked` figure with no
+ * record of the seam between them, so the engine cannot tell "one very long
+ * day" from "two ordinary ones" — that seam is only visible in the raw
+ * punches, not in the single total this function is given.
+ *
+ * This deliberately does not try to guess which case it is and split the day
+ * itself: a wrong guess would misprice real wages, and the gap between a
+ * lunch break and a shift change is not something a fixed duration threshold
+ * can tell apart safely. Instead this only reports the size of the gap, so a
+ * supervisor can look at the punches for a flagged day and decide — the same
+ * human-in-the-loop pattern as every other ambiguous case in this system.
+ */
+export function excessHours(
+  day: AttendanceDay,
+  rule: PayRule,
+  dutyHours?: number,
+  terms: DutyTerms = {},
+): number {
+  const worked = roundHours(Math.max(0, day.hoursWorked), rule.roundToMinutes);
+  if (worked <= 0) return 0;
+
+  // A default (uncalendared) Sunday and every premium-rated day type pay the
+  // whole shift, uncapped, just under a different bucket — nothing is
+  // dropped there, whatever the total. Only an ordinary working day's
+  // overtime has a ceiling to overflow.
+  const isDefaultSunday = isSunday(day.workDate) && day.dayType === "off";
+  const isOrdinaryDay = day.dayType === "workday" || day.dayType === "special_working";
+  if (isDefaultSunday || !isOrdinaryDay) return 0;
+
+  const earnsOvertime = terms.overtimeEligible ?? true;
+  if (!earnsOvertime) return 0;
+
+  const standard = dutyHours && dutyHours > 0 ? dutyHours : rule.standardHoursPerDay;
+  if (worked <= standard) return 0;
+
+  const excess = round2(worked - standard);
+  const threshold = rule.otThresholdMinutes / 60;
+  if (excess < threshold) return 0;
+
+  const cap = rule.otDailyCapHours;
+  if (cap < 0) return 0;
+
+  return Math.max(0, round2(excess - cap));
 }
 
 /** Adds a day's buckets into a running period total. */

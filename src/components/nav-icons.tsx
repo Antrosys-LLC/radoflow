@@ -7,6 +7,8 @@ import {
   Fingerprint,
   Gauge,
   LayoutDashboard,
+  MessageCircleQuestion,
+  ScanText,
   ScrollText,
   Settings2,
   ShieldCheck,
@@ -26,6 +28,7 @@ import {
  */
 export const NAV_ICONS = {
   dashboard: LayoutDashboard,
+  assistant: MessageCircleQuestion,
   attendance: CalendarClock,
   calendar: ClipboardCheck,
   devices: Fingerprint,
@@ -35,6 +38,7 @@ export const NAV_ICONS = {
   rates: Coins,
   reports: Gauge,
   roles: ShieldCheck,
+  registers: ScanText,
   users: UserCog,
   settings: Settings2,
   profile: UserCircle,

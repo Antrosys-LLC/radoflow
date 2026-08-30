@@ -16,9 +16,14 @@ export type WorkerType = "employee" | "contractor";
 /**
  * Whether Sunday is expected of someone.
  *
- * It never affects the rate. Sunday is not a working day for anyone, so every
- * hour worked on one is overtime regardless. `compulsory` only marks a missed
- * Sunday as a violation — the money is already lost with the overtime.
+ * It never affects the rate. By default Sunday is not a working day for
+ * anyone, so every hour worked on one is overtime regardless — unless the
+ * calendar has explicitly overridden that specific Sunday to another day
+ * type (the factory ran it as an ordinary shift and gave a different weekday
+ * off in exchange), in which case it is priced like any other day of that
+ * type instead. See {@link splitDayHours} in `./hours.ts`. `compulsory` only
+ * marks a missed default Sunday as a violation — the money is already lost
+ * with the overtime.
  */
 export type SundayPolicy = "off" | "optional" | "compulsory" | "adjust_in_leave";
 
@@ -232,6 +237,17 @@ export interface PayrollResult {
    * Net pay is floored at zero rather than going negative.
    */
   uncollectedDeductions: number;
+
+  /**
+   * Hours the overtime ceiling is dropping across the period — see
+   * {@link excessHours} in `./hours.ts`. Zero for the common case. A
+   * non-zero total does not mean anything was calculated wrong; it means a
+   * human should look at the listed dates before the run is approved,
+   * because the engine cannot tell a very long single shift from an
+   * unrecorded second one.
+   */
+  flaggedHours: number;
+  flaggedDays: { workDate: string; hours: number }[];
 
   gross: number;
   deductions: number;

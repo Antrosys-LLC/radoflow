@@ -80,6 +80,10 @@ export default async function PayrollPage({
           tax: Number(row.tax),
           net: Number(row.net),
           breakdown: (row.breakdown ?? []) as ItemRow["breakdown"],
+          flaggedHours: Number(row.flagged_hours ?? 0),
+          flaggedDays: (row.flagged_days ?? []) as ItemRow["flaggedDays"],
+          reviewNote: row.review_note,
+          paidAt: row.paid_at,
         };
       })
       .sort((a, b) => b.net - a.net);

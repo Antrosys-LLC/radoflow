@@ -7,6 +7,7 @@ import {
   countWorkingDays,
   dailyRate,
   daysInMonthOf,
+  excessHours,
   isSunday,
   overtimeRate,
   roundHours,
@@ -177,6 +178,59 @@ describe("hour bucketing", () => {
     expect(buckets.overtime).toBe(3);
   });
 
+  it("pays a Sunday the calendar explicitly scheduled as a working day like an ordinary shift", () => {
+    // The factory ran this Sunday as a normal duty day and gave a different
+    // weekday off in exchange — it must be priced as a workday, not swept
+    // into the blanket Sunday-overtime rule.
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-02", dayType: "workday", hoursWorked: 12 }),
+      rule,
+      8,
+    );
+    expect(buckets.regular).toBe(8);
+    expect(buckets.overtime).toBe(4);
+  });
+
+  it("still pays an un-overridden Sunday as overtime even for the same person", () => {
+    // Same employee terms, but this particular Sunday was never overridden —
+    // the default `off` day type keeps the blanket overtime rule.
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-02", dayType: "off", hoursWorked: 12 }),
+      rule,
+      8,
+    );
+    expect(buckets.regular).toBe(0);
+    expect(buckets.overtime).toBe(12);
+  });
+
+  it("pays a Sunday overridden to special_working the same as an ordinary duty day", () => {
+    // special_working is grouped with workday in the switch below, not with
+    // the weekend-rated days — so this follows the same duty/overtime split.
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-02", dayType: "special_working", hoursWorked: 12 }),
+      rule,
+      8,
+    );
+    expect(buckets.regular).toBe(8);
+    expect(buckets.overtime).toBe(4);
+  });
+
+  it("pays a Sunday overridden to weekend_working at the weekend rate", () => {
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-02", dayType: "weekend_working", hoursWorked: 8 }),
+      rule,
+    );
+    expect(buckets).toEqual({ regular: 0, overtime: 0, weekend: 8, holiday: 0 });
+  });
+
+  it("pays a Sunday overridden to a declared holiday at the holiday rate", () => {
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-02", dayType: "holiday", hoursWorked: 8 }),
+      rule,
+    );
+    expect(buckets).toEqual({ regular: 0, overtime: 0, weekend: 0, holiday: 8 });
+  });
+
   it("does not cap a Sunday, where every hour is overtime", () => {
     const buckets = splitDayHours(
       day({ workDate: "2026-08-02", dayType: "off", hoursWorked: 12 }),
@@ -195,12 +249,9 @@ describe("hour bucketing", () => {
 
   it("records but does not pay overtime for staff who earn none", () => {
     // "8 Hours Duty" with no "+ Over time" on the workers list.
-    const buckets = splitDayHours(
-      day({ workDate: "2026-08-03", hoursWorked: 12 }),
-      rule,
-      8,
-      { overtimeEligible: false },
-    );
+    const buckets = splitDayHours(day({ workDate: "2026-08-03", hoursWorked: 12 }), rule, 8, {
+      overtimeEligible: false,
+    });
     expect(buckets.regular).toBe(8);
     expect(buckets.overtime).toBe(0);
   });
@@ -226,13 +277,65 @@ describe("hour bucketing", () => {
   });
 
   it("still pays that person's weekday overtime normally", () => {
-    const buckets = splitDayHours(
-      day({ workDate: "2026-08-03", hoursWorked: 12 }),
-      rule,
-      8,
-      { sundayPolicy: "adjust_in_leave" },
-    );
+    const buckets = splitDayHours(day({ workDate: "2026-08-03", hoursWorked: 12 }), rule, 8, {
+      sundayPolicy: "adjust_in_leave",
+    });
     expect(buckets.overtime).toBe(4);
+  });
+
+  it("reports no excess for a day within the overtime ceiling", () => {
+    expect(excessHours(day({ workDate: "2026-08-03", hoursWorked: 11 }), rule, 8)).toBe(0);
+  });
+
+  it("reports the hours a long day drops past the overtime ceiling", () => {
+    // 16 worked on an 8-hour duty: 8 regular + 4 payable OT, 4 dropped.
+    expect(excessHours(day({ workDate: "2026-08-03", hoursWorked: 16 }), rule, 8)).toBe(4);
+  });
+
+  it("reports the full second shift's worth on a double-duty day", () => {
+    // Two genuine 8+4 shifts back to back read as one 24-hour total: 8
+    // regular + 4 payable OT is paid, and the entire second shift (12 more
+    // hours) currently has nowhere to go.
+    expect(excessHours(day({ workDate: "2026-08-03", hoursWorked: 24 }), rule, 8)).toBe(12);
+  });
+
+  it("reports no excess for a default Sunday, which is never capped", () => {
+    expect(
+      excessHours(day({ workDate: "2026-08-02", dayType: "off", hoursWorked: 24 }), rule, 8),
+    ).toBe(0);
+  });
+
+  it("reports no excess once the Sunday is overridden to an ordinary duty day", () => {
+    // Now it goes through the same ceiling as any other workday.
+    expect(
+      excessHours(day({ workDate: "2026-08-02", dayType: "workday", hoursWorked: 24 }), rule, 8),
+    ).toBe(12);
+  });
+
+  it("reports no excess for premium-rated days, which are paid uncapped", () => {
+    expect(
+      excessHours(
+        day({ workDate: "2026-08-08", dayType: "weekend_working", hoursWorked: 20 }),
+        rule,
+        8,
+      ),
+    ).toBe(0);
+    expect(
+      excessHours(day({ workDate: "2026-08-14", dayType: "holiday", hoursWorked: 20 }), rule, 8),
+    ).toBe(0);
+  });
+
+  it("reports no excess for staff who earn no overtime — nothing is being hidden", () => {
+    expect(
+      excessHours(day({ workDate: "2026-08-03", hoursWorked: 20 }), rule, 8, {
+        overtimeEligible: false,
+      }),
+    ).toBe(0);
+  });
+
+  it("reports no excess when the ceiling itself is uncapped", () => {
+    const uncapped = { ...rule, otDailyCapHours: -1 };
+    expect(excessHours(day({ workDate: "2026-08-03", hoursWorked: 20 }), uncapped, 8)).toBe(0);
   });
 
   it("counts a working day once, however short it was", () => {
@@ -322,6 +425,28 @@ describe("hourly payroll", () => {
     const days = [day({ workDate: "2026-08-05", dayType: "off", hoursWorked: 0, status: "off" })];
     const result = calculatePayroll({ employee: hourlyWorker, rule, days });
     expect(result.gross).toBe(0);
+  });
+
+  it("carries no flagged hours for an ordinary period", () => {
+    const days = Array.from({ length: 5 }, (_, i) => day({ workDate: `2026-08-0${i + 3}` }));
+    const result = calculatePayroll({ employee: hourlyWorker, rule, days });
+    expect(result.flaggedHours).toBe(0);
+    expect(result.flaggedDays).toEqual([]);
+  });
+
+  it("flags a double-duty day on the payroll result, without changing its pay", () => {
+    const days = [
+      day({ workDate: "2026-08-03", hoursWorked: 8 }),
+      day({ workDate: "2026-08-04", hoursWorked: 24 }),
+    ];
+    const result = calculatePayroll({ employee: hourlyWorker, rule, days });
+
+    expect(result.flaggedHours).toBe(12);
+    expect(result.flaggedDays).toEqual([{ workDate: "2026-08-04", hours: 12 }]);
+    // The payment is exactly what the ceiling already produced — flagging is
+    // observation, not a second calculation.
+    expect(result.hours.regular).toBe(8 + 8);
+    expect(result.hours.overtime).toBe(4);
   });
 });
 

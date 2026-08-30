@@ -203,6 +203,63 @@ export async function setUserOverride(
   return { ok: true, message: "Access updated." };
 }
 
+/**
+ * Edits the identity/placement fields on an existing profile.
+ *
+ * Deliberately separate from `createUser` (which also provisions the auth
+ * login) and from `updateUserPay` (rates and duty terms) — this is the one
+ * place that changes who someone is and where they sit, without touching
+ * their money settings or their access.
+ */
+export async function updateUserProfile(_prev: UserResult, form: FormData): Promise<UserResult> {
+  await requirePermission("people.manage");
+
+  const userId = text(form, "user_id");
+  if (!userId) return { ok: false, message: "No user selected." };
+
+  const fullName = text(form, "full_name");
+  const employeeCode = text(form, "employee_code");
+  const cnicRaw = text(form, "cnic");
+
+  if (!fullName || !employeeCode) {
+    return { ok: false, message: "Name and employee code are required." };
+  }
+
+  const cnic = cnicRaw ? formatCnic(cnicRaw) : null;
+  if (cnic && !isValidCnic(cnic)) {
+    return { ok: false, message: "A CNIC is 13 digits — XXXXX-XXXXXXX-X." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      full_name: fullName,
+      employee_code: employeeCode,
+      cnic,
+      email: text(form, "email").toLowerCase() || null,
+      phone: text(form, "phone") || null,
+      designation: text(form, "designation") || null,
+      site_id: text(form, "site_id") || null,
+      department_id: text(form, "department_id") || null,
+      shift_id: text(form, "shift_id") || null,
+    })
+    .eq("id", userId);
+
+  if (error) {
+    if (error.code === "23505") {
+      const field = error.message.includes("cnic")
+        ? `CNIC ${cnic}`
+        : `Employee code ${employeeCode}`;
+      return { ok: false, message: `${field} is already in use by someone else.` };
+    }
+    return { ok: false, message: error.message };
+  }
+
+  revalidatePath("/admin/users");
+  return { ok: true, message: `${fullName}'s profile updated.` };
+}
+
 export async function setUserStatus(
   userId: string,
   status: "active" | "suspended",

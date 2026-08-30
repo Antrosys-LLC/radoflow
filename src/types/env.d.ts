@@ -24,6 +24,8 @@ declare namespace NodeJS {
     DEVICE_INGEST_SECRET?: string;
     /** "true" to run the background terminal poller on this instance. */
     DEVICE_SYNC_ENABLED?: string;
+    /** Powers the "Ask" assistant. Server-only, never sent to the browser. */
+    ANTHROPIC_API_KEY?: string;
     /** Set by Next: "nodejs" or "edge". Only the Node runtime can open sockets. */
     NEXT_RUNTIME?: string;
   }

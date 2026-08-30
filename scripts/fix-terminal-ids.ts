@@ -80,7 +80,7 @@ interface EnrolmentRow {
 async function revert(file: string): Promise<void> {
   const backup = JSON.parse(readFileSync(file, "utf8")) as {
     enrolments: EnrolmentRow[];
-    punches: { id: string; profile_id: string | null }[];
+    punches: { id: number; profile_id: string | null }[];
   };
 
   console.log(`Restoring ${backup.enrolments.length} enrolment(s) from ${file}`);

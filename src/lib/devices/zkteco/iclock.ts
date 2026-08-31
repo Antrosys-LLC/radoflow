@@ -122,13 +122,16 @@ export function buildDeviceCommand(id: number, command: string): string {
 }
 
 /** Enrols or updates a user on the terminal. */
-export function setUserCommand(id: number, user: {
-  deviceUserId: string;
-  name: string;
-  privilege?: number;
-  password?: string;
-  cardNumber?: string;
-}): string {
+export function setUserCommand(
+  id: number,
+  user: {
+    deviceUserId: string;
+    name: string;
+    privilege?: number;
+    password?: string;
+    cardNumber?: string;
+  },
+): string {
   const parts = [
     `PIN=${user.deviceUserId}`,
     `Name=${user.name}`,

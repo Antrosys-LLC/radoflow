@@ -58,10 +58,10 @@ This was confirmed deliberately with the worked example
 
 **Duty hours** is one number per person: how many hours their salary covers.
 
-| Person            | Duty hours | 12h Monday            | 12h Sunday        |
-| ----------------- | ---------- | --------------------- | ----------------- |
-| Operator, 8 + 4   | 8          | 8 duty + 4 OT = ₨645  | 12 OT = ₨1,935    |
-| Guard             | 12         | 12 duty, no OT        | 12 OT = ₨1,935    |
+| Person          | Duty hours | 12h Monday           | 12h Sunday     |
+| --------------- | ---------- | -------------------- | -------------- |
+| Operator, 8 + 4 | 8          | 8 duty + 4 OT = ₨645 | 12 OT = ₨1,935 |
+| Guard           | 12         | 12 duty, no OT       | 12 OT = ₨1,935 |
 
 Same shift, same clock, different pay boundary.
 
@@ -130,42 +130,42 @@ and silent overpayment.
 
 Seeded idempotently for every site, `on conflict do nothing`.
 
-| Code     | Name               | Type       |
-| -------- | ------------------ | ---------- |
-| `ADMIN`  | Admin              | employee   |
-| `ACCT`   | Accounts           | employee   |
-| `KORA`   | Kora               | employee   |
-| `TSTORE` | Tayyar Store       | employee   |
-| `ELEC`   | Electric           | employee   |
-| `WSHOP`  | Workshop           | employee   |
-| `CREAT`  | Creation           | employee   |
-| `KARE`   | Kare               | employee   |
-| `SING`   | Singing            | employee   |
-| `KARADR` | Kara Drawing       | employee   |
-| `MERC`   | Mercrize           | employee   |
-| `BOUZ`   | Bouzer             | employee   |
-| `ENGR`   | Engraving          | employee   |
-| `COLOR`  | Color              | employee   |
-| `SUNTX`  | Suntex             | employee   |
-| `DGMAN`  | Digital Mandi Man  | employee   |
-| `AUTO1`  | Auto 01            | employee   |
-| `AUTO2`  | Auto 02            | employee   |
-| `CALND`  | Calander           | employee   |
-| `SOOPR`  | Sooper             | employee   |
-| `VENCH`  | Vench              | employee   |
-| `AGER`   | Ager Machine       | employee   |
-| `JIGDY`  | Jigger Dyeing      | employee   |
-| `JIGDR`  | Jigger Drawing     | employee   |
-| `DGMC`   | Digital Machine    | employee   |
-| `PPC`    | PPC                | employee   |
-| `BOILR`  | Boiler             | employee   |
-| `GM`     | GM                 | employee   |
-| `SWEEP`  | Sweepers           | employee   |
-| `RESGN`  | Resigned           | employee   |
-| `FOLD`   | Folding            | contractor |
-| `YCP`    | Yasine CP          | contractor |
-| `ZNP`    | Zafar Nug Packing  | contractor |
-| `ANTRO`  | Antrosys           | contractor |
+| Code     | Name              | Type       |
+| -------- | ----------------- | ---------- |
+| `ADMIN`  | Admin             | employee   |
+| `ACCT`   | Accounts          | employee   |
+| `KORA`   | Kora              | employee   |
+| `TSTORE` | Tayyar Store      | employee   |
+| `ELEC`   | Electric          | employee   |
+| `WSHOP`  | Workshop          | employee   |
+| `CREAT`  | Creation          | employee   |
+| `KARE`   | Kare              | employee   |
+| `SING`   | Singing           | employee   |
+| `KARADR` | Kara Drawing      | employee   |
+| `MERC`   | Mercrize          | employee   |
+| `BOUZ`   | Bouzer            | employee   |
+| `ENGR`   | Engraving         | employee   |
+| `COLOR`  | Color             | employee   |
+| `SUNTX`  | Suntex            | employee   |
+| `DGMAN`  | Digital Mandi Man | employee   |
+| `AUTO1`  | Auto 01           | employee   |
+| `AUTO2`  | Auto 02           | employee   |
+| `CALND`  | Calander          | employee   |
+| `SOOPR`  | Sooper            | employee   |
+| `VENCH`  | Vench             | employee   |
+| `AGER`   | Ager Machine      | employee   |
+| `JIGDY`  | Jigger Dyeing     | employee   |
+| `JIGDR`  | Jigger Drawing    | employee   |
+| `DGMC`   | Digital Machine   | employee   |
+| `PPC`    | PPC               | employee   |
+| `BOILR`  | Boiler            | employee   |
+| `GM`     | GM                | employee   |
+| `SWEEP`  | Sweepers          | employee   |
+| `RESGN`  | Resigned          | employee   |
+| `FOLD`   | Folding           | contractor |
+| `YCP`    | Yasine CP         | contractor |
+| `ZNP`    | Zafar Nug Packing | contractor |
+| `ANTRO`  | Antrosys          | contractor |
 
 Several names are transliterations and may need correcting against the
 company's own spelling. `RESGN` (Resigned) is a status bucket rather than a
@@ -242,11 +242,11 @@ Contractor selected → duty fields hide, a single agreed-amount field shows.
 
 Employee selected → two fields:
 
-| Requested option        | `duty_hours` | Shift         |
-| ----------------------- | ------------ | ------------- |
-| 8 hours direct duty     | 8            | 8-hour shift  |
-| 8 hours + 4 overtime    | 8            | 12-hour shift |
-| 12 hours duty           | 12           | 12-hour shift |
+| Requested option     | `duty_hours` | Shift         |
+| -------------------- | ------------ | ------------- |
+| 8 hours direct duty  | 8            | 8-hour shift  |
+| 8 hours + 4 overtime | 8            | 12-hour shift |
+| 12 hours duty        | 12           | 12-hour shift |
 
 The first two options store an identical pay boundary and differ only in the
 shift the person is rostered to; overtime comes from the clock in both cases.

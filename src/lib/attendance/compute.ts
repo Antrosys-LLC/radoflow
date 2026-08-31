@@ -44,7 +44,10 @@ export function computeDayFromPunches(
       // Monthly staff who never clock in are not "absent".
       return { ...EMPTY, status: "present" };
     }
-    return { ...EMPTY, status: isNonWorking ? (dayType === "holiday" ? "holiday" : "off") : "absent" };
+    return {
+      ...EMPTY,
+      status: isNonWorking ? (dayType === "holiday" ? "holiday" : "off") : "absent",
+    };
   }
 
   const sorted = [...punches].sort((a, b) => a.punchedAt.getTime() - b.punchedAt.getTime());

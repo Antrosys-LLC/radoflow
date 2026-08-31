@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 
-import { requirePermission } from "@/lib/auth/session";
+import { requireAnyPermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
-import { todayInPakistan } from "@/lib/time";
+import { pakistanDayStartUtc, todayInPakistan } from "@/lib/time";
+
+import { shiftDate } from "@/lib/canteen/meals";
 
 import { CounterScreen, type ScanView } from "./counter-screen";
 
@@ -28,7 +30,7 @@ export const dynamic = "force-dynamic";
  * would read it as their own.
  */
 export default async function CanteenPage() {
-  const session = await requirePermission("canteen.serve");
+  const session = await requireAnyPermission(["canteen.serve", "canteen.view"]);
   const supabase = await createClient();
   const today = todayInPakistan();
 
@@ -88,11 +90,15 @@ export default async function CanteenPage() {
     .select("id", { count: "exact", head: true })
     .eq("served_on", today);
 
+  // Bounded by the Pakistan day, not the database session's UTC one — the
+  // night shift eats either side of midnight, and those refusals are the ones
+  // worth counting.
   const { count: refusedToday } = await supabase
     .from("meal_scan_log")
     .select("id", { count: "exact", head: true })
     .eq("outcome", "duplicate")
-    .gte("scanned_at", `${today}T00:00:00`);
+    .gte("scanned_at", pakistanDayStartUtc(today))
+    .lt("scanned_at", pakistanDayStartUtc(shiftDate(today, 1)));
 
   return (
     <CounterScreen

@@ -41,10 +41,7 @@ export async function updateUserPay(_prev: PayResult, form: FormData): Promise<P
   const hourlyRate = Number(text(form, "hourly_rate") || 0);
   const dutyHours = Number(text(form, "duty_hours") || 8);
   const sundayPolicy = (text(form, "sunday_policy") || "off") as
-    | "off"
-    | "optional"
-    | "compulsory"
-    | "adjust_in_leave";
+    "off" | "optional" | "compulsory" | "adjust_in_leave";
 
   if (monthlySalary < 0 || hourlyRate < 0) {
     return { ok: false, message: "Pay cannot be negative." };

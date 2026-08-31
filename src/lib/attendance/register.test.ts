@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { buildRegister, summarise, type RegisterDay, type RegisterPerson } from "./register";
 
-const person = (id: string, fullName: string, extra: Partial<RegisterPerson> = {}): RegisterPerson => ({
+const person = (
+  id: string,
+  fullName: string,
+  extra: Partial<RegisterPerson> = {},
+): RegisterPerson => ({
   id,
   fullName,
   employeeCode: id.toUpperCase(),
@@ -58,7 +62,10 @@ describe("buildRegister", () => {
   });
 
   it("sorts by name so the register reads the same way every day", () => {
-    const rows = buildRegister([person("c", "Zahid"), person("a", "Ali"), person("b", "Bilal")], []);
+    const rows = buildRegister(
+      [person("c", "Zahid"), person("a", "Ali"), person("b", "Bilal")],
+      [],
+    );
 
     expect(rows.map((row) => row.person.fullName)).toEqual(["Ali", "Bilal", "Zahid"]);
   });
@@ -81,7 +88,12 @@ describe("buildRegister", () => {
 describe("summarise", () => {
   it("counts each state, and counts late separately from present", () => {
     const rows = buildRegister(
-      [person("a", "Ali"), person("b", "Bilal"), person("c", "Zahid"), person("d", "Nadia", { requiresAttendance: false })],
+      [
+        person("a", "Ali"),
+        person("b", "Bilal"),
+        person("c", "Zahid"),
+        person("d", "Nadia", { requiresAttendance: false }),
+      ],
       [day("a", { isLate: true, minutesLate: 10 }), day("b", { lastOut: null })],
     );
 

@@ -20,11 +20,7 @@ export default async function MyProfilePage() {
   const supabase = await createClient();
 
   const [{ data: profile }, { data: sites }, { data: departments }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", session.userId)
-      .single(),
+    supabase.from("profiles").select("*").eq("id", session.userId).single(),
     supabase.from("sites").select("id, name"),
     supabase.from("departments").select("id, name"),
   ]);
@@ -66,10 +62,7 @@ export default async function MyProfilePage() {
             )}
           />
           <Fact label="Joined" value={formatDate(profile?.joined_on)} />
-          <Fact
-            label="Clock-in required"
-            value={profile?.requires_attendance ? "Yes" : "No"}
-          />
+          <Fact label="Clock-in required" value={profile?.requires_attendance ? "Yes" : "No"} />
           <Fact label="Status" value={profile?.status ?? "—"} />
           <Fact label="Employee code" value={session.profile.employeeCode} />
         </dl>

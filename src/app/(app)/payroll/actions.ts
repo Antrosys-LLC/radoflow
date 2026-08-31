@@ -13,6 +13,17 @@ export interface PayrollResultMessage {
   message: string;
 }
 
+/**
+ * Shown when a write passed its permission check but changed no row.
+ *
+ * In practice that means the row-level policy and the permission catalogue
+ * disagree. Saying so plainly beats a cheerful success message that leaves
+ * the money unrecorded, and names the thing an administrator would need to
+ * look at.
+ */
+const NOT_WRITTEN =
+  "Nothing was saved — your role can reach this screen but is not permitted to write the change. Ask an administrator to check the payroll permissions.";
+
 /** Opens a pay period. Its dates bound which attendance the run reads. */
 export async function createPeriod(
   _prev: PayrollResultMessage,
@@ -104,7 +115,16 @@ export async function approvePeriod(periodId: string): Promise<PayrollResultMess
   const session = await requirePermission("payroll.approve");
 
   const supabase = await createClient();
-  const { error } = await supabase
+
+  /*
+   * `.select()` so a period that did not move can be told apart from one that
+   * did. The `status = review` guard means matching nothing is an ordinary
+   * outcome here, not just an RLS edge case: the run was approved by someone
+   * else a moment ago, or it was never calculated. Both leave the update
+   * matching zero rows and raising nothing, so without this the second person
+   * to press Approve is told they approved a payroll they did not.
+   */
+  const { data, error } = await supabase
     .from("payroll_periods")
     .update({
       status: "approved",
@@ -112,12 +132,41 @@ export async function approvePeriod(periodId: string): Promise<PayrollResultMess
       approved_at: new Date().toISOString(),
     })
     .eq("id", periodId)
-    .eq("status", "review");
+    .eq("status", "review")
+    .select("id");
 
   if (error) return { ok: false, message: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, message: await explainUnmovedPeriod(supabase, periodId, "review") };
+  }
 
   revalidatePath("/payroll");
   return { ok: true, message: "Payroll approved and ready for disbursement." };
+}
+
+/**
+ * Why a status-guarded update changed nothing.
+ *
+ * Re-reads the period so the message names the real reason. The status is
+ * readable even when the write was refused, and "someone approved this
+ * already" and "your role may not write this" call for completely different
+ * responses from whoever is standing at the screen.
+ */
+async function explainUnmovedPeriod(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  periodId: string,
+  expected: "review" | "approved",
+): Promise<string> {
+  const { data: period } = await supabase
+    .from("payroll_periods")
+    .select("status")
+    .eq("id", periodId)
+    .maybeSingle();
+
+  if (!period) return "That pay period no longer exists.";
+  if (period.status === expected) return NOT_WRITTEN;
+
+  return `This period is "${period.status}", not "${expected}" — someone else may have moved it. Reload the page to see where it stands.`;
 }
 
 /**
@@ -136,19 +185,60 @@ export async function markPeriodPaid(periodId: string): Promise<PayrollResultMes
   const supabase = await createClient();
   const now = new Date().toISOString();
 
-  await supabase
+  /*
+   * The period's state is checked before a single line is touched.
+   *
+   * Marking everyone paid and only then discovering the period cannot be
+   * closed would leave the run's lines settled under a period that is still
+   * open — and on a stale tab, on a period somebody else already paid, that
+   * is the likely outcome rather than a rare one.
+   */
+  const { data: period } = await supabase
+    .from("payroll_periods")
+    .select("status")
+    .eq("id", periodId)
+    .maybeSingle();
+
+  if (!period) return { ok: false, message: "That pay period no longer exists." };
+  if (period.status !== "approved") {
+    return { ok: false, message: await explainUnmovedPeriod(supabase, periodId, "approved") };
+  }
+
+  /*
+   * Lines first, period second, and the error is checked.
+   *
+   * This order matters: closing the period sets `locked`, and a locked period
+   * cannot be recalculated. Locking it and only then failing to settle its
+   * lines would strand the run in a state nobody can repair from the app.
+   * Settling the lines and failing to lock is recoverable — the marks can be
+   * undone and the button pressed again.
+   */
+  const { error: itemsError } = await supabase
     .from("payroll_items")
     .update({ paid_at: now, paid_by: session.userId })
     .eq("period_id", periodId)
-    .is("paid_at", null);
+    .is("paid_at", null)
+    .select("id");
 
-  const { error } = await supabase
+  if (itemsError) {
+    return { ok: false, message: `Nothing was closed — ${itemsError.message}` };
+  }
+
+  const { data: closed, error } = await supabase
     .from("payroll_periods")
     .update({ status: "paid", paid_at: now, locked: true })
     .eq("id", periodId)
-    .eq("status", "approved");
+    .eq("status", "approved")
+    .select("id");
 
   if (error) return { ok: false, message: error.message };
+  if (!closed || closed.length === 0) {
+    return {
+      ok: false,
+      message:
+        "Everyone is marked paid, but the period could not be closed and locked. Check the payroll permissions, then press this again.",
+    };
+  }
 
   revalidatePath("/payroll");
   return { ok: true, message: "Period marked paid and locked." };
@@ -169,12 +259,23 @@ export async function markItemPaid(itemId: string): Promise<PayrollResultMessage
   const guardError = await requirePayableItem(supabase, itemId);
   if (guardError) return { ok: false, message: guardError };
 
-  const { error } = await supabase
+  /*
+   * `.select()` so the affected rows come back and can be counted.
+   *
+   * An UPDATE refused by an RLS USING clause matches zero rows and raises
+   * nothing, so without this a policy that disagrees with the permission
+   * check above would leave the cashier told the money was recorded when no
+   * row moved. On a cash payroll that is the worst possible failure — it is
+   * the record of who has actually been paid.
+   */
+  const { data, error } = await supabase
     .from("payroll_items")
     .update({ paid_at: new Date().toISOString(), paid_by: session.userId })
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .select("id");
 
   if (error) return { ok: false, message: error.message };
+  if (!data || data.length === 0) return { ok: false, message: NOT_WRITTEN };
 
   revalidatePath("/payroll");
   return { ok: true, message: "Marked as paid." };
@@ -185,12 +286,14 @@ export async function markItemUnpaid(itemId: string): Promise<PayrollResultMessa
   await requirePermission("payroll.pay");
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("payroll_items")
     .update({ paid_at: null, paid_by: null })
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .select("id");
 
   if (error) return { ok: false, message: error.message };
+  if (!data || data.length === 0) return { ok: false, message: NOT_WRITTEN };
 
   revalidatePath("/payroll");
   return { ok: true, message: "Payment mark undone." };

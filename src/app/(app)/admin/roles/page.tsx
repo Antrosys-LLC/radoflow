@@ -47,7 +47,5 @@ export default async function RolesPage() {
     permissionIds: permsByRole.get(role.id) ?? [],
   }));
 
-  return (
-    <RolesManager roles={roleRows} permissions={(permissions ?? []) as PermissionRow[]} />
-  );
+  return <RolesManager roles={roleRows} permissions={(permissions ?? []) as PermissionRow[]} />;
 }

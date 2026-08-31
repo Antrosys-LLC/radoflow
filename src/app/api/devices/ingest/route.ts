@@ -76,8 +76,7 @@ export async function POST(request: NextRequest) {
 
   for (const raw of body.punches as AgentPunch[]) {
     const deviceUserId = typeof raw?.deviceUserId === "string" ? raw.deviceUserId.trim() : "";
-    const localTimestamp =
-      typeof raw?.localTimestamp === "string" ? raw.localTimestamp.trim() : "";
+    const localTimestamp = typeof raw?.localTimestamp === "string" ? raw.localTimestamp.trim() : "";
 
     if (!deviceUserId || !isDeviceTimestamp(localTimestamp)) {
       rejected += 1;

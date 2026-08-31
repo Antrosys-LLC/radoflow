@@ -16,8 +16,8 @@ export default async function DeniedPage() {
       </span>
       <h1 className="mt-4 text-lg font-bold text-foreground">Not available for your role</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        The {roleLabel} role does not include this module. If you need access, ask an
-        administrator to grant it — no reinstall or update is required.
+        The {roleLabel} role does not include this module. If you need access, ask an administrator
+        to grant it — no reinstall or update is required.
       </p>
       <Link
         href={landingPathFor(session)}

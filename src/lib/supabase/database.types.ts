@@ -2464,6 +2464,7 @@ export type Database = {
           rank: number
         }[]
       }
+      permissions_of: { Args: { p_user: string }; Returns: string[] }
     }
     Enums: {
       attendance_status:

@@ -8,6 +8,8 @@
  * decides how they are rendered back.
  */
 
+import { zonedWallClockToUtc } from "@/lib/devices/timezone";
+
 export const PAKISTAN_TIMEZONE = "Asia/Karachi";
 export const PAKISTAN_LOCALE = "en-PK";
 export const CURRENCY = "PKR";
@@ -52,6 +54,26 @@ export function todayInPakistan(now: Date = new Date()): string {
     day: "2-digit",
   }).format(now);
   return parts;
+}
+
+/**
+ * The instant a Pakistan calendar day begins, as an ISO string.
+ *
+ * For filtering a `timestamptz` column by "today". Postgres resolves a bare
+ * `2026-08-31T00:00:00` in the *session's* zone, which on Supabase is UTC —
+ * five hours late in Pakistan — so a query written that way silently drops
+ * everything recorded between midnight and 5am local. That is not a quiet
+ * corner: the canteen's night-shift window runs 22:00–02:00, and the gate
+ * takes its first punches before dawn.
+ *
+ * Pass the exclusive upper bound too, from `pakistanDayStartUtc(nextDay)`,
+ * whenever the range needs to end rather than run on forever.
+ */
+export function pakistanDayStartUtc(date: string): string {
+  const instant = zonedWallClockToUtc(`${date} 00:00:00`, PAKISTAN_TIMEZONE);
+  // A malformed date cannot produce a boundary; falling back to the naive
+  // string keeps the caller's query valid rather than throwing at render.
+  return instant ? instant.toISOString() : `${date}T00:00:00Z`;
 }
 
 /** "3 minutes ago" — for device heartbeats and live feeds. */

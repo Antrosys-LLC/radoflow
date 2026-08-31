@@ -89,27 +89,45 @@ Ensure logical visual flow, identical rounded component padding across all pages
 
 ```
 src/
-  app/                     App Router — one folder per route
+  app/
     layout.tsx             <html>/<body>, fonts, base metadata
     providers.tsx          client providers + persistent AppShell
-    page.tsx               /            → dashboard-view.tsx
-    attendance/page.tsx    /attendance  → attendance-view.tsx
-    payroll/page.tsx       /payroll     → payroll-view.tsx
-    admin/page.tsx         /admin       → admin-view.tsx
-    not-found.tsx          404
+    globals.css            Tailwind entry + design tokens
     error.tsx              route error boundary
     global-error.tsx       root-layout error boundary
-    globals.css            Tailwind entry + design tokens
+    not-found.tsx          404
+    login/                 CNIC sign-in
+    auth/reauth/           signs out a session whose access changed
+    (app)/                 every signed-in screen, behind the shell
+      page.tsx             /            dashboard
+      attendance/          register, logs, corrections
+      canteen/             counter screen + meal windows
+      devices/             ZKTeco terminals, [id] detail, enrolments
+      payroll/             periods, runs, payslips
+      rates/               pay rules and late-penalty ladders
+      reports/  assistant/  me/profile/  denied/
+      admin/               users, roles, register digitisation
+    api/                   assistant, exports, health, device ingest
+    iclock/                ADMS endpoints the terminals push to
   components/              app-shell, ui-kit, shadcn/ui
-  data/                    demo dataset
-  hooks/  lib/             shared hooks and utilities
+  hooks/  lib/  types/     shared hooks, domain logic, ambient types
 ```
 
-Each `page.tsx` is a server component that exports `metadata` and renders a
-sibling `*-view.tsx` client component holding the interactive UI.
-
 Routing is folder-based: a route is a directory under `src/app/` containing a
-`page.tsx`. Dynamic segments use `[id]`, catch-alls use `[...slug]`.
+`page.tsx`. Dynamic segments use `[id]`, catch-alls use `[...slug]`. `(app)` is
+a route group — it wraps every signed-in screen in one layout without appearing
+in the URL.
+
+Each `page.tsx` is a server component that exports `metadata`, resolves the
+session with `requireSession`/`requirePermission`, reads its own data, and
+hands it to a sibling client component for the interactive parts. Writes go
+through `"use server"` actions in a sibling `actions.ts`, never through an API
+route.
+
+The money and hour calculations live in pure, tested modules under
+`src/lib/payroll/`, `src/lib/attendance/` and `src/lib/canteen/` — no database
+access, so they can be reasoned about and tested directly. See
+[AGENTS.md](AGENTS.md) before changing any of them.
 
 ## Development
 
@@ -122,11 +140,19 @@ npm i
 npm run dev
 ```
 
-| Script | Does |
-| --- | --- |
-| `npm run dev` | Dev server on http://localhost:3000 |
-| `npm run build` | Production build |
-| `npm start` | Serve the production build |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run format` | Prettier write |
+| Script                 | Does                                               |
+| ---------------------- | -------------------------------------------------- |
+| `npm run dev`          | Dev server on http://localhost:3000                |
+| `npm run build`        | Production build                                   |
+| `npm start`            | Serve the production build                         |
+| `npm test`             | Vitest — the payroll, attendance and device suites |
+| `npm run lint`         | ESLint                                             |
+| `npm run typecheck`    | `tsc --noEmit`                                     |
+| `npm run format`       | Prettier write                                     |
+| `npm run db:start`     | Supabase in Docker                                 |
+| `npm run db:reset`     | Apply migrations + seed                            |
+| `npm run db:types`     | Regenerate `src/lib/supabase/database.types.ts`    |
+| `npm run create-admin` | Provision the first Admin login                    |
+
+Run `npm test` before changing anything under `src/lib/payroll/` or
+`src/lib/attendance/` — those tests encode real pay decisions, not coverage.

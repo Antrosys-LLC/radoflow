@@ -99,8 +99,7 @@ function isDue(device: DeviceRow): boolean {
   if (!device.last_sync_at) return true;
 
   const base = device.sync_interval_seconds * 1000;
-  const interval =
-    device.consecutive_failures >= BACKOFF_AFTER ? base * BACKOFF_MULTIPLIER : base;
+  const interval = device.consecutive_failures >= BACKOFF_AFTER ? base * BACKOFF_MULTIPLIER : base;
 
   /*
    * The tolerance is not cosmetic. last_sync_at is stamped when a sync

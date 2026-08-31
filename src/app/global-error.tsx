@@ -16,7 +16,10 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error(error);
-    reportError(error, { boundary: "root-layout", ...(error.digest ? { digest: error.digest } : {}) });
+    reportError(error, {
+      boundary: "root-layout",
+      ...(error.digest ? { digest: error.digest } : {}),
+    });
   }, [error]);
 
   return (

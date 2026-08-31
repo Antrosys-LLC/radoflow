@@ -24,11 +24,7 @@ describe("dailyHourTotals", () => {
   });
 
   it("splits a long day into duty and overtime", () => {
-    const points = dailyHourTotals(
-      [person("a")],
-      new Map([["a", [day("2026-08-27", 10)]]]),
-      rule,
-    );
+    const points = dailyHourTotals([person("a")], new Map([["a", [day("2026-08-27", 10)]]]), rule);
 
     expect(points).toHaveLength(1);
     expect(points[0]?.duty).toBe(8);

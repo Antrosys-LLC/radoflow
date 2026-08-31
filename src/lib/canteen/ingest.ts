@@ -1,6 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 
-import { parseWallClock } from "@/lib/devices/timezone";
+import { parseWallClock, zonedWallClockToUtc } from "@/lib/devices/timezone";
 import type { IclockPunch } from "@/lib/devices/zkteco/iclock";
 
 import { decideMealScan, type MealScanOutcome, type MealWindow } from "./meals";
@@ -17,6 +17,16 @@ import { decideMealScan, type MealScanOutcome, type MealWindow } from "./meals";
  * discard the collisions silently — and a collision is exactly the event this
  * feature exists to record. Volume makes this affordable: a canteen sees a
  * few hundred scans across a serving, not the continuous stream a gate does.
+ *
+ * Both writes are anchored to the instant the terminal recorded, and the scan
+ * log is deduplicated on it. A terminal replays its whole buffer after a
+ * network drop — that is the normal behaviour the attendance path already
+ * relies on `punches_dedupe` to absorb. Without the same protection here, a
+ * replay re-runs every scan against a `meal_claims` table that now holds the
+ * original serving, so each one comes back 23505 and is logged a second time
+ * as a refusal. A dropped connection would then read as a canteen full of
+ * people caught going back for seconds — inventing exactly the fraud this
+ * feature was built to measure.
  */
 
 export interface MealIngestResult {
@@ -70,13 +80,25 @@ export async function ingestMealScans(
   for (const punch of punches) {
     // The terminal reports the clock on the factory wall with no zone. Meal
     // windows are written in that same local time, so they are compared
-    // directly rather than converted — the instant only matters for the audit
-    // trail, which uses the row's own default.
+    // directly rather than converted. The instant is resolved separately just
+    // below, for the columns that record when this actually happened.
     const wall = parseWallClock(punch.localTimestamp);
     if (!wall) continue;
 
     const localDate = `${wall.year}-${String(wall.month).padStart(2, "0")}-${String(wall.day).padStart(2, "0")}`;
     const localTime = `${String(wall.hour).padStart(2, "0")}:${String(wall.minute).padStart(2, "0")}:${String(wall.second).padStart(2, "0")}`;
+
+    /*
+     * The real instant of the scan, not the instant this row happens to be
+     * written. Both default to now() in the schema, which is close enough
+     * while the terminal is pushing live and wrong by hours the moment a
+     * buffered batch arrives — putting a whole morning's queue at whatever
+     * minute the network came back, and taking the counter's "when did they
+     * eat?" answer with it.
+     */
+    const scannedAt = zonedWallClockToUtc(punch.localTimestamp, device.timezone || "UTC");
+    if (!scannedAt) continue;
+    const scannedAtIso = scannedAt.toISOString();
 
     const profileId = profileByDeviceUser.get(punch.deviceUserId) ?? null;
 
@@ -110,6 +132,7 @@ export async function ingestMealScans(
         site_id: device.site_id,
         meal_window_id: provisional.window.id,
         served_on: provisional.servedOn,
+        claimed_at: scannedAtIso,
         device_id: device.id,
         device_user_id: punch.deviceUserId,
         source: "device",
@@ -121,15 +144,33 @@ export async function ingestMealScans(
       }
     }
 
-    await supabase.from("meal_scan_log").insert({
-      device_id: device.id,
-      device_user_id: punch.deviceUserId,
-      profile_id: profileId,
-      site_id: device.site_id,
-      meal_window_id: provisional.window?.id ?? null,
-      outcome,
-      served_on: provisional.servedOn,
-    });
+    /*
+     * `ignoreDuplicates` against meal_scan_log_dedupe, the same shape and the
+     * same reasoning as `punches_dedupe`: one terminal reading, recorded once,
+     * however many times the terminal sends it.
+     */
+    const { data: logged, error: logError } = await supabase
+      .from("meal_scan_log")
+      .upsert(
+        {
+          device_id: device.id,
+          device_user_id: punch.deviceUserId,
+          profile_id: profileId,
+          site_id: device.site_id,
+          meal_window_id: provisional.window?.id ?? null,
+          outcome,
+          served_on: provisional.servedOn,
+          scanned_at: scannedAtIso,
+        },
+        { onConflict: "device_id,device_user_id,scanned_at", ignoreDuplicates: true },
+      )
+      .select("id");
+
+    if (logError) throw new Error(`Could not record a canteen scan: ${logError.message}`);
+
+    // A scan already on record is not counted again — the tallies describe
+    // this serving, not how many times the terminal managed to deliver it.
+    if (!logged || logged.length === 0) continue;
 
     if (outcome === "served") result.served += 1;
     else if (outcome === "duplicate") result.duplicates += 1;

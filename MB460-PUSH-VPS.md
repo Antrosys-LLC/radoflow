@@ -5,15 +5,15 @@ with no software on the factory network.
 
 ## Why a VPS is needed at all
 
-The MB460 has ADMS (*Cloud Server Setting*), so it can push. But three firmware
+The MB460 has ADMS (_Cloud Server Setting_), so it can push. But three firmware
 facts have to be satisfied at once, and a platform like Railway satisfies none
 of them:
 
-| The terminal needs | Railway gives you |
-| --- | --- |
-| A **fixed address** it can reach | A domain on shared edge IPs that change |
-| That address as **digits** — the Server Address field is numeric-only | A hostname |
-| Usually **plain HTTP**; most ZKTeco ADMS builds have no TLS | HTTPS only |
+| The terminal needs                                                    | Railway gives you                       |
+| --------------------------------------------------------------------- | --------------------------------------- |
+| A **fixed address** it can reach                                      | A domain on shared edge IPs that change |
+| That address as **digits** — the Server Address field is numeric-only | A hostname                              |
+| Usually **plain HTTP**; most ZKTeco ADMS builds have no TLS           | HTTPS only                              |
 
 A VPS fixes all three. Every Hostinger VPS plan includes a dedicated static
 IPv4 — that is the piece Railway cannot provide.
@@ -62,14 +62,14 @@ Copy `scripts/rado-relay.mjs` to `/opt/radoflow/`.
 
 ### The four settings
 
-| Setting | What to put | Where it comes from |
-| --- | --- | --- |
-| `RELAY_UPSTREAM` | Your Railway public URL, e.g. `https://radoflow-production-a1b2.up.railway.app` | Railway → your service → **Settings → Networking → Public Networking**. Origin only — no trailing slash, no path |
-| `RELAY_SECRET` | A long random string | Generate with `openssl rand -hex 32`. Must be **identical** to `DEVICE_INGEST_SECRET` on Railway, or every push returns `401` |
-| `RELAY_PORT` | `8080` | Keep unless the port is taken. Must match the terminal's *Server Port* and your firewall rule |
-| `RELAY_ALLOWED_IPS` | The factory's **public** IP, e.g. `39.51.204.118` | Browse to `ifconfig.me` from a machine **on the factory network** |
+| Setting             | What to put                                                                     | Where it comes from                                                                                                           |
+| ------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `RELAY_UPSTREAM`    | Your Railway public URL, e.g. `https://radoflow-production-a1b2.up.railway.app` | Railway → your service → **Settings → Networking → Public Networking**. Origin only — no trailing slash, no path              |
+| `RELAY_SECRET`      | A long random string                                                            | Generate with `openssl rand -hex 32`. Must be **identical** to `DEVICE_INGEST_SECRET` on Railway, or every push returns `401` |
+| `RELAY_PORT`        | `8080`                                                                          | Keep unless the port is taken. Must match the terminal's _Server Port_ and your firewall rule                                 |
+| `RELAY_ALLOWED_IPS` | The factory's **public** IP, e.g. `39.51.204.118`                               | Browse to `ifconfig.me` from a machine **on the factory network**                                                             |
 
-> **The common mistake:** `RELAY_ALLOWED_IPS` is the factory's *public* address —
+> **The common mistake:** `RELAY_ALLOWED_IPS` is the factory's _public_ address —
 > what the internet sees the router as. It is **not** `192.168.1.202` or any
 > other `192.168.x.x` address. A LAN address there matches nothing and silently
 > blocks every punch.
@@ -146,23 +146,23 @@ if you set an allowlist and are not on the factory network.
 **Menu → Comm. → Ethernet** — the terminal now needs real internet access,
 which it does not have with a `0.0.0.0` gateway:
 
-| Setting | Value |
-| --- | --- |
-| DHCP | **OFF** |
-| IP Address | `192.168.1.202` |
-| Subnet Mask | `255.255.255.0` |
+| Setting     | Value                                                              |
+| ----------- | ------------------------------------------------------------------ |
+| DHCP        | **OFF**                                                            |
+| IP Address  | `192.168.1.202`                                                    |
+| Subnet Mask | `255.255.255.0`                                                    |
 | **Gateway** | **`192.168.1.1`** — required; `0.0.0.0` leaves it stuck on the LAN |
-| **DNS** | `8.8.8.8` — harmless, and needed if you ever switch to a domain |
+| **DNS**     | `8.8.8.8` — harmless, and needed if you ever switch to a domain    |
 
 **Menu → Comm. → Cloud Server Setting**
 
-| Setting | Value |
-| --- | --- |
-| Server Mode | `ADMS` |
+| Setting                | Value                                                                   |
+| ---------------------- | ----------------------------------------------------------------------- |
+| Server Mode            | `ADMS`                                                                  |
 | **Enable Domain Name** | **OFF** — you are using an IP, so the numeric-only field is now correct |
-| Server Address | your VPS IPv4, e.g. `203.0.113.45` |
-| Server Port | `8080` |
-| Enable Proxy Server | OFF |
+| Server Address         | your VPS IPv4, e.g. `203.0.113.45`                                      |
+| Server Port            | `8080`                                                                  |
+| Enable Proxy Server    | OFF                                                                     |
 
 Save and **reboot the terminal**.
 
@@ -175,7 +175,7 @@ an IP is exactly what you want to enter.
 
 **Biometric Devices → Add terminal**:
 
-- **Serial number** — exactly what *Menu → System Info* shows. The device sends
+- **Serial number** — exactly what _Menu → System Info_ shows. The device sends
   it as `?SN=` on every request, and RadoFlow rejects an unknown serial.
 - **Mode** — Push.
 - IP address and COMM KEY are not used in push mode; fill them only if you also
@@ -198,18 +198,18 @@ A successful push logs:
 ```
 
 Then check **Biometric Devices** in RadoFlow — the terminal should show
-*online* with a fresh heartbeat, and the punch on the device page.
+_online_ with a fresh heartbeat, and the punch on the device page.
 
 ---
 
 ## What happens when things break
 
-| Situation | Behaviour |
-| --- | --- |
-| Railway is down or redeploying | Relay returns `502`, the terminal keeps the batch and retries. No punches lost. |
-| VPS reboots | systemd restarts the relay; the terminal retries in the meantime. |
-| Wrong secret | Upstream returns `401`, relay passes it through, terminal retries. Fix `RELAY_SECRET`. |
-| Serial not registered | Upstream returns `500`; add the terminal in RadoFlow. |
+| Situation                      | Behaviour                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------------- |
+| Railway is down or redeploying | Relay returns `502`, the terminal keeps the batch and retries. No punches lost.        |
+| VPS reboots                    | systemd restarts the relay; the terminal retries in the meantime.                      |
+| Wrong secret                   | Upstream returns `401`, relay passes it through, terminal retries. Fix `RELAY_SECRET`. |
+| Serial not registered          | Upstream returns `500`; add the terminal in RadoFlow.                                  |
 
 The relay never converts a failure into a success. An ADMS terminal that
 receives `OK` deletes its copy of the batch, so acknowledging a request that
@@ -235,13 +235,13 @@ The on-site agent (see [TERMINALS-SETUP.md](TERMINALS-SETUP.md)) needs no VPS
 and no static IP at all — a PC inside the factory polls the terminals and posts
 outward. Trade-offs:
 
-|  | VPS relay (push) | On-site agent (pull) |
-| --- | --- | --- |
-| Punches appear | Instantly | Within the poll interval, default 60s |
-| Extra cost | A VPS | None, if a PC is already on |
-| Needs a static IP | Yes | No |
-| Works with the K50 | No — it has no ADMS | Yes |
-| Runs where | The VPS | A factory PC |
+|                    | VPS relay (push)    | On-site agent (pull)                  |
+| ------------------ | ------------------- | ------------------------------------- |
+| Punches appear     | Instantly           | Within the poll interval, default 60s |
+| Extra cost         | A VPS               | None, if a PC is already on           |
+| Needs a static IP  | Yes                 | No                                    |
+| Works with the K50 | No — it has no ADMS | Yes                                   |
+| Runs where         | The VPS             | A factory PC                          |
 
 Because the **K50 cannot push at all**, running the agent is unavoidable if you
 want that terminal included. In that case the agent can cover the MB460 too,

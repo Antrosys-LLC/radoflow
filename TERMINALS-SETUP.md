@@ -11,9 +11,9 @@ to reach out, never the other way around.
 
 Two device-specific reasons this is the only reliable route:
 
-- **K50** — its Comm menu has only *Ethernet* and *PC Connection*. No ADMS, so
+- **K50** — its Comm menu has only _Ethernet_ and _PC Connection_. No ADMS, so
   it cannot upload anywhere. It only answers when something asks.
-- **MB460** — it *does* have *Cloud Server Setting*, but pointing it at a
+- **MB460** — it _does_ have _Cloud Server Setting_, but pointing it at a
   Railway deployment does not work. Railway gives you a **domain**, served from
   shared edge IPs that change without notice. A device needs a fixed address:
   a hardcoded IP will eventually stop being yours, and a domain needs both the
@@ -40,14 +40,14 @@ Do this on **each** device. Everything needed is on one screen.
 
 **Menu → Comm. → Ethernet**
 
-| Setting | K50 | MB460 | Why |
-| --- | --- | --- | --- |
-| **DHCP** | **OFF** | **OFF** | The most important one. On DHCP the router can hand out a different address after a power cut, and the agent then talks to nothing. |
-| IP Address | `192.168.1.201` | `192.168.1.202` | Must be unique, and on the same subnet as the agent PC |
-| Subnet Mask | `255.255.255.0` | `255.255.255.0` | |
-| Gateway | `192.168.1.1` | `192.168.1.1` | `0.0.0.0` also works — see below |
-| DNS | `0.0.0.0` | `0.0.0.0` | Not used; the terminals never resolve names |
-| TCP COMM Port | `4370` | `4370` | The port the agent connects to |
+| Setting       | K50             | MB460           | Why                                                                                                                                 |
+| ------------- | --------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **DHCP**      | **OFF**         | **OFF**         | The most important one. On DHCP the router can hand out a different address after a power cut, and the agent then talks to nothing. |
+| IP Address    | `192.168.1.201` | `192.168.1.202` | Must be unique, and on the same subnet as the agent PC                                                                              |
+| Subnet Mask   | `255.255.255.0` | `255.255.255.0` |                                                                                                                                     |
+| Gateway       | `192.168.1.1`   | `192.168.1.1`   | `0.0.0.0` also works — see below                                                                                                    |
+| DNS           | `0.0.0.0`       | `0.0.0.0`       | Not used; the terminals never resolve names                                                                                         |
+| TCP COMM Port | `4370`          | `4370`          | The port the agent connects to                                                                                                      |
 
 **On the Gateway.** With `0.0.0.0` a terminal can still reach anything on
 `192.168.1.x`, which includes the agent PC — so that setting works. Setting it
@@ -95,16 +95,16 @@ its address has been taken by another device.
 Sign in as Admin or CEO, then **Biometric Devices → Add terminal**, once per
 device.
 
-| Field | Value |
-| --- | --- |
-| Terminal name | e.g. `Dyeing — main gate` |
-| Factory | the site it belongs to |
-| Serial number | exactly what *System Info* showed |
-| Model | `ZKTeco K50` or `ZKTeco MB460` |
+| Field           | Value                                          |
+| --------------- | ---------------------------------------------- |
+| Terminal name   | e.g. `Dyeing — main gate`                      |
+| Factory         | the site it belongs to                         |
+| Serial number   | exactly what _System Info_ showed              |
+| Model           | `ZKTeco K50` or `ZKTeco MB460`                 |
 | Connection mode | **Pull — we connect to the terminal over TCP** |
-| IP address | `192.168.1.201` / `192.168.1.202` |
-| Port | `4370` |
-| COMM KEY | from *PC Connection*; leave blank if `0` |
+| IP address      | `192.168.1.201` / `192.168.1.202`              |
+| Port            | `4370`                                         |
+| COMM KEY        | from _PC Connection_; leave blank if `0`       |
 
 ---
 
@@ -160,9 +160,9 @@ otherwise looks like "everything is running but no attendance appears".
 K50-DYE-0001@192.168.1.201,MB460-0001@192.168.1.202#1234
 ```
 
-| Variable | Default | Notes |
-| --- | --- | --- |
-| `RADO_INTERVAL_SECONDS` | `60` | How often to poll |
+| Variable                | Default | Notes                                                                       |
+| ----------------------- | ------- | --------------------------------------------------------------------------- |
+| `RADO_INTERVAL_SECONDS` | `60`    | How often to poll                                                           |
 | `RADO_CLEAR_DEVICE_LOG` | `false` | Wipes the terminal log after upload. Leave off — the device keeps no backup |
 
 Re-reading the same records is harmless: ingestion is idempotent, so a replay
@@ -174,11 +174,11 @@ stores nothing twice and cannot double-count anyone's hours.
 
 **Windows** — Task Scheduler → Create Task:
 
-- *General*: **Run whether user is logged on or not**
-- *Triggers*: **At startup**
-- *Actions*: Program `node`, Arguments `C:\radoflow\rado-agent.mjs`, Start in
+- _General_: **Run whether user is logged on or not**
+- _Triggers_: **At startup**
+- _Actions_: Program `node`, Arguments `C:\radoflow\rado-agent.mjs`, Start in
   the folder holding the script
-- *Settings*: **If the task fails, restart every 1 minute**
+- _Settings_: **If the task fails, restart every 1 minute**
 
 Set the environment variables as System variables, or wrap the command in a
 `.bat` that sets them first.
@@ -194,8 +194,8 @@ Creating a user with code `RD-1042` automatically creates the mapping for every
 terminal at that factory, so enrol that worker on the device under PIN
 `RD-1042` — not `1`.
 
-If a terminal ID arrives that nobody owns, the device page shows *"N terminal
-IDs not linked to anyone"*. The punches are still stored, and linking the ID
+If a terminal ID arrives that nobody owns, the device page shows _"N terminal
+IDs not linked to anyone"_. The punches are still stored, and linking the ID
 afterwards attributes them retroactively — nothing is lost.
 
 > The K50 currently has one enrolment under ID `1`. Either re-enrol that finger

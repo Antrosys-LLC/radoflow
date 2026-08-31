@@ -2,7 +2,7 @@
 
 ## Why a clean build can still return "Internal Server Error"
 
-Nothing in this app needs Supabase to *build* — pages are compiled without ever
+Nothing in this app needs Supabase to _build_ — pages are compiled without ever
 connecting. But the middleware runs on **every** request and constructs a
 Supabase client from environment variables. If those are not set on the host,
 that constructor throws before any page renders, so every route (including the
@@ -21,12 +21,12 @@ curl https://your-app.up.railway.app/api/health
 
 Set these in Railway → your service → **Variables**.
 
-| Variable | Needed at | Where to find it |
-| --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | **build and runtime** | Supabase → Project Settings → API |
+| Variable                        | Needed at             | Where to find it                  |
+| ------------------------------- | --------------------- | --------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`      | **build and runtime** | Supabase → Project Settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **build and runtime** | Supabase → Project Settings → API |
-| `SUPABASE_SERVICE_ROLE_KEY` | runtime | Supabase → Project Settings → API |
-| `DEVICE_INGEST_SECRET` | runtime | `openssl rand -hex 32` |
+| `SUPABASE_SERVICE_ROLE_KEY`     | runtime               | Supabase → Project Settings → API |
+| `DEVICE_INGEST_SECRET`          | runtime               | `openssl rand -hex 32`            |
 
 The two `NEXT_PUBLIC_` values matter at **build** time as well. Next inlines
 them into the browser bundle when it compiles, so a build that ran without them
@@ -62,7 +62,7 @@ address, so:
 - **Push mode needs a path inward.** The terminal uploads to
   `/iclock/cdata`, so it must be able to reach the deployed URL. That means
   outbound internet access from the factory network, with the public URL and
-  port set in the terminal's *Menu → Comm → Cloud Server*.
+  port set in the terminal's _Menu → Comm → Cloud Server_.
 
 Two workable arrangements:
 

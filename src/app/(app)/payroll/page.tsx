@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { requirePermission } from "@/lib/auth/session";
+import { requireAnyPermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
 import { PayrollClient, type ItemRow, type PeriodRow } from "./payroll-client";
@@ -17,7 +17,7 @@ export default async function PayrollPage({
 }: {
   searchParams: Promise<{ period?: string }>;
 }) {
-  const session = await requirePermission("payroll.view");
+  const session = await requireAnyPermission(["payroll.view", "payroll.run"]);
   const { period: requestedPeriod } = await searchParams;
   const supabase = await createClient();
 

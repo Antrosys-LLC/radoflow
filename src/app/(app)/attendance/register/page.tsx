@@ -3,7 +3,7 @@ import { CalendarDays, Clock, LogIn, LogOut, TriangleAlert, UserCheck, UserX } f
 
 import { AutoRefresh } from "@/components/auto-refresh";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
-import { requirePermission } from "@/lib/auth/session";
+import { requireAnyPermission } from "@/lib/auth/session";
 import {
   buildRegister,
   summarise,
@@ -45,7 +45,7 @@ export default async function RegisterPage({
 }: {
   searchParams: Promise<{ date?: string; q?: string; dept?: string }>;
 }) {
-  const session = await requirePermission("attendance.view");
+  const session = await requireAnyPermission(["attendance.view", "attendance.view.all"]);
   const params = await searchParams;
   const supabase = await createClient();
 

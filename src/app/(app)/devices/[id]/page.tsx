@@ -5,7 +5,7 @@ import { ArrowLeft, Fingerprint, LogIn, LogOut, Users } from "lucide-react";
 
 import { AutoRefresh } from "@/components/auto-refresh";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
-import { requirePermission } from "@/lib/auth/session";
+import { requireAnyPermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatTime, timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,13 @@ export const metadata: Metadata = {
 
 export default async function DeviceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await requirePermission("devices.view");
+  /*
+   * The same pair the Biometric Devices menu entry and the list page ask for.
+   * Guarding this on `devices.view` alone let a role holding only
+   * `devices.manage` see the menu, open the list, and land on /denied when it
+   * tapped a terminal — the drift `requireAnyPermission` exists to prevent.
+   */
+  const session = await requireAnyPermission(["devices.view", "devices.manage"]);
   const canManage = session.permissions.has("devices.manage");
 
   const supabase = await createClient();

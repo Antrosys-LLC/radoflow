@@ -39,10 +39,7 @@ function secretMatches(provided: string | null): boolean {
 }
 
 function readSecret(request: NextRequest): string | null {
-  return (
-    request.headers.get("x-device-secret") ??
-    request.nextUrl.searchParams.get("secret")
-  );
+  return request.headers.get("x-device-secret") ?? request.nextUrl.searchParams.get("secret");
 }
 
 /**

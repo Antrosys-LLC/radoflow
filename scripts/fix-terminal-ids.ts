@@ -243,10 +243,7 @@ async function main(): Promise<void> {
   // ---- 2. orphaned punches ----------------------------------------------
   let adopted = 0;
   for (const { punch, profileId } of adoptable) {
-    const { error } = await db
-      .from("punches")
-      .update({ profile_id: profileId })
-      .eq("id", punch.id);
+    const { error } = await db.from("punches").update({ profile_id: profileId }).eq("id", punch.id);
 
     if (error) console.log(`  ! punch ${punch.id}: ${error.message}`);
     else adopted += 1;
@@ -269,7 +266,9 @@ async function main(): Promise<void> {
   }
   console.log(`Attendance days rebuilt: ${rebuilt}`);
   console.log("\nDone. To undo, from the repo root:");
-  console.log(`  JITI_ALIAS='{"@":"E:/radoflow/src"}' npx jiti scripts/fix-terminal-ids.ts --revert ${backupFile}`);
+  console.log(
+    `  JITI_ALIAS='{"@":"E:/radoflow/src"}' npx jiti scripts/fix-terminal-ids.ts --revert ${backupFile}`,
+  );
 }
 
 await main();

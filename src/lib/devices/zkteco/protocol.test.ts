@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  ackResponse,
-  buildHandshakeResponse,
-  parseAttlog,
-  setUserCommand,
-} from "./iclock";
+import { ackResponse, buildHandshakeResponse, parseAttlog, setUserCommand } from "./iclock";
 import {
   CMD,
   checksum16,

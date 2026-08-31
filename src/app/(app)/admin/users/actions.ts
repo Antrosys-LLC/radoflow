@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requirePermission } from "@/lib/auth/session";
+import { requirePermission, type Session } from "@/lib/auth/session";
 import { cnicLoginEmail, formatCnic, isValidCnic } from "@/lib/cnic";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -26,9 +26,17 @@ function text(form: FormData, key: string): string {
  * The employee code doubles as the ZKTeco enrolment id: a trigger creates the
  * terminal mapping automatically, so the number typed into the K50 is the same
  * one the ERP knows.
+ *
+ * Enrolling someone and deciding what they may do are two different jobs, held
+ * by two different capabilities — `setUserRole` has always required
+ * `access.manage` to change an existing person's role. The same rule has to
+ * apply on the way in: without it, `people.manage` alone could create an
+ * account, attach the Admin role to it, and set its password, which is a
+ * complete route from "may enrol staff" to superuser. Creating someone with no
+ * role at all stays open to `people.manage`, because that is the ordinary case.
  */
 export async function createUser(_prev: UserResult, form: FormData): Promise<UserResult> {
-  await requirePermission("people.manage");
+  const session = await requirePermission("people.manage");
 
   const cnic = formatCnic(text(form, "cnic"));
   const password = text(form, "password");
@@ -45,6 +53,19 @@ export async function createUser(_prev: UserResult, form: FormData): Promise<Use
   }
   if (password.length < 8) {
     return { ok: false, message: "The password must be at least 8 characters." };
+  }
+
+  /*
+   * Refused before the login is created, not after: a half-made account that
+   * exists but was never given the role the operator asked for is worse than
+   * a plain refusal, because nothing on the screen would say so.
+   */
+  if (roleId && !session.isSuperuser && !session.permissions.has("access.manage")) {
+    return {
+      ok: false,
+      message:
+        "You can add people but not decide what they may do. Create them with no role, then ask someone who manages access to assign one.",
+    };
   }
 
   // The CNIC is what the person types to sign in. Auth still needs an address,
@@ -113,20 +134,100 @@ export async function createUser(_prev: UserResult, form: FormData): Promise<Use
 }
 
 /**
+ * Whether the caller may administer `targetId`'s account.
+ *
+ * `people.manage` exists so the office can enrol, correct and suspend workers.
+ * Two of the things it reaches stop being staff administration when pointed at
+ * an administrator:
+ *
+ *  - setting a password hands the account over — whoever types the new one can
+ *    sign in as that person and do everything they can do;
+ *  - suspending an account takes it offline, and because a payroll run reads
+ *    only `status = 'active'` profiles, drops that person from their own pay.
+ *
+ * So the question is not "may this person administer staff" — `people.manage`
+ * already answered that — but "does reaching this account get them something
+ * they do not already hold".
+ *
+ * The line is drawn at `access.manage`, the capability to grant any other
+ * capability to anyone, including oneself. Reaching an account that holds it is
+ * not a lateral move into someone else's job; it is a route to every job.
+ * Superusers need no separate check because `permissions_of()` resolves them to
+ * the whole catalogue, so they hold `access.manage` like everything else — one
+ * condition covers both Admin/CEO and any runtime role granted the key.
+ *
+ * Everything below that line stays open, and has to: the office resetting a
+ * loom operator's password is the reason this feature exists, and a clerk does
+ * not hold `leave.request` or `dashboard.employee` themselves. Refusing
+ * anything the clerk cannot personally do would block the only case that
+ * matters while adding nothing — those keys cannot be parlayed into more.
+ *
+ * Status changes have a second line of defence in the database
+ * (`profiles_guard_privileged_status`). Password resets do not and cannot: they
+ * go through the GoTrue admin API under the service key, which no policy or
+ * trigger ever sees. There, uniquely in this system, this check *is* the
+ * protection.
+ */
+async function mayAdministerAccount(
+  session: Session,
+  targetId: string,
+  /** What is being attempted, for the refusal: "reset its password". */
+  act: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (session.permissions.has("access.manage")) return { ok: true };
+
+  // Acting on your own account gains you nothing you did not have.
+  if (targetId === session.userId) return { ok: true };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("permissions_of", { p_user: targetId });
+
+  /*
+   * A failure here refuses rather than waving through. The whole point is to
+   * establish that the account is safe to reach, and an unanswered question is
+   * not a yes.
+   */
+  if (error) {
+    return { ok: false, message: `Could not check that account's access: ${error.message}` };
+  }
+
+  const holdsAccessManage = (data ?? []).some((key) =>
+    typeof key === "string"
+      ? key === "access.manage"
+      : String((key as { permissions_of?: string }).permissions_of) === "access.manage",
+  );
+
+  if (holdsAccessManage) {
+    return {
+      ok: false,
+      message: `That account can grant access to anyone, so only someone who manages access may ${act}.`,
+    };
+  }
+
+  return { ok: true };
+}
+
+/**
  * Sets someone's password to a value the administrator chooses.
  *
  * Workers forget passwords and have no mailbox to receive a reset link, so the
  * office sets a new one and tells them in person. The value is written to the
  * auth record and never stored anywhere readable — it is echoed back to the
  * administrator once, in the response, so they can pass it on.
+ *
+ * Guarded by {@link mayAdministerAccount}: `people.manage` is what lets someone
+ * reset a worker's password, not what lets them reset an administrator's.
  */
 export async function setUserPassword(userId: string, password: string): Promise<UserResult> {
-  await requirePermission("people.manage");
+  const session = await requirePermission("people.manage");
 
   if (!userId) return { ok: false, message: "No user selected." };
   if (password.length < 8) {
     return { ok: false, message: "The password must be at least 8 characters." };
   }
+
+  const allowed = await mayAdministerAccount(session, userId, "reset its password");
+  if (!allowed.ok) return { ok: false, message: allowed.message };
 
   const admin = createServiceClient();
   const { error } = await admin.auth.admin.updateUserById(userId, { password });
@@ -260,15 +361,50 @@ export async function updateUserProfile(_prev: UserResult, form: FormData): Prom
   return { ok: true, message: `${fullName}'s profile updated.` };
 }
 
+/**
+ * Suspends an account, or brings a suspended one back.
+ *
+ * Guarded by {@link mayAdministerAccount} for the same reason the password
+ * reset is: suspension is not only a lockout. A payroll run reads profiles with
+ * `status = 'active'`, so suspending someone also removes them from their own
+ * pay — and pointed at the CEO by a clerk holding nothing but `people.manage`,
+ * that is neither staff administration nor anything the office intended to
+ * authorise.
+ *
+ * The database refuses this too, via `profiles_guard_privileged_status`. The
+ * check here exists so the refusal arrives as a sentence someone can act on
+ * rather than a raw Postgres error.
+ */
 export async function setUserStatus(
   userId: string,
   status: "active" | "suspended",
 ): Promise<UserResult> {
-  await requirePermission("people.manage");
+  const session = await requirePermission("people.manage");
+
+  if (!userId) return { ok: false, message: "No user selected." };
+
+  const act = status === "active" ? "reactivate it" : "suspend it";
+  const allowed = await mayAdministerAccount(session, userId, act);
+  if (!allowed.ok) return { ok: false, message: allowed.message };
 
   const supabase = await createClient();
-  const { error } = await supabase.from("profiles").update({ status }).eq("id", userId);
+
+  /*
+   * `.select()` so a row the policy filtered out is not reported as a change.
+   * An UPDATE refused by a USING clause matches nothing and raises nothing,
+   * which would otherwise leave an operator certain they had suspended
+   * somebody who is still able to sign in.
+   */
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({ status })
+    .eq("id", userId)
+    .select("id");
+
   if (error) return { ok: false, message: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, message: "Nothing changed — that account is not yours to administer." };
+  }
 
   revalidatePath("/admin/users");
   return { ok: true, message: status === "active" ? "Account reactivated." : "Account suspended." };

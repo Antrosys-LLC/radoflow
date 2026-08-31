@@ -373,7 +373,13 @@ function inspect(device) {
     let sessionId = 0;
     let replyId = 0;
     let settled = false;
-    const info = { serialNumber: null, firmware: null, deviceTime: null, users: null, records: null };
+    const info = {
+      serialNumber: null,
+      firmware: null,
+      deviceTime: null,
+      users: null,
+      records: null,
+    };
     const queue = ["auth?", "~SerialNumber", "FirmVer", "sizes", "done"];
     let step = 0;
 
@@ -410,7 +416,8 @@ function inspect(device) {
     const advance = () => {
       step += 1;
       const next = queue[step];
-      if (next === "~SerialNumber" || next === "FirmVer") send(CMD.DEVICE, Buffer.from(next, "ascii"));
+      if (next === "~SerialNumber" || next === "FirmVer")
+        send(CMD.DEVICE, Buffer.from(next, "ascii"));
       else if (next === "sizes") send(CMD.FREE_SIZES);
       else finish(null, info);
     };
@@ -438,7 +445,9 @@ function inspect(device) {
             continue;
           }
           if (reply.command !== CMD.ACK_OK) {
-            finish(new Error(`Terminal rejected the connection or COMM KEY (reply ${reply.command})`));
+            finish(
+              new Error(`Terminal rejected the connection or COMM KEY (reply ${reply.command})`),
+            );
             return;
           }
           advance();

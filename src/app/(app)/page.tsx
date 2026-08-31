@@ -49,9 +49,7 @@ export default async function DashboardPage() {
   const today = todayInPakistan();
 
   const [liveResult, meResult, payrollResult, devicesResult, deptResult] = await Promise.all([
-    seesFloor
-      ? supabase.from("live_attendance").select("*")
-      : Promise.resolve({ data: null }),
+    seesFloor ? supabase.from("live_attendance").select("*") : Promise.resolve({ data: null }),
     supabase
       .from("attendance_days")
       .select("first_in, last_out, regular_hours, minutes_late, is_late, status")
@@ -68,7 +66,9 @@ export default async function DashboardPage() {
     seesDevices
       ? supabase.from("devices").select("id, name, status, last_seen_at").eq("is_active", true)
       : Promise.resolve({ data: null }),
-    seesDirectory ? supabase.from("departments").select("id, name") : Promise.resolve({ data: null }),
+    seesDirectory
+      ? supabase.from("departments").select("id, name")
+      : Promise.resolve({ data: null }),
   ]);
 
   const live = liveResult.data ?? [];
@@ -266,8 +266,7 @@ export default async function DashboardPage() {
                   <ArrowRight className="size-4" />
                 </Link>
               }
-            >
-            </SectionTitle>
+            ></SectionTitle>
 
             {byDepartment.size === 0 ? (
               <Empty text="Nobody is set to require attendance yet." />
@@ -286,9 +285,7 @@ export default async function DashboardPage() {
 
             {missing.length > 0 ? (
               <div className="mt-5 rounded-2xl bg-danger-soft p-4">
-                <p className="text-sm font-bold text-danger">
-                  {missing.length} not checked in
-                </p>
+                <p className="text-sm font-bold text-danger">{missing.length} not checked in</p>
                 <p className="mt-1 text-xs text-foreground">
                   {missing
                     .slice(0, 6)

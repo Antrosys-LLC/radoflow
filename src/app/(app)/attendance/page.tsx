@@ -3,7 +3,7 @@ import { CircleDot, Clock, LogIn, TriangleAlert, UserCheck, Users } from "lucide
 
 import { AutoRefresh } from "@/components/auto-refresh";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
-import { requirePermission } from "@/lib/auth/session";
+import { requireAnyPermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { formatHours, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -20,20 +20,25 @@ type LiveStatus = "working" | "finished" | "missing" | "not_started" | "no_shift
 
 const STATUS_META: Record<LiveStatus, { label: string; tone: string; dot: string }> = {
   working: { label: "Working now", tone: "bg-success-soft text-success", dot: "bg-success" },
-  finished: { label: "Shift finished", tone: "bg-secondary text-muted-foreground", dot: "bg-muted-foreground" },
+  finished: {
+    label: "Shift finished",
+    tone: "bg-secondary text-muted-foreground",
+    dot: "bg-muted-foreground",
+  },
   missing: { label: "Not checked in", tone: "bg-danger-soft text-danger", dot: "bg-danger" },
-  not_started: { label: "Shift not started", tone: "bg-warning-soft text-warning", dot: "bg-warning" },
+  not_started: {
+    label: "Shift not started",
+    tone: "bg-warning-soft text-warning",
+    dot: "bg-warning",
+  },
   no_shift: { label: "No shift assigned", tone: "bg-warning-soft text-warning", dot: "bg-warning" },
 };
 
 export default async function AttendancePage() {
-  await requirePermission("attendance.view");
+  await requireAnyPermission(["attendance.view", "attendance.view.all"]);
   const supabase = await createClient();
 
-  const { data: rows } = await supabase
-    .from("live_attendance")
-    .select("*")
-    .order("full_name");
+  const { data: rows } = await supabase.from("live_attendance").select("*").order("full_name");
 
   const people = rows ?? [];
   const by = (status: LiveStatus) => people.filter((p) => p.live_status === status);
@@ -107,12 +112,7 @@ export default async function AttendancePage() {
       ) : null}
 
       {finished.length > 0 ? (
-        <PeopleCard
-          icon={Users}
-          title="Finished today"
-          subtitle="Clocked out"
-          people={finished}
-        />
+        <PeopleCard icon={Users} title="Finished today" subtitle="Clocked out" people={finished} />
       ) : null}
     </div>
   );

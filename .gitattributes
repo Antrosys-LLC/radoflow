@@ -1,0 +1,19 @@
+# Line endings are normalised to LF in the repository.
+#
+# Without this, a Windows checkout writes CRLF into files that Prettier — and
+# therefore ESLint, via eslint-plugin-prettier — expects to end in LF. The
+# result is thousands of "Delete `␍`" errors that have nothing to do with the
+# code, and a lint run that is permanently red gives no signal about the
+# problems it exists to catch.
+* text=auto eol=lf
+
+# Binary assets must never be touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff  binary
+*.woff2 binary
+*.pdf binary

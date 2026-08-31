@@ -5,7 +5,7 @@ import { ExportButtons } from "@/components/export-buttons";
 import { FilterBar } from "@/components/filter-bar";
 import { matchesPerson } from "@/lib/people/match";
 import { Card, SectionTitle } from "@/components/ui-kit";
-import { requirePermission } from "@/lib/auth/session";
+import { requireAnyPermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { todayInPakistan } from "@/lib/time";
 
@@ -26,7 +26,7 @@ export default async function RatesPage({
   searchParams: Promise<{ q?: string; dept?: string; type?: string }>;
 }) {
   const filters = await searchParams;
-  const session = await requirePermission("rates.view");
+  const session = await requireAnyPermission(["rates.view", "rates.manage"]);
   const canManage = session.permissions.has("rates.manage");
   const supabase = await createClient();
 

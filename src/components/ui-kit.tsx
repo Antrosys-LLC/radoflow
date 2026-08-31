@@ -3,11 +3,7 @@ import { cn } from "@/lib/utils";
 import type { AttendanceStatus } from "@/lib/payroll/types";
 import { CheckCircle2, Clock3, XCircle } from "lucide-react";
 
-export function Card({
-  className,
-  children,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+export function Card({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
@@ -107,7 +103,15 @@ export function RadialDial({
     <div className="flex flex-col items-center gap-3">
       <div className="relative" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="-rotate-90">
-          <circle cx={size / 2} cy={size / 2} r={r} strokeWidth={stroke} stroke="var(--muted)" fill="none" strokeLinecap="round" />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            strokeWidth={stroke}
+            stroke="var(--muted)"
+            fill="none"
+            strokeLinecap="round"
+          />
           <circle
             cx={size / 2}
             cy={size / 2}
@@ -122,7 +126,9 @@ export function RadialDial({
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-bold tracking-tight text-foreground">{Math.round(pct)}%</span>
+          <span className="text-2xl font-bold tracking-tight text-foreground">
+            {Math.round(pct)}%
+          </span>
         </div>
       </div>
       <div className="text-center">
@@ -133,7 +139,15 @@ export function RadialDial({
   );
 }
 
-export function BarMeter({ value, label, right }: { value: number; label: string; right?: string }) {
+export function BarMeter({
+  value,
+  label,
+  right,
+}: {
+  value: number;
+  label: string;
+  right?: string;
+}) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between text-sm">
@@ -162,7 +176,12 @@ export function StatusBadge({ status }: { status: AttendanceStatus }) {
   } as const;
   const { icon: Icon, text, cls } = map[status] ?? map.pending;
   return (
-    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold", cls)}>
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold",
+        cls,
+      )}
+    >
       <Icon className="size-4" />
       {text}
     </span>

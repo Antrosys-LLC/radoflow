@@ -182,6 +182,25 @@ export async function requirePermission(permission: string): Promise<Session> {
   return session;
 }
 
+/**
+ * Guards a page behind *any* of several permissions.
+ *
+ * The menu already works this way — a nav entry lists every capability that
+ * should reveal it — so a page guarded by only the first of those keys is
+ * reachable in the menu and refused on arrival. That is how the Operations
+ * role came to see Attendance in its sidebar and land on /denied: it holds
+ * `attendance.view.all` company-wide but not the narrower `attendance.view`,
+ * and the page asked for the narrow one.
+ *
+ * Pages whose nav entry lists more than one permission must use this, so the
+ * two cannot drift apart again.
+ */
+export async function requireAnyPermission(permissions: readonly string[]): Promise<Session> {
+  const session = await requireSession();
+  if (!permissions.some((permission) => session.permissions.has(permission))) redirect("/denied");
+  return session;
+}
+
 export function can(session: Session | null, permission: string): boolean {
   return session?.permissions.has(permission) ?? false;
 }

@@ -44,7 +44,8 @@ export async function createRole(_prev: RoleResult, form: FormData): Promise<Rol
   });
 
   if (error) {
-    if (error.code === "23505") return { ok: false, message: `A role called ${name} already exists.` };
+    if (error.code === "23505")
+      return { ok: false, message: `A role called ${name} already exists.` };
     return { ok: false, message: error.message };
   }
 
@@ -65,7 +66,10 @@ export async function toggleRolePermission(
   const { error } = grant
     ? await supabase
         .from("role_permissions")
-        .upsert({ role_id: roleId, permission_id: permissionId }, { onConflict: "role_id,permission_id" })
+        .upsert(
+          { role_id: roleId, permission_id: permissionId },
+          { onConflict: "role_id,permission_id" },
+        )
     : await supabase
         .from("role_permissions")
         .delete()

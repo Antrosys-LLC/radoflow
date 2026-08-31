@@ -5,7 +5,7 @@ import { CalendarDays, Clock, ScrollText, TriangleAlert, Users } from "lucide-re
 import { ExportButtons } from "@/components/export-buttons";
 import { matchesPerson } from "@/lib/people/match";
 import { Card, SectionTitle } from "@/components/ui-kit";
-import { requirePermission } from "@/lib/auth/session";
+import { requireAnyPermission } from "@/lib/auth/session";
 import {
   countWorkingDays,
   dailyRate,
@@ -96,7 +96,7 @@ export default async function AttendanceLogPage({
     q?: string;
   }>;
 }) {
-  const session = await requirePermission("attendance.view");
+  const session = await requireAnyPermission(["attendance.view", "attendance.view.all"]);
   const params = await searchParams;
   const supabase = await createClient();
 

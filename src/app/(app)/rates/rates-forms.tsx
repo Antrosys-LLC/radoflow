@@ -190,13 +190,7 @@ export interface LateRule {
   basis: string;
 }
 
-export function LateRulesEditor({
-  siteId,
-  rules,
-}: {
-  siteId: string;
-  rules: LateRule[];
-}) {
+export function LateRulesEditor({ siteId, rules }: { siteId: string; rules: LateRule[] }) {
   const [state, formAction] = useActionState(saveLateRule, INITIAL);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -276,13 +270,35 @@ export function LateRulesEditor({
           </Field>
         </div>
         <Field label="Late from (min)">
-          <input name="from_minutes" type="number" min="0" required defaultValue={15} className={INPUT} />
+          <input
+            name="from_minutes"
+            type="number"
+            min="0"
+            required
+            defaultValue={15}
+            className={INPUT}
+          />
         </Field>
         <Field label="Late until (min)">
-          <input name="to_minutes" type="number" min="1" placeholder="blank = beyond" className={INPUT} />
+          <input
+            name="to_minutes"
+            type="number"
+            min="1"
+            placeholder="blank = beyond"
+            className={INPUT}
+          />
         </Field>
         <Field label="Deduct (%)">
-          <input name="penalty_percent" type="number" step="0.5" min="0" max="100" required defaultValue={5} className={INPUT} />
+          <input
+            name="penalty_percent"
+            type="number"
+            step="0.5"
+            min="0"
+            max="100"
+            required
+            defaultValue={5}
+            className={INPUT}
+          />
         </Field>
         <Field label="Of">
           <select name="basis" defaultValue="day" className={INPUT}>

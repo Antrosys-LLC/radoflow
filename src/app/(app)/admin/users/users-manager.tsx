@@ -208,6 +208,7 @@ export function UsersManager({
       {showAdd ? (
         <AddUserDialog
           roles={roles}
+          canManageAccess={canManageAccess}
           sites={sites}
           departments={departments}
           shifts={shifts}
@@ -272,6 +273,15 @@ function UserCard({
   }, [state, router]);
 
   const suspended = user.status !== "active";
+
+  /*
+   * Resetting a password hands an account over; suspending one takes it
+   * offline and drops it from payroll. Neither is offered for an administrator
+   * unless the person looking already manages access. The server and the
+   * database both refuse regardless — this only keeps buttons off the screen
+   * that would always come back with a refusal.
+   */
+  const canAdminister = canManageAccess || !user.isSuperuser;
 
   return (
     <div className={cn("rounded-2xl bg-secondary p-4", suspended && "opacity-60")}>
@@ -355,16 +365,18 @@ function UserCard({
           Pay &amp; duty
         </button>
 
-        <PasswordReset userId={user.id} name={user.full_name} />
+        {canAdminister ? <PasswordReset userId={user.id} name={user.full_name} /> : null}
 
-        <button
-          type="button"
-          disabled={pending || confirmingStatus}
-          onClick={() => setConfirmingStatus(true)}
-          className="ml-auto rounded-xl px-3 py-2 text-xs font-semibold text-muted-foreground transition-all hover:text-danger disabled:opacity-50"
-        >
-          {suspended ? "Reactivate" : "Suspend"}
-        </button>
+        {canAdminister ? (
+          <button
+            type="button"
+            disabled={pending || confirmingStatus}
+            onClick={() => setConfirmingStatus(true)}
+            className="ml-auto rounded-xl px-3 py-2 text-xs font-semibold text-muted-foreground transition-all hover:text-danger disabled:opacity-50"
+          >
+            {suspended ? "Reactivate" : "Suspend"}
+          </button>
+        ) : null}
       </div>
 
       {/* Both commitments live below the row so the swipe has full width to
@@ -496,12 +508,15 @@ function PasswordReset({ userId, name }: { userId: string; name: string }) {
 
 function AddUserDialog({
   roles,
+  canManageAccess,
   sites,
   departments,
   shifts,
   onClose,
 }: {
   roles: Option[];
+  /** Assigning a role is `access.manage`, not `people.manage`. */
+  canManageAccess: boolean;
   sites: Option[];
   departments: DepartmentOption[];
   shifts: Option[];
@@ -586,16 +601,24 @@ function AddUserDialog({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label="Role">
-              <select name="role_id" defaultValue="" className={INPUT}>
-                <option value="">No role</option>
-                {roles.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            {canManageAccess ? (
+              <Field label="Role">
+                <select name="role_id" defaultValue="" className={INPUT}>
+                  <option value="">No role</option>
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : (
+              <Field label="Role">
+                <p className="rounded-xl bg-secondary px-3 py-2.5 text-xs text-muted-foreground">
+                  Assigned by someone who manages access.
+                </p>
+              </Field>
+            )}
             <Field label="Factory">
               <select name="site_id" defaultValue="" className={INPUT}>
                 <option value="">Unassigned</option>

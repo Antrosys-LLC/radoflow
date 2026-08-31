@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Fingerprint, Plus, Wifi, WifiOff } from "lucide-react";
 
 import { Card, SectionTitle } from "@/components/ui-kit";
-import { requirePermission } from "@/lib/auth/session";
+import { requireAnyPermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime, timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function DevicesPage() {
-  const session = await requirePermission("devices.view");
+  const session = await requireAnyPermission(["devices.view", "devices.manage"]);
   const canManage = session.permissions.has("devices.manage");
 
   const supabase = await createClient();

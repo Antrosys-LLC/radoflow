@@ -71,25 +71,37 @@ export async function importRegisterRows(
       dayTypeCache.set(row.workDate, await resolveDayType(siteId, row.workDate));
     }
 
-    const { error } = await supabase.from("attendance_days").upsert(
-      {
-        profile_id: row.profileId,
-        site_id: siteId,
-        work_date: row.workDate,
-        day_type: dayTypeCache.get(row.workDate)!,
-        status: row.status,
-        regular_hours: row.hoursWorked ?? 0,
-        note: row.note
-          ? `Imported from a paper register: ${row.note}`
-          : "Imported from a paper register",
-        is_manual: true,
-        computed_at: new Date().toISOString(),
-      },
-      { onConflict: "profile_id,work_date" },
-    );
+    /*
+     * `.select()` so a row that was filtered out rather than written can be
+     * told apart from one that landed. An upsert taking the UPDATE path is
+     * refused silently by an RLS USING clause — zero rows, no error — so
+     * counting this as imported without checking would report a successful
+     * import of attendance that does not exist.
+     */
+    const { data, error } = await supabase
+      .from("attendance_days")
+      .upsert(
+        {
+          profile_id: row.profileId,
+          site_id: siteId,
+          work_date: row.workDate,
+          day_type: dayTypeCache.get(row.workDate)!,
+          status: row.status,
+          regular_hours: row.hoursWorked ?? 0,
+          note: row.note
+            ? `Imported from a paper register: ${row.note}`
+            : "Imported from a paper register",
+          is_manual: true,
+          computed_at: new Date().toISOString(),
+        },
+        { onConflict: "profile_id,work_date" },
+      )
+      .select("id");
 
     if (error) failed.push(`${row.workDate}: ${error.message}`);
-    else imported += 1;
+    else if (!data || data.length === 0) {
+      failed.push(`${row.workDate}: not permitted to write attendance at this factory`);
+    } else imported += 1;
   }
 
   await supabase.from("audit_log").insert({

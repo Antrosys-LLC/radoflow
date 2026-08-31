@@ -311,7 +311,10 @@ export async function resolveDayType(siteId: string, workDate: string): Promise<
 
   if (override?.day_type) return override.day_type as DayType;
 
-  const weekday = new Date(`${workDate}T00:00:00`).getDay();
+  // Parsed and read in UTC, the convention the payroll module documents: a
+  // date string and a local `getDay()` agree today only because both sides
+  // happen to use the server's zone, and the pair is one edit from disagreeing.
+  const weekday = new Date(`${workDate}T00:00:00Z`).getUTCDay();
   const { data: pattern } = await supabase
     .from("work_week")
     .select("is_working")

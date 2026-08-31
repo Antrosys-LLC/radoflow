@@ -98,16 +98,17 @@ export function RolesManager({
                   selected?.id === role.id ? "opacity-80" : "text-muted-foreground",
                 )}
               >
-                {role.is_superuser
-                  ? "Unrestricted"
-                  : `${role.permissionIds.length} capabilities`}{" "}
-                · {role.holders} {role.holders === 1 ? "person" : "people"}
+                {role.is_superuser ? "Unrestricted" : `${role.permissionIds.length} capabilities`} ·{" "}
+                {role.holders} {role.holders === 1 ? "person" : "people"}
               </span>
             </button>
           ))}
         </div>
 
-        <form action={formAction} className="mt-5 grid gap-3 rounded-2xl bg-secondary p-4 sm:grid-cols-[2fr_3fr_auto]">
+        <form
+          action={formAction}
+          className="mt-5 grid gap-3 rounded-2xl bg-secondary p-4 sm:grid-cols-[2fr_3fr_auto]"
+        >
           <div>
             <label className="text-xs font-semibold text-muted-foreground">New role name</label>
             <input
@@ -241,7 +242,10 @@ function PermissionGrid({
                     )}
                   >
                     <span
-                      className={cn("size-3 rounded-full bg-card transition-all", on && "translate-x-3")}
+                      className={cn(
+                        "size-3 rounded-full bg-card transition-all",
+                        on && "translate-x-3",
+                      )}
                     />
                   </span>
                   {permission.label}

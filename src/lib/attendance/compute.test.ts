@@ -109,10 +109,7 @@ describe("days without punches", () => {
   });
 
   it("still records hours when someone works an activated weekend", () => {
-    const day = computeDayFromPunches(
-      [at(8, 0, "in"), at(16, 0, "out")],
-      "weekend_working",
-    );
+    const day = computeDayFromPunches([at(8, 0, "in"), at(16, 0, "out")], "weekend_working");
     expect(day.hoursWorked).toBe(8);
     expect(day.status).toBe("present");
   });

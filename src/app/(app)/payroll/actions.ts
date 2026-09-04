@@ -86,7 +86,7 @@ export async function runPeriod(periodId: string): Promise<PayrollResultMessage>
         .maybeSingle();
 
       if (period) {
-        await supabase.from("approvals").insert(
+        const { error: approvalError } = await supabase.from("approvals").insert(
           approvalRowFor({
             periodId,
             siteId: period.site_id,
@@ -96,6 +96,17 @@ export async function runPeriod(periodId: string): Promise<PayrollResultMessage>
             net: summary.net,
           }),
         );
+
+        if (approvalError) {
+          /*
+           * The run itself succeeded and its numbers are correct, so this must not
+           * fail the action — but a queue nobody was added to is exactly the silence
+           * this approval exists to prevent, so it cannot be swallowed either.
+           */
+          console.error(
+            `[payroll] period ${periodId} calculated but its approval could not be queued: ${approvalError.message}`,
+          );
+        }
       }
     }
 

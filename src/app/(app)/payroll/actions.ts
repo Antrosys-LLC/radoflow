@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { reviewPayrollAnomalies } from "@/lib/assistant/payroll-review";
 import { requirePermission } from "@/lib/auth/session";
+import { approvalRowFor, needsApproval } from "@/lib/payroll/approval";
 import { runPayrollForPeriod } from "@/lib/payroll/run";
 import { createClient } from "@/lib/supabase/server";
 import { formatPKR } from "@/lib/time";
@@ -66,10 +67,38 @@ export async function createPeriod(
  * running again produces the right answer rather than compounding the last one.
  */
 export async function runPeriod(periodId: string): Promise<PayrollResultMessage> {
-  await requirePermission("payroll.run");
+  const session = await requirePermission("payroll.run");
 
   try {
     const summary = await runPayrollForPeriod(periodId);
+
+    /*
+     * Accounts computes; an admin releases. Queuing the run rather than
+     * leaving it in `review` is what actually puts it in front of someone —
+     * `public.approvals` is what the approval panels read.
+     */
+    if (needsApproval(session.permissions)) {
+      const supabase = await createClient();
+      const { data: period } = await supabase
+        .from("payroll_periods")
+        .select("site_id, label")
+        .eq("id", periodId)
+        .maybeSingle();
+
+      if (period) {
+        await supabase.from("approvals").insert(
+          approvalRowFor({
+            periodId,
+            siteId: period.site_id,
+            label: period.label,
+            requestedBy: session.userId,
+            headcount: summary.headcount,
+            net: summary.net,
+          }),
+        );
+      }
+    }
+
     revalidatePath("/payroll");
 
     const skippedNote =

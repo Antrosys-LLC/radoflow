@@ -80,7 +80,7 @@ export default async function ReportsPage({
     people.length > 0
       ? supabase
           .from("attendance_days")
-          .select("profile_id, work_date, regular_hours, day_type, status")
+          .select("profile_id, work_date, regular_hours, day_type, status, hours_are_final")
           .in(
             "profile_id",
             people.map((p) => p.id),
@@ -115,6 +115,11 @@ export default async function ReportsPage({
       dayType: (row.day_type ?? "workday") as DayType,
       hoursWorked: Number(row.regular_hours ?? 0),
       status: (row.status ?? "pending") as AttendanceDay["status"],
+      // Without this, a day payroll already floored gets rounded a second
+      // time here, and this screen's numbers stop agreeing with a payslip
+      // for the same month — the guarantee this page's own header comment
+      // makes.
+      hoursAreFinal: row.hours_are_final ?? false,
     });
     byPerson.set(row.profile_id, list);
   }

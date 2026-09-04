@@ -122,7 +122,7 @@ export default async function DashboardPage() {
     (ids) =>
       supabase
         .from("attendance_days")
-        .select("profile_id, work_date, day_type, regular_hours, status")
+        .select("profile_id, work_date, day_type, regular_hours, status, hours_are_final")
         .in("profile_id", ids)
         .gte("work_date", monthStart)
         .lte("work_date", today),
@@ -137,6 +137,9 @@ export default async function DashboardPage() {
       dayType: (row.day_type ?? "workday") as DayType,
       hoursWorked: Number(row.regular_hours ?? 0),
       status: (row.status ?? "pending") as AttendanceDay["status"],
+      // Without this, a floored day gets rounded a second time here, and this
+      // chart stops agreeing with payroll for the same days.
+      hoursAreFinal: row.hours_are_final ?? false,
     });
     monthByPerson.set(row.profile_id, list);
   }

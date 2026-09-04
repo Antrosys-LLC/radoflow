@@ -66,7 +66,9 @@ export async function estimateSalaries(
       siteLateRuleQuery(supabase, siteId),
       supabase
         .from("attendance_days")
-        .select("profile_id, work_date, day_type, status, regular_hours, minutes_late")
+        .select(
+          "profile_id, work_date, day_type, status, regular_hours, minutes_late, hours_are_final",
+        )
         .in(
           "profile_id",
           staff.map((s) => s.id),
@@ -89,6 +91,10 @@ export async function estimateSalaries(
       hoursWorked: Number(row.regular_hours ?? 0),
       status: (row.status ?? "pending") as AttendanceDay["status"],
       minutesLate: row.minutes_late ?? 0,
+      // Without this, a floored clock-out already rounded once by payroll
+      // gets rounded a second time here, and the estimate stops matching the
+      // eventual payslip — the one thing this function exists to guarantee.
+      hoursAreFinal: row.hours_are_final ?? false,
     });
     daysByProfile.set(row.profile_id, list);
   }

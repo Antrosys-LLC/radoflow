@@ -79,6 +79,7 @@ interface DayRow {
   locked: boolean;
   approved_by: string | null;
   approved_at: string | null;
+  hours_are_final: boolean;
 }
 
 /** One person's days, already split into the buckets payroll would pay. */
@@ -163,7 +164,7 @@ export default async function AttendanceLogPage({
       supabase
         .from("attendance_days")
         .select(
-          "profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual, locked, approved_by, approved_at",
+          "profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual, locked, approved_by, approved_at, hours_are_final",
         )
         .in("profile_id", ids)
         .gte("work_date", from)
@@ -193,6 +194,10 @@ export default async function AttendanceLogPage({
       hoursWorked: Number(row.regular_hours ?? 0),
       status: (row.status ?? "pending") as AttendanceDay["status"],
       minutesLate: row.minutes_late ?? 0,
+      // Without this, splitDayHours() below rounds a day payroll already
+      // floored a second time, and this screen's "buckets payroll would
+      // produce" stop being that.
+      hoursAreFinal: row.hours_are_final ?? false,
     }));
 
     const buckets = asDays.map((d) => splitDayHours(d, rule, dutyHours));

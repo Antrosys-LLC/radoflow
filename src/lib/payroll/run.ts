@@ -85,8 +85,17 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     supabase
       .from("late_penalty_rules")
       .select("*")
+      // findTier() breaks a tie between two equal-width bands (both
+      // open-ended, e.g. a percentage "beyond 2 hours" tier and an
+      // open-ended per-minute tier) by array order. Without an explicit
+      // order, Postgres is free to return rows in any order it likes, so the
+      // same lateness could be charged two different ways on two different
+      // runs. from_minutes then id makes the order — and therefore which
+      // tier wins a tie — reproducible.
       .eq("site_id", period.site_id)
-      .eq("is_active", true),
+      .eq("is_active", true)
+      .order("from_minutes", { ascending: true })
+      .order("id", { ascending: true }),
     supabase
       .from("departments")
       .select("id, name, contract_amount")
@@ -159,6 +168,13 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
   const skipped: RunSummary["skipped"] = [];
   const flagged: RunSummary["flagged"] = [];
   const rows = [];
+  /*
+   * Profiles this run excludes outright — a contract firm's people (billed
+   * once, below, not per person) and anyone flagged payroll_exempt. Collected
+   * from the exact same condition the loop below skips on, so the delete
+   * further down can never drift out of sync with what the loop actually did.
+   */
+  const excludedIds: string[] = [];
 
   /*
    * The divisor behind every daily rate in this run.
@@ -176,7 +192,10 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
      * list is for people who should have been paid and could not be — so
      * neither is reported there.
      */
-    if (person.worker_type === "contractor" || person.payroll_exempt) continue;
+    if (person.worker_type === "contractor" || person.payroll_exempt) {
+      excludedIds.push(person.id);
+      continue;
+    }
 
     const employee = toEmployee(person);
     const days = daysByProfile.get(person.id) ?? [];
@@ -244,11 +263,20 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
   const contractRows = [];
   let contractTotal = 0;
   let contractHeadcount = 0;
+  /*
+   * worker_type is a per-person field, freely editable outside of any
+   * contract department, so a contractor's department is not necessarily one
+   * of contractDepartments at all. Tracking who this loop actually accounted
+   * for — billed or explicitly reported as zero-amount — is what lets the
+   * pass below catch the ones it never touched.
+   */
+  const coveredContractorIds = new Set<string>();
 
   for (const dept of contractDepartments ?? []) {
     const people = staff.filter(
       (s) => s.department_id === dept.id && s.worker_type === "contractor",
     );
+    for (const person of people) coveredContractorIds.add(person.id);
     const amount = Number(dept.contract_amount ?? 0);
 
     if (amount <= 0) {
@@ -276,6 +304,40 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
       note: null,
       computed_at: new Date().toISOString(),
     });
+  }
+
+  /*
+   * A contractor whose department was never a contract department at all —
+   * worker_type is editable per person, independent of the department they
+   * sit in — is covered by no firm's line and was never `continue`d into
+   * `skipped` either, since the main loop treats every contractor as billed
+   * elsewhere. Left unreported, they are paid nothing and nobody is told.
+   */
+  for (const person of staff) {
+    if (person.worker_type !== "contractor" || coveredContractorIds.has(person.id)) continue;
+    skipped.push({
+      name: person.full_name,
+      reason: "Marked as a contractor, but their department has no contract amount set",
+    });
+  }
+
+  /*
+   * Deletes rows for exactly the excluded set built above — never the merely
+   * absent, whose existing rows (if any) are left untouched. Without this, a
+   * person moved to contractor or flagged payroll_exempt after already having
+   * a payable row keeps that stale row forever: the period's totals drop, but
+   * the row still renders on the payroll screen and is still payable via
+   * markItemPaid.
+   */
+  if (excludedIds.length > 0) {
+    const { error: excludedDeleteError } = await supabase
+      .from("payroll_items")
+      .delete()
+      .eq("period_id", period.id)
+      .in("profile_id", excludedIds);
+    if (excludedDeleteError) {
+      throw new Error(`Could not clear excluded payroll lines: ${excludedDeleteError.message}`);
+    }
   }
 
   if (rows.length > 0) {

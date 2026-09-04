@@ -77,19 +77,34 @@ export default async function RegisterPage({
     requiresAttendance: p.requires_attendance,
   }));
 
-  const { data: dayRows } =
-    people.length > 0
-      ? await supabase
-          .from("attendance_days")
-          .select(
-            "profile_id, first_in, last_out, regular_hours, ot_hours, weekend_hours, holiday_hours, minutes_late, is_late",
-          )
-          .eq("work_date", date)
-          .in(
-            "profile_id",
-            people.map((p) => p.id),
-          )
-      : { data: [] };
+  /*
+   * Asked for in batches. A whole factory's worth of ids in one `in(...)`
+   * builds a request URI of tens of kilobytes, which the server rejects
+   * outright — and a rejected read here is indistinguishable from a day
+   * nobody clocked in, so every person on the register silently reads as
+   * absent. Small enough batches keep each URI well inside the limit.
+   */
+  const ID_BATCH = 100;
+  const dayRows: NonNullable<Awaited<ReturnType<typeof fetchDays>>> = [];
+
+  async function fetchDays(ids: string[]) {
+    const { data, error } = await supabase
+      .from("attendance_days")
+      .select(
+        "profile_id, first_in, last_out, regular_hours, ot_hours, weekend_hours, holiday_hours, minutes_late, is_late",
+      )
+      .eq("work_date", date)
+      .in("profile_id", ids);
+
+    // Better a visible failure than a register that quietly marks the floor absent.
+    if (error) throw new Error(`Could not read attendance for ${date}: ${error.message}`);
+    return data ?? [];
+  }
+
+  for (let i = 0; i < people.length; i += ID_BATCH) {
+    const batch = people.slice(i, i + ID_BATCH).map((p) => p.id);
+    dayRows.push(...(await fetchDays(batch)));
+  }
 
   const days: RegisterDay[] = (dayRows ?? []).map((row) => ({
     profileId: row.profile_id,

@@ -76,6 +76,13 @@ const WORK_MODULES: readonly NavItem[] = [
     description: "ZKTeco K50 terminals",
   },
   {
+    href: "/devices/live",
+    label: "Live Floor",
+    icon: "devices",
+    requires: ["devices.view", "devices.manage"],
+    description: "Check-ins and check-outs as they happen",
+  },
+  {
     href: "/rates",
     label: "Pay Rates",
     icon: "rates",

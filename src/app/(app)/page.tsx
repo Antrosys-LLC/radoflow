@@ -18,6 +18,7 @@ import { BarMeter, Card, SectionTitle, StatPill } from "@/components/ui-kit";
 import { dailyHourTotals } from "@/lib/attendance/daily-hours";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
 import { requireSession } from "@/lib/auth/session";
+import { selectInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatHours, formatPKR, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -116,15 +117,17 @@ export default async function DashboardPage() {
 
   const chartIds = (chartPeople ?? []).map((p) => p.id);
 
-  const { data: monthDays } =
-    chartIds.length > 0
-      ? await supabase
-          .from("attendance_days")
-          .select("profile_id, work_date, day_type, regular_hours, status")
-          .in("profile_id", chartIds)
-          .gte("work_date", monthStart)
-          .lte("work_date", today)
-      : { data: [] };
+  const monthDays = await selectInBatches(
+    chartIds,
+    (ids) =>
+      supabase
+        .from("attendance_days")
+        .select("profile_id, work_date, day_type, regular_hours, status")
+        .in("profile_id", ids)
+        .gte("work_date", monthStart)
+        .lte("work_date", today),
+    `Could not read attendance for ${monthStart} to ${today}`,
+  );
 
   const monthByPerson = new Map<string, AttendanceDay[]>();
   for (const row of monthDays ?? []) {

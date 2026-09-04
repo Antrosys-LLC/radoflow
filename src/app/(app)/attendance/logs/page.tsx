@@ -20,6 +20,7 @@ import {
   type DayType,
   type HourBuckets,
 } from "@/lib/payroll/types";
+import { selectInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
 import { formatHours, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -150,18 +151,22 @@ export default async function AttendanceLogPage({
   const cohort = person ? [person] : scoped;
   const cohortIds = cohort.map((p) => p.id);
 
-  const { data: days } =
-    cohortIds.length > 0
-      ? await supabase
-          .from("attendance_days")
-          .select(
-            "profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual",
-          )
-          .in("profile_id", cohortIds)
-          .gte("work_date", from)
-          .lte("work_date", to)
-          .order("work_date", { ascending: false })
-      : { data: [] as DayRow[] };
+  const batched = await selectInBatches<DayRow>(
+    cohortIds,
+    (ids) =>
+      supabase
+        .from("attendance_days")
+        .select(
+          "profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual",
+        )
+        .in("profile_id", ids)
+        .gte("work_date", from)
+        .lte("work_date", to),
+    `Could not read attendance for ${from} to ${to}`,
+  );
+
+  // Each batch comes back ordered within itself; the merged list still needs sorting.
+  const days = batched.sort((a, b) => (a.work_date < b.work_date ? 1 : -1));
 
   const rule = DEFAULT_PAY_RULE;
   const daysInMonth = new Date(Number(from.slice(0, 4)), Number(from.slice(5, 7)), 0).getDate();

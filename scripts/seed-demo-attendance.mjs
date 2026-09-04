@@ -18,6 +18,11 @@
  *   node scripts/seed-demo-attendance.mjs 2026-09-01 2026-09-03
  *   node scripts/seed-demo-attendance.mjs 2026-09-01 2026-09-03 --dry-run
  *   node scripts/seed-demo-attendance.mjs 2026-09-01 2026-09-03 --remove
+ *   node scripts/seed-demo-attendance.mjs 2026-09-01 2026-09-03 --prepare-staff
+ *
+ * `--prepare-staff` first puts every active employee on the attendance roll
+ * with their site's shift, which the live floor view requires before it will
+ * show anybody at all.
  */
 
 import { existsSync } from "node:fs";
@@ -35,6 +40,7 @@ const DEFAULT_SHIFT_START = "08:00:00";
 const [from, to] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const dryRun = process.argv.includes("--dry-run");
 const remove = process.argv.includes("--remove");
+const prepareStaff = process.argv.includes("--prepare-staff");
 
 if (!url || !serviceKey) {
   console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
@@ -164,6 +170,52 @@ if (remove) {
   }
   console.log(`Removed ${data?.length ?? 0} demo attendance row(s) from ${from} to ${to}.`);
   process.exit(0);
+}
+
+/*
+ * Put the workforce on the attendance roll.
+ *
+ * `live_attendance` only shows people whose `requires_attendance` is set, and
+ * reports anyone without a shift as `no_shift` — so a database whose employees
+ * carry neither renders an empty floor no matter how much attendance is
+ * seeded. This puts every active employee on their site's shift, leaving
+ * contractors (who are paid on an agreed amount, not on hours) alone.
+ */
+if (prepareStaff) {
+  const { data: crew, error: crewError } = await db
+    .from("profiles")
+    .select("id, site_id, shift_id, requires_attendance")
+    .eq("status", "active")
+    .eq("worker_type", "employee");
+
+  if (crewError) {
+    console.error(`Could not read employees: ${crewError.message}`);
+    process.exit(1);
+  }
+
+  const { data: allShifts } = await db.from("shifts").select("id, site_id");
+  const firstShiftForSite = new Map();
+  for (const shift of allShifts ?? []) {
+    if (!firstShiftForSite.has(shift.site_id)) firstShiftForSite.set(shift.site_id, shift.id);
+  }
+
+  let fixed = 0;
+  for (const person of crew ?? []) {
+    const shiftId = person.shift_id ?? firstShiftForSite.get(person.site_id) ?? null;
+    if (person.requires_attendance && person.shift_id) continue;
+
+    const { error } = await db
+      .from("profiles")
+      .update({ requires_attendance: true, shift_id: shiftId })
+      .eq("id", person.id);
+
+    if (error) {
+      console.error(`Could not put ${person.id} on the roll: ${error.message}`);
+      process.exit(1);
+    }
+    fixed += 1;
+  }
+  console.log(`${fixed} employee(s) put on the attendance roll with a shift.`);
 }
 
 const { data: staff, error: staffError } = await db

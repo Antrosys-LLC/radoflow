@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   computeDayFromPunches,
+  floorToHalfHour,
   minutesLateAgainstShift,
   toDateKey,
   workDateFor,
@@ -65,7 +66,7 @@ describe("pairing punches", () => {
     const day = computeDayFromPunches([at(8), at(12), at(13)], "workday");
 
     expect(day.hoursWorked).toBe(4);
-    expect(day.anomaly).toMatch(/odd number/i);
+    expect(day.anomaly).toMatch(/missing clock-out/i);
   });
 
   it("reports an unpaired punch when someone forgets to clock out", () => {
@@ -75,16 +76,19 @@ describe("pairing punches", () => {
     );
 
     expect(day.hoursWorked).toBe(4);
-    expect(day.anomaly).toMatch(/unpaired/i);
+    expect(day.anomaly).toMatch(/missing clock-out/i);
   });
 
-  it("treats a double clock-in as one arrival", () => {
+  it("pairs punches positionally now, ignoring direction on a double clock-in", () => {
+    // Pairing no longer trusts the terminal's direction field at all (that is
+    // what "delegating to sessions" means): 8:00-8:01 closes as a one-minute
+    // session, and 17:00 opens a second session with nothing to close it.
     const day = computeDayFromPunches(
       [at(8, 0, "in"), at(8, 1, "in"), at(17, 0, "out")],
       "workday",
     );
-    // Pairs the later "in" with the "out": 8h59m.
-    expect(day.hoursWorked).toBeCloseTo(8.98, 1);
+    expect(day.hoursWorked).toBe(0.02);
+    expect(day.anomaly).toBe("Missing clock-out");
   });
 
   it("sorts punches that arrive out of order after a network drop", () => {
@@ -159,5 +163,70 @@ describe("night shifts", () => {
 
   it("formats date keys without timezone drift", () => {
     expect(toDateKey(new Date(2026, 0, 5))).toBe("2026-01-05");
+  });
+});
+
+describe("flooring a clock-out to the half hour", () => {
+  it("takes 11:45 down to 11:30", () => {
+    const floored = floorToHalfHour(new Date(2026, 7, 14, 11, 45));
+    expect(floored.getHours()).toBe(11);
+    expect(floored.getMinutes()).toBe(30);
+  });
+
+  it("takes 11:20 down to 11:00", () => {
+    const floored = floorToHalfHour(new Date(2026, 7, 14, 11, 20));
+    expect(floored.getHours()).toBe(11);
+    expect(floored.getMinutes()).toBe(0);
+  });
+
+  it("leaves a time already on a slot alone", () => {
+    const floored = floorToHalfHour(new Date(2026, 7, 14, 12, 30, 45));
+    expect(floored.getHours()).toBe(12);
+    expect(floored.getMinutes()).toBe(30);
+    expect(floored.getSeconds()).toBe(0);
+  });
+});
+
+describe("computing a day with flooring on", () => {
+  it("floors the leaving time before counting hours", () => {
+    // 08:00 to 11:50 is 3h50m; floored to 11:30 it is 3.5.
+    const day = computeDayFromPunches([at(8), at(11, 50)], "workday", {
+      floorFinalOut: true,
+    });
+
+    expect(day.hoursWorked).toBe(3.5);
+    expect(day.hoursAreFinal).toBe(true);
+  });
+
+  it("does not floor when the person keeps no fixed finish", () => {
+    const day = computeDayFromPunches([at(8), at(11, 50)], "workday");
+
+    expect(day.hoursWorked).toBe(3.83);
+    expect(day.hoursAreFinal).toBe(false);
+  });
+
+  it("floors only the leaving time, not the punches around a break", () => {
+    // 08:00-12:05 and 13:00-17:50. Only 17:50 is floored, to 17:30.
+    const day = computeDayFromPunches([at(8), at(12, 5), at(13), at(17, 50)], "workday", {
+      floorFinalOut: true,
+    });
+
+    // 4h05m + 4h30m
+    expect(day.hoursWorked).toBe(8.58);
+    expect(day.breakMinutes).toBe(55);
+  });
+
+  it("never floors a clock-out back past its own clock-in", () => {
+    // In at 11:40, out at 11:50. Flooring to 11:30 would invert the session.
+    const day = computeDayFromPunches([at(11, 40), at(11, 50)], "workday", {
+      floorFinalOut: true,
+    });
+
+    expect(day.hoursWorked).toBe(0);
+  });
+
+  it("reports the unpaid break minutes", () => {
+    const day = computeDayFromPunches([at(8), at(12), at(13), at(17)], "workday");
+    expect(day.breakMinutes).toBe(60);
   });
 });

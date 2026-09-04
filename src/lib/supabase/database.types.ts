@@ -137,10 +137,12 @@ export type Database = {
       }
       attendance_days: {
         Row: {
+          break_minutes: number
           computed_at: string
           day_type: Database["public"]["Enums"]["day_type"]
           first_in: string | null
           holiday_hours: number
+          hours_are_final: boolean
           id: string
           is_late: boolean
           is_manual: boolean
@@ -159,10 +161,12 @@ export type Database = {
           work_date: string
         }
         Insert: {
+          break_minutes?: number
           computed_at?: string
           day_type?: Database["public"]["Enums"]["day_type"]
           first_in?: string | null
           holiday_hours?: number
+          hours_are_final?: boolean
           id?: string
           is_late?: boolean
           is_manual?: boolean
@@ -181,10 +185,12 @@ export type Database = {
           work_date: string
         }
         Update: {
+          break_minutes?: number
           computed_at?: string
           day_type?: Database["public"]["Enums"]["day_type"]
           first_in?: string | null
           holiday_hours?: number
+          hours_are_final?: boolean
           id?: string
           is_late?: boolean
           is_manual?: boolean
@@ -420,6 +426,7 @@ export type Database = {
       departments: {
         Row: {
           code: string
+          contract_amount: number
           created_at: string
           default_worker_type: Database["public"]["Enums"]["worker_type"]
           id: string
@@ -430,6 +437,7 @@ export type Database = {
         }
         Insert: {
           code: string
+          contract_amount?: number
           created_at?: string
           default_worker_type?: Database["public"]["Enums"]["worker_type"]
           id?: string
@@ -440,6 +448,7 @@ export type Database = {
         }
         Update: {
           code?: string
+          contract_amount?: number
           created_at?: string
           default_worker_type?: Database["public"]["Enums"]["worker_type"]
           id?: string
@@ -1750,6 +1759,7 @@ export type Database = {
           ot_hourly_rate: number | null
           overtime_eligible: boolean
           pay_class: Database["public"]["Enums"]["pay_class"]
+          payroll_exempt: boolean
           phone: string | null
           photo_url: string | null
           pin_hash: string | null
@@ -1783,6 +1793,7 @@ export type Database = {
           ot_hourly_rate?: number | null
           overtime_eligible?: boolean
           pay_class?: Database["public"]["Enums"]["pay_class"]
+          payroll_exempt?: boolean
           phone?: string | null
           photo_url?: string | null
           pin_hash?: string | null
@@ -1816,6 +1827,7 @@ export type Database = {
           ot_hourly_rate?: number | null
           overtime_eligible?: boolean
           pay_class?: Database["public"]["Enums"]["pay_class"]
+          payroll_exempt?: boolean
           phone?: string | null
           photo_url?: string | null
           pin_hash?: string | null

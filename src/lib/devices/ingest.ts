@@ -222,7 +222,7 @@ export async function recomputeAttendanceDay(
   const [{ data: punchRows }, { data: profile }, dayType] = await Promise.all([
     supabase
       .from("punches")
-      .select("punched_at, direction")
+      .select("id, punched_at, direction")
       .eq("profile_id", profileId)
       .eq("work_date", workDate)
       .order("punched_at", { ascending: true }),
@@ -239,9 +239,40 @@ export async function recomputeAttendanceDay(
     direction: (row.direction as RawPunch["direction"]) ?? "unknown",
   }));
 
+  /*
+   * Someone with an enforced shift has a finish to round against; someone on
+   * no shift does not, and flooring them would take up to twenty-nine minutes
+   * off a day whose whole arrangement is that they complete their hours.
+   */
+  const flexible = profile?.flexible_hours ?? false;
+  const shiftId = profile?.shift_id ?? null;
+  const enforcedShift = Boolean(shiftId) && !flexible;
+
   const computed = computeDayFromPunches(punches, dayType, {
     requiresAttendance: profile?.requires_attendance ?? true,
+    floorFinalOut: enforcedShift,
   });
+
+  /*
+   * The terminal's own state byte is not trustworthy — a K50 without dedicated
+   * in/out keys stamps every record state 0 — so the direction shown on the
+   * device page and the live feed is the one the sequence implies. The raw
+   * state stays in `punches.raw` for audit.
+   */
+  const ordered = (punchRows ?? [])
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(a.punched_at as string).getTime() - new Date(b.punched_at as string).getTime(),
+    );
+
+  await Promise.all(
+    ordered.flatMap((row, index) => {
+      const derived = computed.directions[index];
+      if (!derived || derived === row.direction) return [];
+      return [supabase.from("punches").update({ direction: derived }).eq("id", row.id)];
+    }),
+  );
 
   /*
    * Lateness is judged against the shift the person is rostered on, anchored
@@ -252,8 +283,6 @@ export async function recomputeAttendanceDay(
    * nights is useful even when he is never marked late for arriving at ten.
    */
   let minutesLate = 0;
-  const flexible = profile?.flexible_hours ?? false;
-  const shiftId = profile?.shift_id ?? null;
 
   if (shiftId && computed.firstIn && !flexible) {
     const { data: shift } = await supabase
@@ -289,6 +318,8 @@ export async function recomputeAttendanceDay(
       // Hour bucketing belongs to the payroll engine, which reads these totals
       // together with the rate rule in force for the period.
       regular_hours: computed.hoursWorked,
+      break_minutes: computed.breakMinutes,
+      hours_are_final: computed.hoursAreFinal,
       ot_hours: 0,
       weekend_hours: 0,
       holiday_hours: 0,

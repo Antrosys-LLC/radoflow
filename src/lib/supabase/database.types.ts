@@ -1265,6 +1265,51 @@ export type Database = {
           },
         ]
       }
+      payroll_contract_items: {
+        Row: {
+          amount: number
+          computed_at: string
+          department_id: string
+          headcount: number
+          id: string
+          note: string | null
+          period_id: string
+        }
+        Insert: {
+          amount?: number
+          computed_at?: string
+          department_id: string
+          headcount?: number
+          id?: string
+          note?: string | null
+          period_id: string
+        }
+        Update: {
+          amount?: number
+          computed_at?: string
+          department_id?: string
+          headcount?: number
+          id?: string
+          note?: string | null
+          period_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_contract_items_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_contract_items_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_periods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payroll_items: {
         Row: {
           allowances: number

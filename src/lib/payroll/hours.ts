@@ -89,6 +89,18 @@ export function overtimeRate(monthlySalary: number, daysInMonth: number): number
 }
 
 /**
+ * A day's worked hours at the granularity payroll should price.
+ *
+ * One place, because `splitDayHours` and `excessHours` must agree: if the
+ * ceiling measured a differently-rounded figure from the one being paid, the
+ * flagged-hours total would drift away from the hours it is meant to describe.
+ */
+export function workedHoursOf(day: AttendanceDay, rule: PayRule): number {
+  const worked = Math.max(0, day.hoursWorked);
+  return day.hoursAreFinal ? round2(worked) : roundHours(worked, rule.roundToMinutes);
+}
+
+/**
  * Splits a day's worked hours into the buckets that attract different rates.
  *
  * Sunday is decided first, but only when the calendar left it at its default:
@@ -114,18 +126,6 @@ export function overtimeRate(monthlySalary: number, daysInMonth: number): number
  * same shift are overtime. Omitted, it falls back to the site's standard day,
  * which is what every caller wanted before duty hours existed.
  */
-/**
- * A day's worked hours at the granularity payroll should price.
- *
- * One place, because `splitDayHours` and `excessHours` must agree: if the
- * ceiling measured a differently-rounded figure from the one being paid, the
- * flagged-hours total would drift away from the hours it is meant to describe.
- */
-export function workedHoursOf(day: AttendanceDay, rule: PayRule): number {
-  const worked = Math.max(0, day.hoursWorked);
-  return day.hoursAreFinal ? round2(worked) : roundHours(worked, rule.roundToMinutes);
-}
-
 export function splitDayHours(
   day: AttendanceDay,
   rule: PayRule,

@@ -41,6 +41,15 @@ const [from, to] = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const dryRun = process.argv.includes("--dry-run");
 const remove = process.argv.includes("--remove");
 const prepareStaff = process.argv.includes("--prepare-staff");
+// Rewrite days this script wrote before, so the mix can be changed after the fact.
+const reshape = process.argv.includes("--reshape");
+
+const absentArg = process.argv.find((a) => a.startsWith("--absent="));
+const absentCount = absentArg ? Number(absentArg.split("=")[1]) : 20;
+if (!Number.isInteger(absentCount) || absentCount < 0) {
+  console.error("--absent= must be a whole number of people, e.g. --absent=20");
+  process.exit(1);
+}
 
 if (!url || !serviceKey) {
   console.error("Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
@@ -119,19 +128,15 @@ const IDLE_DAY = {
   last_out: null,
 };
 
-function dayFor(person, workDate, shiftStart, graceMinutes) {
+function dayFor(person, workDate, shiftStart, graceMinutes, absentToday, isToday) {
   const roll = spread(person.id, workDate);
 
   if (isSunday(workDate)) {
     return { status: "off", day_type: "off", ...IDLE_DAY };
   }
 
-  // 6% absent, 4% on leave, 12% late, the rest a straightforward day.
-  if (roll < 0.06) {
+  if (absentToday.has(person.id)) {
     return { status: "absent", day_type: "workday", ...IDLE_DAY };
-  }
-  if (roll < 0.1) {
-    return { status: "leave", day_type: "workday", ...IDLE_DAY };
   }
 
   const duty = Number(person.duty_hours ?? 8);
@@ -141,16 +146,40 @@ function dayFor(person, workDate, shiftStart, graceMinutes) {
   const overtime = roll > 0.9 ? 1 + (Math.floor(roll * 10) % 3) : 0;
   const startOffset = late ? graceMinutes + minutesLate : -Math.floor(roll * 12);
 
+  /*
+   * Today's shift is still running, so the people on it have checked in and
+   * not yet out — which is what makes the live board read "working now"
+   * rather than a floor that has already gone home.
+   */
   return {
     status: "present",
     day_type: "workday",
-    regular_hours: duty,
-    ot_hours: overtime,
+    regular_hours: isToday ? 0 : duty,
+    ot_hours: isToday ? 0 : overtime,
     is_late: late,
     minutes_late: minutesLate,
     first_in: pakistanInstant(workDate, shiftStart, startOffset),
-    last_out: pakistanInstant(workDate, shiftStart, startOffset + (duty + overtime) * 60),
+    last_out: isToday
+      ? null
+      : pakistanInstant(workDate, shiftStart, startOffset + (duty + overtime) * 60),
   };
+}
+
+/**
+ * The `count` people counted absent on `workDate`.
+ *
+ * Picked by ranking everyone on a per-date hash, so the choice is arbitrary
+ * but stable: the same people are absent on the same day every run, and a
+ * different set is absent on each day of the range.
+ */
+function absentFor(staff, workDate, count) {
+  return new Set(
+    staff
+      .map((person) => ({ id: person.id, rank: spread(person.id, `absent:${workDate}`) }))
+      .sort((a, b) => a.rank - b.rank || (a.id < b.id ? -1 : 1))
+      .slice(0, count)
+      .map((entry) => entry.id),
+  );
 }
 
 const dates = datesBetween(from, to);
@@ -218,10 +247,16 @@ if (prepareStaff) {
   console.log(`${fixed} employee(s) put on the attendance roll with a shift.`);
 }
 
+/*
+ * Only people the floor actually expects. Contractors are paid an agreed
+ * amount rather than on hours and never appear on the board, so counting them
+ * here would quietly shrink the absent figure the caller asked for.
+ */
 const { data: staff, error: staffError } = await db
   .from("profiles")
   .select("id, full_name, site_id, shift_id, duty_hours, status")
-  .eq("status", "active");
+  .eq("status", "active")
+  .eq("requires_attendance", true);
 
 if (staffError) {
   console.error(`Could not read employees: ${staffError.message}`);
@@ -237,6 +272,27 @@ const shiftById = new Map((shifts ?? []).map((s) => [s.id, s]));
 const shiftBySite = new Map();
 for (const shift of shifts ?? []) {
   if (!shiftBySite.has(shift.site_id)) shiftBySite.set(shift.site_id, shift);
+}
+
+/*
+ * Clear this script's own previous rows so they can be written again with a
+ * different mix. Scoped to the note, so a day the terminals produced is still
+ * never touched — only demo data is replaced by demo data.
+ */
+if (reshape && !dryRun) {
+  const { data: cleared, error } = await db
+    .from("attendance_days")
+    .delete()
+    .eq("note", NOTE)
+    .gte("work_date", from)
+    .lte("work_date", to)
+    .select("id");
+
+  if (error) {
+    console.error(`Could not clear previous demo attendance: ${error.message}`);
+    process.exit(1);
+  }
+  console.log(`Cleared ${cleared?.length ?? 0} previously seeded day(s) to rewrite them.`);
 }
 
 /*
@@ -266,6 +322,10 @@ for (let offset = 0; ; offset += PAGE) {
   if (!data || data.length < PAGE) break;
 }
 
+// Who is counted absent, per day — everyone else on the roll is present.
+const absentByDate = new Map(dates.map((d) => [d, absentFor(staff, d, absentCount)]));
+const todayInPakistan = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
 const rows = [];
 for (const person of staff) {
   const shift = shiftById.get(person.shift_id) ?? shiftBySite.get(person.site_id) ?? null;
@@ -282,7 +342,14 @@ for (const person of staff) {
       work_date: workDate,
       is_manual: true,
       note: NOTE,
-      ...dayFor(person, workDate, shiftStart, grace),
+      ...dayFor(
+        person,
+        workDate,
+        shiftStart,
+        grace,
+        absentByDate.get(workDate),
+        workDate === todayInPakistan,
+      ),
     });
   }
 }

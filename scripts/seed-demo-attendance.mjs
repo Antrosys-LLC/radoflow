@@ -131,8 +131,8 @@ function dayFor(person, workDate, shiftStart, graceMinutes) {
   const duty = Number(person.duty_hours ?? 8);
   const late = roll < 0.22;
   // 5 to 45 minutes past the grace period, so every penalty tier gets used.
-  const minutesLate = late ? 5 + Math.floor(roll * 1000) % 41 : 0;
-  const overtime = roll > 0.9 ? 1 + Math.floor(roll * 10) % 3 : 0;
+  const minutesLate = late ? 5 + (Math.floor(roll * 1000) % 41) : 0;
+  const overtime = roll > 0.9 ? 1 + (Math.floor(roll * 10) % 3) : 0;
   const startOffset = late ? graceMinutes + minutesLate : -Math.floor(roll * 12);
 
   return {
@@ -187,14 +187,32 @@ for (const shift of shifts ?? []) {
   if (!shiftBySite.has(shift.site_id)) shiftBySite.set(shift.site_id, shift);
 }
 
-// Days the terminals (or a supervisor) already accounted for. Left untouched.
-const { data: existing } = await db
-  .from("attendance_days")
-  .select("profile_id, work_date")
-  .gte("work_date", from)
-  .lte("work_date", to);
+/*
+ * Days the terminals (or a supervisor) already accounted for. Left untouched.
+ *
+ * Read a page at a time: PostgREST caps an unbounded select at its own
+ * max-rows setting, and a short read here reads as "that day is free" — which
+ * the unique constraint on (profile_id, work_date) then rejects mid-insert.
+ */
+const PAGE = 1000;
+const taken = new Set();
+for (let offset = 0; ; offset += PAGE) {
+  const { data, error } = await db
+    .from("attendance_days")
+    .select("profile_id, work_date")
+    .gte("work_date", from)
+    .lte("work_date", to)
+    .order("profile_id")
+    .order("work_date")
+    .range(offset, offset + PAGE - 1);
 
-const taken = new Set((existing ?? []).map((row) => `${row.profile_id}:${row.work_date}`));
+  if (error) {
+    console.error(`Could not read existing attendance: ${error.message}`);
+    process.exit(1);
+  }
+  for (const row of data ?? []) taken.add(`${row.profile_id}:${row.work_date}`);
+  if (!data || data.length < PAGE) break;
+}
 
 const rows = [];
 for (const person of staff) {

@@ -335,6 +335,8 @@ export async function updateUserProfile(_prev: UserResult, form: FormData): Prom
     return { ok: false, message: "A CNIC is 13 digits — XXXXX-XXXXXXX-X." };
   }
 
+  const shiftId = text(form, "shift_id");
+
   const supabase = await createClient();
   const { error } = await supabase
     .from("profiles")
@@ -347,10 +349,18 @@ export async function updateUserProfile(_prev: UserResult, form: FormData): Prom
       designation: text(form, "designation") || null,
       site_id: text(form, "site_id") || null,
       department_id: text(form, "department_id") || null,
-      shift_id: text(form, "shift_id") || null,
-      // An empty shift selection is the no-shift option, and someone with no
-      // shift has no in or out time to keep.
-      flexible_hours: text(form, "shift_id") === "",
+      shift_id: shiftId || null,
+      /*
+       * An empty shift selection is the no-shift option, and someone with no
+       * shift has no in or out time to keep — so this still forces flexible
+       * hours on. But picking a shift must NOT force it back off: someone can
+       * be on a shift for the roster while flexible_hours stays true, e.g. a
+       * fitter who is on nights but never marked late for arriving at ten
+       * (see src/lib/devices/ingest.ts). Omitting the key when a shift is
+       * chosen leaves whatever value that arrangement already set, instead of
+       * this unrelated save silently flipping it back to enforced.
+       */
+      ...(shiftId === "" ? { flexible_hours: true } : {}),
     })
     .eq("id", userId);
 

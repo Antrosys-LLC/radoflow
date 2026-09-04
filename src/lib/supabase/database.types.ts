@@ -137,6 +137,8 @@ export type Database = {
       }
       attendance_days: {
         Row: {
+          approved_at: string | null
+          approved_by: string | null
           break_minutes: number
           computed_at: string
           day_type: Database["public"]["Enums"]["day_type"]
@@ -161,6 +163,8 @@ export type Database = {
           work_date: string
         }
         Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
           break_minutes?: number
           computed_at?: string
           day_type?: Database["public"]["Enums"]["day_type"]
@@ -185,6 +189,8 @@ export type Database = {
           work_date: string
         }
         Update: {
+          approved_at?: string | null
+          approved_by?: string | null
           break_minutes?: number
           computed_at?: string
           day_type?: Database["public"]["Enums"]["day_type"]
@@ -209,6 +215,13 @@ export type Database = {
           work_date?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "attendance_days_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "attendance_days_profile_id_fkey"
             columns: ["profile_id"]

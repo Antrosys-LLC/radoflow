@@ -25,6 +25,8 @@ import { createClient } from "@/lib/supabase/server";
 import { formatHours, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
+import { ApproveRange } from "./approve-range";
+
 export const metadata: Metadata = {
   title: { absolute: "Attendance Log | Rado Dyeing and Textile" },
   description: "Every check-in, check-out and the pay it produces, by person or department.",
@@ -74,6 +76,9 @@ interface DayRow {
   minutes_late: number;
   is_late: boolean;
   is_manual: boolean;
+  locked: boolean;
+  approved_by: string | null;
+  approved_at: string | null;
 }
 
 /** One person's days, already split into the buckets payroll would pay. */
@@ -113,6 +118,7 @@ export default async function AttendanceLogPage({
    * decides whether the filters are worth showing.
    */
   const canSeeEveryone = session.isSuperuser || session.permissions.has("attendance.view.all");
+  const canApprove = session.permissions.has("attendance.approve");
 
   const selectedDepts = params.dept
     ? Array.isArray(params.dept)
@@ -157,7 +163,7 @@ export default async function AttendanceLogPage({
       supabase
         .from("attendance_days")
         .select(
-          "profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual",
+          "profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual, locked, approved_by, approved_at",
         )
         .in("profile_id", ids)
         .gte("work_date", from)
@@ -350,6 +356,7 @@ export default async function AttendanceLogPage({
           from={from}
           to={to}
           departmentName={person.department_id ? deptName.get(person.department_id) : undefined}
+          canApprove={canApprove}
         />
       ) : (
         <Cohort
@@ -557,6 +564,7 @@ function PersonLog({
   from,
   to,
   departmentName,
+  canApprove,
 }: {
   person: {
     id: string;
@@ -573,6 +581,7 @@ function PersonLog({
   from: string;
   to: string;
   departmentName: string | undefined;
+  canApprove: boolean;
 }) {
   const dutyHours = Number(person.duty_hours ?? 8);
   const contractor = person.worker_type === "contractor";
@@ -653,13 +662,23 @@ function PersonLog({
 
         {/* The payslip is the document this screen exists to justify, so it is
             downloadable from beside the days that produced it. */}
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <ExportButtons
             kind="payslip"
             params={{ person: person.id, from, to }}
             label="Payslip"
             formats={["pdf"]}
           />
+
+          {canApprove ? (
+            <ApproveRange
+              profileId={person.id}
+              from={from}
+              to={to}
+              approvedCount={summary.rows.filter((r) => r.approved_at).length}
+              totalCount={summary.rows.length}
+            />
+          ) : null}
         </div>
 
         <Link
@@ -712,6 +731,11 @@ function PersonLog({
                       {row.is_manual ? (
                         <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
                           Edited
+                        </span>
+                      ) : null}
+                      {row.approved_at ? (
+                        <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-[10px] font-bold uppercase text-success">
+                          Approved
                         </span>
                       ) : null}
                     </td>

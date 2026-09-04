@@ -57,9 +57,25 @@ select s.id, v.code, v.name, v.starts_at::time, v.ends_at::time, v.grace, v.brk,
     ('C', 'Shift C — Night',    '22:00', '06:00', 15, 30, 30)
   ) as v(code, name, starts_at, ends_at, grace, brk, sort);
 
--- Tiered late deductions, as a percentage of one day's pay.
-insert into public.late_penalty_rules (site_id, label, from_minutes, to_minutes, penalty_percent, basis)
-select s.id, v.label, v.from_min, v.to_min, v.pct, 'day'
+-- The operative late rule: one open-ended band, charged by the minute.
+-- penalty_percent is meaningless for this basis and stores 100, read as "one
+-- hundred percent of one minute's wage" — mirrors
+-- 20260904090250_seed_per_minute_tier.sql, which only back-fills this row for
+-- a site that was already seeded before that migration existed.
+insert into public.late_penalty_rules (site_id, label, from_minutes, to_minutes, penalty_percent, basis, is_active)
+select s.id, 'Late arrival — per minute', 0, null, 100, 'minute', true
+  from public.sites s;
+
+-- Tiered late deductions, as a percentage of one day's pay. Seeded inactive:
+-- findTier() in src/lib/payroll/late.ts picks the *narrowest* matching band,
+-- so if these were active they would win over the per-minute band above for
+-- every lateness under two hours — the exact inversion the per-minute tier
+-- exists to fix. Mirrors what 20260904090500_deactivate_percentage_late_tiers.sql
+-- does to a database seeded before that migration. Kept as rows, not left
+-- out, so a site can deliberately flip is_active back on — do not "fix" this
+-- back to true without also touching findTier()'s tie-break.
+insert into public.late_penalty_rules (site_id, label, from_minutes, to_minutes, penalty_percent, basis, is_active)
+select s.id, v.label, v.from_min, v.to_min, v.pct, 'day', false
   from public.sites s
   cross join (values
     ('Late 15–30 minutes',   15,   30,  5.0),

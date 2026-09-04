@@ -9,6 +9,7 @@ import { requireAnyPermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { todayInPakistan } from "@/lib/time";
 
+import { ContractFirms } from "./contract-firms";
 import { PeoplePay, type PayPerson } from "./people-pay";
 import { LateRulesEditor, RatesForm, type LateRule, type RateValues } from "./rates-forms";
 
@@ -35,6 +36,7 @@ export default async function RatesPage({
     { data: rules },
     { data: lateRules },
     { data: departments },
+    { data: contractFirms },
     { data: staff },
     { data: components },
   ] = await Promise.all([
@@ -43,9 +45,15 @@ export default async function RatesPage({
     supabase.from("late_penalty_rules").select("*").order("from_minutes"),
     supabase.from("departments").select("id, name").order("name"),
     supabase
+      .from("departments")
+      .select("id, name, contract_amount, site_id")
+      .eq("default_worker_type", "contractor")
+      .eq("is_active", true)
+      .order("name"),
+    supabase
       .from("profiles")
       .select(
-        "id, full_name, employee_code, cnic, department_id, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours, overtime_eligible",
+        "id, full_name, employee_code, cnic, department_id, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours, payroll_exempt, overtime_eligible",
       )
       .eq("status", "active")
       .order("full_name"),
@@ -82,6 +90,7 @@ export default async function RatesPage({
     sundayPolicy: row.sunday_policy,
     requiresAttendance: row.requires_attendance,
     flexibleHours: row.flexible_hours,
+    payrollExempt: row.payroll_exempt,
     overtimeEligible: row.overtime_eligible,
     components: componentsByPerson.get(row.id) ?? [],
   }));
@@ -137,6 +146,22 @@ export default async function RatesPage({
           </p>
         )}
       </Card>
+
+      {canManage ? (
+        <ContractFirms
+          firms={(contractFirms ?? []).map((firm) => ({
+            id: firm.id,
+            name: firm.name,
+            contractAmount: Number(firm.contract_amount ?? 0),
+            // Headcount is a property of the firm, not of whatever search or
+            // filter the operator currently has typed in — count from the
+            // unfiltered roster.
+            headcount: everyone.filter(
+              (p) => p.departmentId === firm.id && p.workerType === "contractor",
+            ).length,
+          }))}
+        />
+      ) : null}
 
       {(sites ?? []).map((site) => {
         // Effective-dated: the newest row that has already taken effect.

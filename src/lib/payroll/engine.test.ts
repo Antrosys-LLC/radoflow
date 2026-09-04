@@ -618,80 +618,33 @@ describe("monthly payroll", () => {
   });
 });
 
-describe("contractors", () => {
+describe("people the engine must never price", () => {
   const contractor: Employee = {
-    ...monthlyStaff,
-    fullName: "Folding contract",
-    workerType: "contractor",
+    id: "e9",
+    fullName: "Anas (Antrosys)",
+    employeeCode: "RD-2001",
+    payClass: "monthly",
     requiresAttendance: true,
-    monthlySalary: 250_000,
+    monthlySalary: 50_000,
+    hourlyRate: 0,
+    workerType: "contractor",
   };
 
-  it("pays the agreed amount flat, whatever the attendance says", () => {
-    const worked = calculatePayroll({
-      employee: contractor,
-      rule,
-      days: [day({ workDate: "2026-08-03" }), day({ workDate: "2026-08-04" })],
-      daysInMonth: 31,
-    });
-    const idle = calculatePayroll({ employee: contractor, rule, days: [], daysInMonth: 31 });
-
-    expect(worked.basePay).toBe(250_000);
-    expect(idle.basePay).toBe(250_000);
+  it("refuses a contractor — their firm is billed, not them", () => {
+    expect(() =>
+      calculatePayroll({ employee: contractor, rule, days: [], daysInMonth: 31 }),
+    ).toThrow(/contractor/i);
   });
 
-  it("is not prorated by absence", () => {
-    const days = [
-      day({ workDate: "2026-08-03", hoursWorked: 0, status: "absent" }),
-      day({ workDate: "2026-08-04", hoursWorked: 0, status: "absent" }),
-    ];
-    const result = calculatePayroll({ employee: contractor, rule, days, daysInMonth: 31 });
-
-    expect(result.basePay).toBe(250_000);
-    expect(result.net).toBe(250_000);
-  });
-
-  it("earns no overtime, however long the day", () => {
-    const result = calculatePayroll({
-      employee: contractor,
-      rule,
-      days: [day({ workDate: "2026-08-03", hoursWorked: 14 })],
-      daysInMonth: 31,
-    });
-
-    expect(result.otPay).toBe(0);
-    // The hours are still recorded, so the contractor's invoice can be checked
-    // — capped at the daily ceiling like anyone else's, though nothing is paid
-    // on them either way.
-    expect(result.hours.overtime).toBe(4);
-  });
-
-  it("earns no Sunday overtime either", () => {
-    const result = calculatePayroll({
-      employee: contractor,
-      rule,
-      days: [day({ workDate: "2026-08-02", dayType: "off", hoursWorked: 12 })],
-      daysInMonth: 31,
-    });
-
-    expect(result.otPay).toBe(0);
-    expect(result.gross).toBe(250_000);
-  });
-
-  it("carries no late penalty, having no day to dock", () => {
-    const tiers: LatePenaltyTier[] = [
-      { label: "Over an hour", fromMinutes: 60, toMinutes: null, penaltyPercent: 50, basis: "day" },
-    ];
-    const result = calculatePayroll({
-      employee: contractor,
-      rule,
-      days: [day({ workDate: "2026-08-03", minutesLate: 90 })],
-      latePenaltyTiers: tiers,
-      daysInMonth: 31,
-    });
-
-    expect(result.latePenalty).toBe(0);
-    expect(result.net).toBe(250_000);
+  it("refuses someone exempt from payroll", () => {
+    expect(() =>
+      calculatePayroll({
+        employee: { ...contractor, workerType: "employee", payrollExempt: true },
+        rule,
+        days: [],
+        daysInMonth: 31,
+      }),
+    ).toThrow(/payroll/i);
   });
 });
 
@@ -1005,6 +958,25 @@ describe("run totals", () => {
     expect(buckets.overtime).toBe(1);
     expect(buckets.weekend).toBe(6);
     expect(buckets.holiday).toBe(4);
+  });
+});
+
+describe("hours that are already final", () => {
+  it("does not round a day whose clock-out was floored", () => {
+    // 7.58h with a 15-minute step would round up to 7.5... and then to 7.58's
+    // nearest quarter, 7.5. The floored figure must survive untouched.
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-03", hoursWorked: 7.58, hoursAreFinal: true }),
+      rule,
+    );
+
+    expect(buckets.regular).toBe(7.58);
+  });
+
+  it("still rounds a day that was not floored", () => {
+    const buckets = splitDayHours(day({ workDate: "2026-08-03", hoursWorked: 7.58 }), rule);
+
+    expect(buckets.regular).toBe(7.5);
   });
 });
 

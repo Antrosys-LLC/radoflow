@@ -12,7 +12,7 @@ import {
   Wallet,
 } from "lucide-react";
 
-import { AutoRefresh } from "@/components/auto-refresh";
+import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refresh";
 import { DailyHours, VizRoot } from "@/components/charts";
 import { BarMeter, Card, SectionTitle, StatPill } from "@/components/ui-kit";
 import { dailyHourTotals } from "@/lib/attendance/daily-hours";
@@ -155,7 +155,7 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-5 pb-6">
       {/* The floor changes while this page is open; nobody should have to reload. */}
-      <AutoRefresh seconds={30} />
+      <AutoRefresh seconds={ATTENDANCE_REFRESH_SECONDS} />
 
       <div className="rounded-3xl bg-charcoal p-7 text-charcoal-foreground shadow-[0_18px_40px_rgb(0_0_0/0.12)]">
         <p className="text-xs font-semibold uppercase tracking-widest text-primary">

@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -142,10 +137,12 @@ export type Database = {
       }
       attendance_days: {
         Row: {
+          break_minutes: number
           computed_at: string
           day_type: Database["public"]["Enums"]["day_type"]
           first_in: string | null
           holiday_hours: number
+          hours_are_final: boolean
           id: string
           is_late: boolean
           is_manual: boolean
@@ -164,10 +161,12 @@ export type Database = {
           work_date: string
         }
         Insert: {
+          break_minutes?: number
           computed_at?: string
           day_type?: Database["public"]["Enums"]["day_type"]
           first_in?: string | null
           holiday_hours?: number
+          hours_are_final?: boolean
           id?: string
           is_late?: boolean
           is_manual?: boolean
@@ -186,10 +185,12 @@ export type Database = {
           work_date: string
         }
         Update: {
+          break_minutes?: number
           computed_at?: string
           day_type?: Database["public"]["Enums"]["day_type"]
           first_in?: string | null
           holiday_hours?: number
+          hours_are_final?: boolean
           id?: string
           is_late?: boolean
           is_manual?: boolean
@@ -425,6 +426,7 @@ export type Database = {
       departments: {
         Row: {
           code: string
+          contract_amount: number
           created_at: string
           default_worker_type: Database["public"]["Enums"]["worker_type"]
           id: string
@@ -435,6 +437,7 @@ export type Database = {
         }
         Insert: {
           code: string
+          contract_amount?: number
           created_at?: string
           default_worker_type?: Database["public"]["Enums"]["worker_type"]
           id?: string
@@ -445,6 +448,7 @@ export type Database = {
         }
         Update: {
           code?: string
+          contract_amount?: number
           created_at?: string
           default_worker_type?: Database["public"]["Enums"]["worker_type"]
           id?: string
@@ -1261,6 +1265,51 @@ export type Database = {
           },
         ]
       }
+      payroll_contract_items: {
+        Row: {
+          amount: number
+          computed_at: string
+          department_id: string
+          headcount: number
+          id: string
+          note: string | null
+          period_id: string
+        }
+        Insert: {
+          amount?: number
+          computed_at?: string
+          department_id: string
+          headcount?: number
+          id?: string
+          note?: string | null
+          period_id: string
+        }
+        Update: {
+          amount?: number
+          computed_at?: string
+          department_id?: string
+          headcount?: number
+          id?: string
+          note?: string | null
+          period_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_contract_items_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_contract_items_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_periods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payroll_items: {
         Row: {
           allowances: number
@@ -1755,6 +1804,7 @@ export type Database = {
           ot_hourly_rate: number | null
           overtime_eligible: boolean
           pay_class: Database["public"]["Enums"]["pay_class"]
+          payroll_exempt: boolean
           phone: string | null
           photo_url: string | null
           pin_hash: string | null
@@ -1788,6 +1838,7 @@ export type Database = {
           ot_hourly_rate?: number | null
           overtime_eligible?: boolean
           pay_class?: Database["public"]["Enums"]["pay_class"]
+          payroll_exempt?: boolean
           phone?: string | null
           photo_url?: string | null
           pin_hash?: string | null
@@ -1821,6 +1872,7 @@ export type Database = {
           ot_hourly_rate?: number | null
           overtime_eligible?: boolean
           pay_class?: Database["public"]["Enums"]["pay_class"]
+          payroll_exempt?: boolean
           phone?: string | null
           photo_url?: string | null
           pin_hash?: string | null
@@ -2465,6 +2517,7 @@ export type Database = {
         }[]
       }
       permissions_of: { Args: { p_user: string }; Returns: string[] }
+      session_bootstrap: { Args: never; Returns: Json }
     }
     Enums: {
       attendance_status:
@@ -2500,7 +2553,7 @@ export type Database = {
         | "approved"
         | "paid"
         | "cancelled"
-      penalty_basis: "day" | "month"
+      penalty_basis: "day" | "month" | "minute"
       permission_effect: "grant" | "deny"
       punch_direction: "in" | "out" | "unknown"
       punch_source: "device" | "manual" | "import"
@@ -2674,7 +2727,7 @@ export const Constants = {
         "paid",
         "cancelled",
       ],
-      penalty_basis: ["day", "month"],
+      penalty_basis: ["day", "month", "minute"],
       permission_effect: ["grant", "deny"],
       punch_direction: ["in", "out", "unknown"],
       punch_source: ["device", "manual", "import"],
@@ -2684,3 +2737,4 @@ export const Constants = {
     },
   },
 } as const
+

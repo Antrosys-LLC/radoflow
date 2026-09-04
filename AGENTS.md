@@ -31,8 +31,14 @@ Rules worth knowing before editing:
 - **`duty_hours` is what the salary covers, not the length of the shift.** A
   guard's twelve hours are all duty; an operator on the same twelve-hour shift
   is paid for eight, with the last four as overtime.
-- **Contractors have nothing calculated for them.** The agreed amount in
-  `monthly_salary` is paid flat: no proration, no overtime, no late penalty.
+- **A contract firm is billed once, not per person.** The agreed amount lives
+  on the department (`departments.contract_amount`) and becomes one row in
+  `payroll_contract_items`. The firm's people produce no payroll item at all —
+  `calculatePayroll` throws if one reaches it. Their attendance is still
+  recorded so the office can check the firm's invoice against real hours.
+- **Someone `payroll_exempt` is not on payroll at all.** Owners are filtered
+  out of a run rather than priced at zero: a zero line states they earned
+  nothing, which is a different claim from not being paid here.
 - **Overtime stops at four hours a working day** (`pay_rules.ot_daily_cap_hours`).
   Hours past the ceiling are recorded but dropped, never moved into the duty
   bucket — paying them at the duty rate would reintroduce the uncapped cost the

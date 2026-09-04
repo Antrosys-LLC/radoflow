@@ -8,8 +8,10 @@
 export type PayClass = "monthly" | "hourly";
 
 /**
- * Contractors are paid an agreed amount and nothing is calculated for them:
- * no day proration, no overtime, no late penalty.
+ * A contractor's firm is billed one agreed amount for the whole department —
+ * see `payroll_contract_items`. Nothing is calculated for the individual, who
+ * never reaches the payroll engine at all. Their attendance is still recorded
+ * so the office can check the firm's invoice against the hours worked.
  */
 export type WorkerType = "employee" | "contractor";
 
@@ -106,7 +108,13 @@ export interface LatePenaltyTier {
   /** Exclusive upper bound; null means "and beyond". */
   toMinutes: number | null;
   penaltyPercent: number;
-  basis: "day" | "month";
+  /**
+   * What the percentage is taken of.
+   *
+   * `minute` is the exception: it charges one minute of pay per minute late,
+   * so `penaltyPercent` is 100 and means "all of one minute's wage".
+   */
+  basis: "day" | "month" | "minute";
 }
 
 /** One person's attendance for one calendar date. */
@@ -124,6 +132,12 @@ export interface AttendanceDay {
   overrideHourlyRate?: number | null;
   /** Minutes past shift start at first check-in, grace already deducted. */
   minutesLate?: number;
+  /**
+   * The clock-out was already floored to the half hour, so these hours must
+   * not be rounded again. Rounding twice — down to the slot, then half-up to
+   * the site's fifteen-minute step — hands back some of what the floor took.
+   */
+  hoursAreFinal?: boolean;
 }
 
 /** Worked time split into the buckets that are paid at different rates. */
@@ -152,6 +166,11 @@ export interface Employee {
   hourlyRate: number;
   /** Contractors are paid `monthlySalary` flat. Defaults to employee. */
   workerType?: WorkerType;
+  /**
+   * Draws no salary through this system — an owner. Filtered out before a run
+   * reaches the engine; the guard in `calculatePayroll` is a second line.
+   */
+  payrollExempt?: boolean;
   /**
    * Hours this person's salary covers on a duty day. Work beyond it is
    * overtime; work below it is still one full working day. Defaults to the

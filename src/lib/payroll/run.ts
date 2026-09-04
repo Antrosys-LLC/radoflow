@@ -1,15 +1,7 @@
 import { calculatePayroll, summarisePayroll } from "./engine";
-import { daysInMonthOf } from "./hours";
-import type {
-  AttendanceDay,
-  DayType,
-  Employee,
-  LatePenaltyTier,
-  PayComponent,
-  PayRule,
-  PayrollResult,
-} from "./types";
-import { DEFAULT_PAY_RULE } from "./types";
+import { daysInMonthOf, roundMoney } from "./hours";
+import { toEmployee, toLateTier, toPayComponent, toPayRule } from "./mappers";
+import type { AttendanceDay, DayType, PayComponent, PayrollResult } from "./types";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /**
@@ -62,35 +54,46 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
   if (periodError || !period) throw new Error("Pay period not found.");
   if (period.locked) throw new Error("This period is locked and cannot be recalculated.");
 
-  const [{ data: staff }, { data: rules }, { data: components }, { data: lateRules }] =
-    await Promise.all([
-      supabase
-        .from("profiles")
-        .select(
-          "id, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, duty_hours, sunday_policy, overtime_eligible",
-        )
-        .eq("site_id", period.site_id)
-        .eq("status", "active"),
-      supabase
-        .from("pay_rules")
-        .select("*")
-        .eq("site_id", period.site_id)
-        .lte("effective_from", period.period_end)
-        .order("effective_from", { ascending: false })
-        .limit(1),
-      supabase
-        .from("pay_components")
-        .select("*")
-        .eq("site_id", period.site_id)
-        .eq("is_active", true)
-        .lte("effective_from", period.period_end)
-        .order("sort_order"),
-      supabase
-        .from("late_penalty_rules")
-        .select("*")
-        .eq("site_id", period.site_id)
-        .eq("is_active", true),
-    ]);
+  const [
+    { data: staff },
+    { data: rules },
+    { data: components },
+    { data: lateRules },
+    { data: contractDepartments },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select(
+        "id, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, payroll_exempt, duty_hours, sunday_policy, overtime_eligible",
+      )
+      .eq("site_id", period.site_id)
+      .eq("status", "active"),
+    supabase
+      .from("pay_rules")
+      .select("*")
+      .eq("site_id", period.site_id)
+      .lte("effective_from", period.period_end)
+      .order("effective_from", { ascending: false })
+      .limit(1),
+    supabase
+      .from("pay_components")
+      .select("*")
+      .eq("site_id", period.site_id)
+      .eq("is_active", true)
+      .lte("effective_from", period.period_end)
+      .order("sort_order"),
+    supabase
+      .from("late_penalty_rules")
+      .select("*")
+      .eq("site_id", period.site_id)
+      .eq("is_active", true),
+    supabase
+      .from("departments")
+      .select("id, name, contract_amount")
+      .eq("site_id", period.site_id)
+      .eq("default_worker_type", "contractor")
+      .eq("is_active", true),
+  ]);
 
   if (!staff || staff.length === 0) {
     throw new Error("No active employees at this factory.");
@@ -103,7 +106,7 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
   // One query for the whole period rather than per employee.
   const { data: attendance } = await supabase
     .from("attendance_days")
-    .select("profile_id, work_date, day_type, status, regular_hours, minutes_late")
+    .select("profile_id, work_date, day_type, status, regular_hours, minutes_late, hours_are_final")
     .gte("work_date", period.period_start)
     .lte("work_date", period.period_end)
     .in(
@@ -121,6 +124,7 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
       hoursWorked: Number(row.regular_hours ?? 0),
       status: (row.status ?? "pending") as AttendanceDay["status"],
       minutesLate: row.minutes_late ?? 0,
+      hoursAreFinal: row.hours_are_final ?? false,
     });
     daysByProfile.set(row.profile_id, list);
   }
@@ -166,14 +170,20 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
   const daysInMonth = daysInMonthOf(period.period_start);
 
   for (const person of staff) {
+    /*
+     * A contract firm is billed once, below. An exempt person draws nothing
+     * here at all. Neither is "skipped" in the sense the summary means — that
+     * list is for people who should have been paid and could not be — so
+     * neither is reported there.
+     */
+    if (person.worker_type === "contractor" || person.payroll_exempt) continue;
+
     const employee = toEmployee(person);
     const days = daysByProfile.get(person.id) ?? [];
 
     // An hourly worker with no punches earns nothing — flag it rather than
     // silently writing a zero line that looks like a completed calculation.
-    // A contractor is exempt: their amount is agreed, not earned by the clock,
-    // so a month with no punches is still a month they are owed.
-    if (employee.workerType !== "contractor" && employee.requiresAttendance && days.length === 0) {
+    if (employee.requiresAttendance && days.length === 0) {
       skipped.push({ name: employee.fullName, reason: "No attendance recorded in this period" });
       continue;
     }
@@ -225,11 +235,61 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     });
   }
 
+  /*
+   * The firm, not its people.
+   *
+   * Headcount is recorded because it is what the office checks the invoice
+   * against — the amount is agreed regardless of how many people turned up.
+   */
+  const contractRows = [];
+  let contractTotal = 0;
+  let contractHeadcount = 0;
+
+  for (const dept of contractDepartments ?? []) {
+    const people = staff.filter(
+      (s) => s.department_id === dept.id && s.worker_type === "contractor",
+    );
+    const amount = Number(dept.contract_amount ?? 0);
+
+    if (amount <= 0) {
+      /*
+       * Left at zero this firm would cost nothing and its people would produce
+       * no lines — the run would simply pass over them in silence. Say so.
+       */
+      if (people.length > 0) {
+        skipped.push({
+          name: dept.name,
+          reason: `${people.length} contract worker${people.length === 1 ? "" : "s"}, no contract amount set`,
+        });
+      }
+      continue;
+    }
+
+    contractTotal = roundMoney(contractTotal + amount);
+    contractHeadcount += people.length;
+
+    contractRows.push({
+      period_id: period.id,
+      department_id: dept.id,
+      amount,
+      headcount: people.length,
+      note: null,
+      computed_at: new Date().toISOString(),
+    });
+  }
+
   if (rows.length > 0) {
     const { error } = await supabase
       .from("payroll_items")
       .upsert(rows, { onConflict: "period_id,profile_id" });
     if (error) throw new Error(`Could not save payroll lines: ${error.message}`);
+  }
+
+  if (contractRows.length > 0) {
+    const { error } = await supabase
+      .from("payroll_contract_items")
+      .upsert(contractRows, { onConflict: "period_id,department_id" });
+    if (error) throw new Error(`Could not save contract lines: ${error.message}`);
   }
 
   const totals = summarisePayroll(results);
@@ -238,79 +298,25 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     .from("payroll_periods")
     .update({
       status: "review",
-      headcount: totals.headcount,
-      total_gross: totals.gross,
+      headcount: totals.headcount + contractHeadcount,
+      total_gross: roundMoney(totals.gross + contractTotal),
       total_deductions: totals.deductions,
       total_tax: totals.tax,
-      total_net: totals.net,
+      total_net: roundMoney(totals.net + contractTotal),
       calculated_at: new Date().toISOString(),
     })
     .eq("id", period.id);
 
-  return { periodId: period.id, ...totals, skipped, flagged };
-}
-
-// -- mappers ----------------------------------------------------------------
-
-function toPayRule(row: Record<string, unknown> | undefined): PayRule {
-  if (!row) return { ...DEFAULT_PAY_RULE };
+  // A contract amount attracts no deduction and no tax: it is a payment to a
+  // firm, not a wage with statutory withholding.
   return {
-    standardHoursPerDay: Number(row["standard_hours_per_day"] ?? 8),
-    standardDaysPerMonth: Number(row["standard_days_per_month"] ?? 26),
-    otHourlyRate: Number(row["ot_hourly_rate"] ?? 0),
-    weekendHourlyRate: Number(row["weekend_hourly_rate"] ?? 0),
-    holidayHourlyRate: Number(row["holiday_hourly_rate"] ?? 0),
-    nightHourlyRate: Number(row["night_hourly_rate"] ?? 0),
-    lateGraceMinutes: Number(row["late_grace_minutes"] ?? 10),
-    otThresholdMinutes: Number(row["ot_threshold_minutes"] ?? 30),
-    otDailyCapHours: Number(row["ot_daily_cap_hours"] ?? DEFAULT_PAY_RULE.otDailyCapHours),
-    roundToMinutes: Number(row["round_to_minutes"] ?? 15),
-  };
-}
-
-function toPayComponent(row: Record<string, unknown>): PayComponent {
-  return {
-    code: String(row["code"]),
-    label: String(row["label"]),
-    kind: row["kind"] as PayComponent["kind"],
-    calc: row["calc"] as PayComponent["calc"],
-    amount: Number(row["amount"] ?? 0),
-    percent: Number(row["percent"] ?? 0),
-    slabs: (row["slabs"] as PayComponent["slabs"]) ?? null,
-    appliesTo: (row["applies_to"] as PayComponent["appliesTo"]) ?? null,
-    sortOrder: Number(row["sort_order"] ?? 100),
-  };
-}
-
-function toLateTier(row: Record<string, unknown>): LatePenaltyTier {
-  return {
-    label: String(row["label"]),
-    fromMinutes: Number(row["from_minutes"]),
-    toMinutes: row["to_minutes"] == null ? null : Number(row["to_minutes"]),
-    penaltyPercent: Number(row["penalty_percent"]),
-    basis: (row["basis"] as "day" | "month") ?? "day",
-  };
-}
-
-function toEmployee(row: Record<string, unknown>): Employee {
-  return {
-    id: String(row["id"]),
-    fullName: String(row["full_name"]),
-    employeeCode: String(row["employee_code"]),
-    payClass: row["pay_class"] as Employee["payClass"],
-    requiresAttendance: Boolean(row["requires_attendance"]),
-    workerType: (row["worker_type"] as Employee["workerType"]) ?? "employee",
-    dutyHours: row["duty_hours"] == null ? null : Number(row["duty_hours"]),
-    sundayPolicy: (row["sunday_policy"] as Employee["sundayPolicy"]) ?? "off",
-    overtimeEligible: row["overtime_eligible"] == null ? true : Boolean(row["overtime_eligible"]),
-    monthlySalary: Number(row["monthly_salary"] ?? 0),
-    hourlyRate: Number(row["hourly_rate"] ?? 0),
-    otHourlyRate: row["ot_hourly_rate"] == null ? null : Number(row["ot_hourly_rate"]),
-    weekendHourlyRate:
-      row["weekend_hourly_rate"] == null ? null : Number(row["weekend_hourly_rate"]),
-    holidayHourlyRate:
-      row["holiday_hourly_rate"] == null ? null : Number(row["holiday_hourly_rate"]),
-    departmentId: (row["department_id"] as string | null) ?? null,
-    siteId: (row["site_id"] as string | null) ?? null,
+    periodId: period.id,
+    headcount: totals.headcount + contractHeadcount,
+    gross: roundMoney(totals.gross + contractTotal),
+    deductions: totals.deductions,
+    tax: totals.tax,
+    net: roundMoney(totals.net + contractTotal),
+    skipped,
+    flagged,
   };
 }

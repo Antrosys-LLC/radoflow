@@ -162,7 +162,7 @@ K50-DYE-0001@192.168.1.201,MB460-0001@192.168.1.202#1234
 
 | Variable                | Default | Notes                                                                       |
 | ----------------------- | ------- | --------------------------------------------------------------------------- |
-| `RADO_INTERVAL_SECONDS` | `60`    | How often to poll                                                           |
+| `RADO_INTERVAL_SECONDS` | `30`    | How often to poll every terminal. They are polled together, not in turn     |
 | `RADO_CLEAR_DEVICE_LOG` | `false` | Wipes the terminal log after upload. Leave off — the device keeps no backup |
 
 Re-reading the same records is harmless: ingestion is idempotent, so a replay

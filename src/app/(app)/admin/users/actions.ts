@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requirePermission, type Session } from "@/lib/auth/session";
 import { cnicLoginEmail, formatCnic, isValidCnic } from "@/lib/cnic";
+import { trackingFlags } from "@/lib/people/tracking";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -103,7 +104,10 @@ export async function createUser(_prev: UserResult, form: FormData): Promise<Use
     pay_class: payClass,
     monthly_salary: Number(text(form, "monthly_salary") || 0),
     hourly_rate: Number(text(form, "hourly_rate") || 0),
-    requires_attendance: form.get("requires_attendance") !== null,
+    ...trackingFlags(text(form, "tracking")),
+    // An empty shift selection is the no-shift option, and someone with no
+    // shift has no in or out time to keep.
+    flexible_hours: text(form, "shift_id") === "",
     // Left unset, a trigger fills this from the department's default.
     worker_type: (text(form, "worker_type") || "employee") as "employee" | "contractor",
     duty_hours: Number(text(form, "duty_hours") || 8),
@@ -344,6 +348,9 @@ export async function updateUserProfile(_prev: UserResult, form: FormData): Prom
       site_id: text(form, "site_id") || null,
       department_id: text(form, "department_id") || null,
       shift_id: text(form, "shift_id") || null,
+      // An empty shift selection is the no-shift option, and someone with no
+      // shift has no in or out time to keep.
+      flexible_hours: text(form, "shift_id") === "",
     })
     .eq("id", userId);
 

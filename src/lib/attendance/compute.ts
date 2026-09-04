@@ -1,3 +1,4 @@
+import { splitIntoSessions } from "./sessions";
 import { round2 } from "@/lib/payroll/hours";
 import type { AttendanceStatus, DayType } from "@/lib/payroll/types";
 
@@ -6,8 +7,9 @@ import type { AttendanceStatus, DayType } from "@/lib/payroll/types";
  *
  * Factory terminals are messy: workers punch for lunch, miss a punch when
  * leaving in a hurry, and most K50 units are configured without dedicated
- * in/out keys so every record arrives as "unknown". The pairing below handles
- * all three rather than assuming a clean in/out sequence.
+ * in/out keys so every record arrives as "unknown". Pairing is delegated to
+ * `splitIntoSessions`, which handles all three rather than assuming a clean
+ * in/out sequence.
  */
 
 export interface RawPunch {
@@ -19,23 +21,60 @@ export interface ComputedDay {
   firstIn: Date | null;
   lastOut: Date | null;
   hoursWorked: number;
+  /** Unpaid time between a clock-out and the next clock-in. */
+  breakMinutes: number;
+  /**
+   * The clock-out was floored to the half hour, so payroll must not round
+   * these hours a second time.
+   */
+  hoursAreFinal: boolean;
   status: AttendanceStatus;
   /** Set when the punch sequence could not be paired cleanly. */
   anomaly: string | null;
+  /** Direction per punch in ascending time order, for writing back. */
+  directions: ("in" | "out")[];
 }
 
 const EMPTY: ComputedDay = {
   firstIn: null,
   lastOut: null,
   hoursWorked: 0,
+  breakMinutes: 0,
+  hoursAreFinal: false,
   status: "absent",
   anomaly: null,
+  directions: [],
 };
+
+/**
+ * Rounds a leaving time down to :00 or :30.
+ *
+ * Always down. Someone who leaves at 11:45 is paid to 11:30 and someone who
+ * leaves at 11:20 to 11:00 — the factory pays for completed half hours, and
+ * rounding up would pay for time nobody worked.
+ */
+export function floorToHalfHour(at: Date): Date {
+  const floored = new Date(at);
+  floored.setMinutes(floored.getMinutes() < 30 ? 0 : 30, 0, 0);
+  return floored;
+}
+
+export interface ComputeOptions {
+  requiresAttendance?: boolean;
+  /**
+   * Floor the day's last clock-out to the half hour.
+   *
+   * Only true for someone with an enforced shift. A person with no fixed
+   * finish has nothing to round against, so flooring them would simply take up
+   * to twenty-nine minutes off a day they were asked to complete by hours.
+   */
+  floorFinalOut?: boolean;
+}
 
 export function computeDayFromPunches(
   punches: readonly RawPunch[],
   dayType: DayType,
-  options: { requiresAttendance?: boolean } = {},
+  options: ComputeOptions = {},
 ): ComputedDay {
   const isNonWorking = dayType === "off" || dayType === "holiday";
 
@@ -50,92 +89,58 @@ export function computeDayFromPunches(
     };
   }
 
-  const sorted = [...punches].sort((a, b) => a.punchedAt.getTime() - b.punchedAt.getTime());
-  const first = sorted[0]!;
-  const last = sorted[sorted.length - 1]!;
+  const split = splitIntoSessions(punches);
+  const first = split.sessions[0]!;
+  const lastSession = split.sessions[split.sessions.length - 1]!;
 
-  if (sorted.length === 1) {
+  if (split.sessions.length === 1 && lastSession.out === null) {
     // One punch tells us they were here but not for how long. Flag it for a
     // supervisor rather than silently paying or docking a full shift.
     return {
-      firstIn: first.punchedAt,
-      lastOut: null,
-      hoursWorked: 0,
+      ...EMPTY,
+      firstIn: first.in,
       status: "partial",
       anomaly: "Only one punch recorded — missing clock-out",
+      directions: split.directions,
     };
   }
 
-  // Direction is only informative when the terminal actually distinguishes
-  // the two. A K50 without dedicated in/out keys stamps every record with
-  // state 0, which arrives here as an unbroken run of "in" — believing that
-  // would pair nothing and report a zero-hour day for someone who worked a
-  // full shift. Fall back to alternating unless both directions are present.
-  const directions = new Set(sorted.map((p) => p.direction));
-  const hasUsableDirections = directions.has("in") && directions.has("out");
-  const paired = hasUsableDirections ? pairByDirection(sorted) : pairByAlternating(sorted);
+  /*
+   * Flooring is applied to the day's closing punch only. An earlier session's
+   * clock-out was followed by more work, so it is a break boundary rather than
+   * a leaving time, and rounding it would shorten a stretch that was actually
+   * worked.
+   */
+  let hoursWorked = split.workedHours;
+  let lastOut = lastSession.out;
+  let hoursAreFinal = false;
 
-  return {
-    firstIn: first.punchedAt,
-    lastOut: last.punchedAt,
-    hoursWorked: paired.hours,
-    status: paired.hours > 0 ? "present" : "partial",
-    anomaly: paired.anomaly,
-  };
-}
-
-interface PairResult {
-  hours: number;
-  anomaly: string | null;
-}
-
-/** Pairs each in with the next out, ignoring repeated punches of the same kind. */
-function pairByDirection(punches: readonly RawPunch[]): PairResult {
-  let total = 0;
-  let openIn: Date | null = null;
-  let unmatched = 0;
-
-  for (const punch of punches) {
-    // Treat "unknown" between explicit punches as continuing the current state.
-    const direction = punch.direction === "unknown" ? (openIn ? "out" : "in") : punch.direction;
-
-    if (direction === "in") {
-      // A second "in" without an "out" replaces the first — the earlier one was
-      // most likely a double-tap on the sensor.
-      if (openIn) unmatched += 1;
-      openIn = punch.punchedAt;
-    } else if (openIn) {
-      total += punch.punchedAt.getTime() - openIn.getTime();
-      openIn = null;
-    } else {
-      unmatched += 1;
-    }
+  if (options.floorFinalOut && lastOut) {
+    const floored = floorToHalfHour(lastOut);
+    // Never behind its own clock-in: a ten-minute session must not go negative.
+    const clamped = floored.getTime() < lastSession.in.getTime() ? lastSession.in : floored;
+    const lostMs = lastOut.getTime() - clamped.getTime();
+    // split.workedHours is already rounded to the cent; subtracting the lost
+    // minutes from it and rounding again can drift the total by a cent.
+    // Sum the sessions' exact millisecond spans instead and round once.
+    const totalMs = split.sessions.reduce(
+      (sum, session) => sum + (session.out ? session.out.getTime() - session.in.getTime() : 0),
+      0,
+    );
+    hoursWorked = round2(Math.max(0, totalMs - lostMs) / 3_600_000);
+    lastOut = clamped;
+    hoursAreFinal = true;
   }
 
-  if (openIn) unmatched += 1;
-
   return {
-    hours: round2(total / 3_600_000),
-    anomaly: unmatched > 0 ? `${unmatched} unpaired punch(es)` : null,
-  };
-}
-
-/**
- * Fallback for terminals that report no direction: assume punches alternate
- * in, out, in, out.
- */
-function pairByAlternating(punches: readonly RawPunch[]): PairResult {
-  let total = 0;
-
-  for (let i = 0; i + 1 < punches.length; i += 2) {
-    total += punches[i + 1]!.punchedAt.getTime() - punches[i]!.punchedAt.getTime();
-  }
-
-  const dangling = punches.length % 2 === 1;
-
-  return {
-    hours: round2(total / 3_600_000),
-    anomaly: dangling ? "Odd number of punches — last clock-out missing" : null,
+    firstIn: first.in,
+    lastOut,
+    hoursWorked,
+    breakMinutes: split.breakMinutes,
+    hoursAreFinal,
+    status: hoursWorked > 0 ? "present" : "partial",
+    anomaly: split.hasOpenSession ? "Missing clock-out" : null,
+    directions: split.directions,
   };
 }
 

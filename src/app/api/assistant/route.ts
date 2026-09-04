@@ -19,6 +19,17 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Earlier turns kept for context.
+ *
+ * People ask follow-ups the way they speak — "aur pichle mahine?" — which is
+ * unanswerable without the question before it. Capped because the history
+ * arrives from the browser: it costs tokens, and there is no reason to let a
+ * client grow it without limit.
+ */
+const MAX_HISTORY_TURNS = 8;
+const MAX_QUESTION_LENGTH = 1000;
+
 const LANGUAGE_INSTRUCTIONS: Record<string, string> = {
   ur: "Answer only in Urdu, written in the Urdu script (اردو). Do not mix in English words unless there is no Urdu equivalent (e.g. a person's name).",
   "roman-ur":
@@ -33,7 +44,36 @@ const SYSTEM_PROMPT_BASE = `You are the RadoFlow "Ask" assistant, built for a Pa
 - Use simple, everyday words. Avoid jargon like "aggregate", "variance", or technical field names.
 - If a tool returns no data, say plainly that there is nothing to report or that you do not have access to it — never guess or estimate a figure to fill the gap.
 - If a question is ambiguous (which department, which person, which date range), ask one short clarifying question rather than assuming.
-- You have no ability to change any record, approve anything, or take any action — you can only answer questions. If someone asks you to approve, change, or delete something, say that has to be done by a person in the app, not by you.`;
+- You have no ability to change any record, approve anything, or take any action — you can only answer questions. If someone asks you to approve, change, or delete something, say that has to be done by a person in the app, not by you.
+- Your tools cover what the app's own screens show: who is in right now, attendance and late arrivals, overtime hours, leave and holidays, headcount, what a person is paid, what their salary comes to for a month, and what a department costs. Answer from a tool, never from memory of an earlier answer.
+- Money questions: a figure from a completed pay run is what will actually be paid; a live calculation is only what today's attendance and rates come to. When you quote a calculated figure, say in a few words that it is worked out from attendance so far and can still change.`;
+
+/**
+ * The browser's thread, trimmed to what the model can act on.
+ *
+ * Anything malformed is dropped rather than rejected: a bad history entry is
+ * not worth failing an otherwise valid question over, and the current question
+ * still answers on its own.
+ */
+function readHistory(value: unknown): Anthropic.Beta.BetaMessageParam[] {
+  if (!Array.isArray(value)) return [];
+
+  const turns: Anthropic.Beta.BetaMessageParam[] = [];
+  for (const entry of value.slice(-MAX_HISTORY_TURNS)) {
+    if (!entry || typeof entry !== "object") continue;
+    const { role, text } = entry as { role?: unknown; text?: unknown };
+    if (role !== "user" && role !== "assistant") continue;
+    if (typeof text !== "string" || !text.trim()) continue;
+    turns.push({ role, content: text.slice(0, MAX_QUESTION_LENGTH) });
+  }
+
+  // The API requires the thread to start with a user turn, and the question
+  // appended after this one must not follow another user turn.
+  while (turns.length > 0 && turns[0]?.role !== "user") turns.shift();
+  while (turns.length > 0 && turns[turns.length - 1]?.role !== "assistant") turns.pop();
+
+  return turns;
+}
 
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -43,7 +83,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not allowed to use the assistant." }, { status: 403 });
   }
 
-  let body: { question?: unknown; language?: unknown };
+  let body: { question?: unknown; language?: unknown; history?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -56,9 +96,11 @@ export async function POST(request: NextRequest) {
   if (!question) {
     return NextResponse.json({ error: "Ask a question first." }, { status: 400 });
   }
-  if (question.length > 1000) {
+  if (question.length > MAX_QUESTION_LENGTH) {
     return NextResponse.json({ error: "That question is too long." }, { status: 400 });
   }
+
+  const history = readHistory(body.history);
 
   let apiKey: string;
   try {
@@ -84,7 +126,7 @@ export async function POST(request: NextRequest) {
       max_tokens: 1024,
       system,
       tools,
-      messages: [{ role: "user", content: question }],
+      messages: [...history, { role: "user", content: question }],
     });
 
     const finalMessage = await runner.runUntilDone();

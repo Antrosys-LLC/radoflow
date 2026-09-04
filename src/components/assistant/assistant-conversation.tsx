@@ -184,6 +184,10 @@ export function AssistantConversation({
     const trimmed = question.trim();
     if (!trimmed || loading) return;
 
+    // Captured before the optimistic append, so the thread sent as context is
+    // the conversation *before* this question rather than including it twice.
+    const history = messages.slice(-8);
+
     setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
     setInput("");
     setLoading(true);
@@ -192,7 +196,7 @@ export function AssistantConversation({
       const response = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: trimmed, language }),
+        body: JSON.stringify({ question: trimmed, language, history }),
       });
       const body = (await response.json().catch(() => null)) as {
         answer?: string;

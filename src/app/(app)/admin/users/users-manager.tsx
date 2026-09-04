@@ -12,6 +12,7 @@ import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { cn } from "@/lib/utils";
 import { addUserComponent, removeUserComponent, updateUserPay } from "@/lib/pay/actions";
+import { trackingValueOf } from "@/lib/people/tracking";
 import {
   createUser,
   setUserOverride,
@@ -52,6 +53,7 @@ export interface UserRow {
   requiresAttendance: boolean;
   /** No in or out time enforced: never recorded late. */
   flexibleHours: boolean;
+  payrollExempt: boolean;
   siteId: string | null;
   departmentId: string | null;
   shiftId: string | null;
@@ -651,13 +653,17 @@ function AddUserDialog({
             </Field>
             <Field label="Shift">
               <select name="shift_id" defaultValue="" className={INPUT}>
-                <option value="">No shift</option>
+                <option value="">No shift — must complete duty hours</option>
                 {shifts.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Someone with no shift is never marked late and their clock-out is never rounded.
+                Their hours and overtime are still counted from the punches.
+              </p>
             </Field>
           </div>
 
@@ -733,18 +739,16 @@ function AddUserDialog({
             )}
           </div>
 
-          <label className="flex items-center gap-3 rounded-2xl bg-secondary px-4 py-3">
-            <input
-              type="checkbox"
-              name="requires_attendance"
-              defaultChecked={payClass === "hourly"}
-              key={payClass}
-              className="size-5 accent-[var(--primary)]"
-            />
-            <span className="text-sm font-semibold text-foreground">
-              Must clock in on the biometric terminal
-            </span>
-          </label>
+          <Field label="Attendance and pay">
+            <select name="tracking" defaultValue="tracked" className={INPUT}>
+              <option value="tracked">Tracked — attendance and salary</option>
+              <option value="salary_only">Salary only — no attendance kept</option>
+              <option value="exempt">Neither — owner</option>
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">
+              An owner draws nothing through this system and appears on no payroll run.
+            </p>
+          </Field>
 
           <CreateUserButton />
         </form>
@@ -886,13 +890,17 @@ function EditProfileDialog({
             </Field>
             <Field label="Shift">
               <select name="shift_id" defaultValue={user.shiftId ?? ""} className={INPUT}>
-                <option value="">No shift</option>
+                <option value="">No shift — must complete duty hours</option>
                 {shifts.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Someone with no shift is never marked late and their clock-out is never rounded.
+                Their hours and overtime are still counted from the punches.
+              </p>
             </Field>
           </div>
 
@@ -1095,6 +1103,11 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
   const [dutyHours, setDutyHours] = useState(String(user.dutyHours));
   const [salary, setSalary] = useState(String(user.monthlySalary));
 
+  const trackingValue = trackingValueOf({
+    requires_attendance: user.requiresAttendance,
+    payroll_exempt: user.payrollExempt,
+  });
+
   useEffect(() => {
     if (!state.message) return;
     if (state.ok) toast.success(state.message);
@@ -1204,37 +1217,19 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
           </p>
         </div>
 
+        <div>
+          <label className="text-sm font-semibold text-foreground">Attendance and pay</label>
+          <select name="tracking" defaultValue={trackingValue} className={INPUT}>
+            <option value="tracked">Tracked — attendance and salary</option>
+            <option value="salary_only">Salary only — no attendance kept</option>
+            <option value="exempt">Neither — owner</option>
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            An owner draws nothing through this system and appears on no payroll run.
+          </p>
+        </div>
+
         <div className="space-y-2.5">
-          <label className="flex items-start gap-2.5 text-sm font-semibold text-foreground">
-            <input
-              type="checkbox"
-              name="requires_attendance"
-              defaultChecked={user.requiresAttendance}
-              className="mt-0.5 size-4 rounded border-input"
-            />
-            <span>
-              Pay from attendance
-              <span className="block text-xs font-normal text-muted-foreground">
-                Unticked, the salary is paid in full and punches are only a record of presence.
-              </span>
-            </span>
-          </label>
-
-          <label className="flex items-start gap-2.5 text-sm font-semibold text-foreground">
-            <input
-              type="checkbox"
-              name="flexible_hours"
-              defaultChecked={user.flexibleHours}
-              className="mt-0.5 size-4 rounded border-input"
-            />
-            <span>
-              No fixed in or out time
-              <span className="block text-xs font-normal text-muted-foreground">
-                Never recorded late, whatever the shift says. Hours and overtime are still counted.
-              </span>
-            </span>
-          </label>
-
           <label className="flex items-start gap-2.5 text-sm font-semibold text-foreground">
             <input
               type="checkbox"

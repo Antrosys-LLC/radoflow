@@ -162,7 +162,22 @@ function flaggedDaysOf(
 export function calculatePayroll(input: PayrollInput): PayrollResult {
   const { employee, rule, days, components = [], latePenaltyTiers = [] } = input;
 
-  const isContractor = employee.workerType === "contractor";
+  /*
+   * A contract firm is billed once for the whole department, so pricing one of
+   * its people would double-charge whatever the firm agreed. An exempt person
+   * draws nothing here at all. Both are filtered out in `run.ts`; throwing
+   * rather than returning an empty result means a future caller that forgets
+   * cannot quietly produce a payslip that should not exist.
+   */
+  if (employee.workerType === "contractor") {
+    throw new Error(
+      `${employee.fullName} is a contractor — their firm is billed through payroll_contract_items, not priced per person.`,
+    );
+  }
+  if (employee.payrollExempt) {
+    throw new Error(`${employee.fullName} is exempt from payroll and must not be priced.`);
+  }
+
   const dutyHours = employee.dutyHours ?? rule.standardHoursPerDay;
 
   const terms = {
@@ -188,22 +203,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   // ---- Base pay -----------------------------------------------------------
   let basePay: number;
 
-  if (isContractor) {
-    /*
-     * Nothing is calculated for a contractor. The agreed amount is the whole
-     * of their base pay: no proration for days missed, no overtime, no late
-     * penalty. Hours are still accumulated above, because the terminal data is
-     * what lets the office check the contractor's invoice — it just does not
-     * price anything.
-     */
-    basePay = roundMoney(employee.monthlySalary);
-    lines.push({
-      code: "CONTRACT",
-      label: "Contract amount",
-      kind: "base",
-      amount: basePay,
-    });
-  } else if (isMonthly) {
+  if (isMonthly) {
     if (!employee.requiresAttendance) {
       // Not tracked by the terminal: the contracted salary is paid in full.
       basePay = roundMoney(employee.monthlySalary);
@@ -255,7 +255,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   const weekendRate = employee.weekendHourlyRate ?? rule.weekendHourlyRate;
   const holidayRate = employee.holidayHourlyRate ?? rule.holidayHourlyRate;
 
-  const otPay = isContractor ? 0 : roundMoney(hours.overtime * otRate);
+  const otPay = roundMoney(hours.overtime * otRate);
   if (otPay > 0) {
     lines.push({
       code: "OT",
@@ -267,9 +267,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     });
   }
 
-  const { weekendPay, holidayPay } = isContractor
-    ? { weekendPay: 0, holidayPay: 0 }
-    : premiumPay(days, rule, weekendRate, holidayRate);
+  const { weekendPay, holidayPay } = premiumPay(days, rule, weekendRate, holidayRate);
   if (weekendPay > 0) {
     lines.push({
       code: "WEEKEND",
@@ -296,10 +294,13 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   // worker cannot shrink the penalty by also working less.
   const dayRate = isMonthly ? perDay : roundMoney(employee.hourlyRate * rule.standardHoursPerDay);
 
-  // A contractor is not paid by the day, so there is no day to dock.
-  const late = isContractor
-    ? { total: 0, daysLate: 0, lines: [] as PayslipLine[] }
-    : calculateLatePenalties(days, latePenaltyTiers, dayRate, employee.monthlySalary);
+  const late = calculateLatePenalties(
+    days,
+    latePenaltyTiers,
+    dayRate,
+    employee.monthlySalary,
+    dutyHours,
+  );
   lines.push(...late.lines);
 
   // ---- Components ---------------------------------------------------------

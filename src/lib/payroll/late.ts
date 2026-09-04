@@ -48,20 +48,36 @@ export function calculateLatePenalties(
   tiers: readonly LatePenaltyTier[],
   dayRate: number,
   monthlyBase: number,
+  /**
+   * The hours this person's salary covers. The divisor behind a minute of pay,
+   * so a guard on twelve loses a twelfth of their day per hour late and an
+   * operator on eight loses an eighth — each against the day they contracted.
+   */
+  dutyHours = 8,
 ): LatePenaltyResult {
   if (tiers.length === 0) return { total: 0, daysLate: 0, lines: [] };
 
+  const perMinuteRate = dutyHours > 0 ? dayRate / dutyHours / 60 : 0;
+
   let total = 0;
   let daysLate = 0;
-  const byTier = new Map<string, { tier: LatePenaltyTier; count: number; amount: number }>();
+  const byTier = new Map<
+    string,
+    { tier: LatePenaltyTier; count: number; minutes: number; amount: number }
+  >();
 
   for (const day of days) {
     const minutesLate = day.minutesLate ?? 0;
     const tier = findTier(minutesLate, tiers);
     if (!tier) continue;
 
-    const base = tier.basis === "month" ? monthlyBase : dayRate;
-    const amount = roundMoney((base * tier.penaltyPercent) / 100);
+    const amount =
+      tier.basis === "minute"
+        ? roundMoney((minutesLate * perMinuteRate * tier.penaltyPercent) / 100)
+        : roundMoney(
+            ((tier.basis === "month" ? monthlyBase : dayRate) * tier.penaltyPercent) / 100,
+          );
+
     if (amount <= 0) continue;
 
     daysLate += 1;
@@ -70,22 +86,31 @@ export function calculateLatePenalties(
     const existing = byTier.get(tier.label);
     if (existing) {
       existing.count += 1;
+      existing.minutes += minutesLate;
       existing.amount = roundMoney(existing.amount + amount);
     } else {
-      byTier.set(tier.label, { tier, count: 1, amount });
+      byTier.set(tier.label, { tier, count: 1, minutes: minutesLate, amount });
     }
   }
 
   // One payslip line per tier rather than per day, so a month with twelve
   // small latenesses stays readable.
-  const lines: PayslipLine[] = [...byTier.values()].map(({ tier, count, amount }) => ({
-    code: `LATE_${tier.fromMinutes}`,
-    label: `${tier.label} (${count} day${count === 1 ? "" : "s"} × ${tier.penaltyPercent}% of ${
-      tier.basis === "month" ? "monthly pay" : "daily pay"
-    })`,
-    kind: "deduction",
-    amount,
-  }));
+  const lines: PayslipLine[] = [...byTier.values()].map(({ tier, count, minutes, amount }) => {
+    const days = `${count} day${count === 1 ? "" : "s"}`;
+    const detail =
+      tier.basis === "minute"
+        ? `${days}, ${minutes} minute${minutes === 1 ? "" : "s"}`
+        : `${days} × ${tier.penaltyPercent}% of ${
+            tier.basis === "month" ? "monthly pay" : "daily pay"
+          }`;
+
+    return {
+      code: `LATE_${tier.fromMinutes}`,
+      label: `${tier.label} (${detail})`,
+      kind: "deduction",
+      amount,
+    };
+  });
 
   return { total, daysLate, lines };
 }

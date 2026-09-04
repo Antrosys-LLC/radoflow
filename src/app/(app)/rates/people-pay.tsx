@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { Card } from "@/components/ui-kit";
 import { addUserComponent, removeUserComponent, updateUserPay } from "@/lib/pay/actions";
+import { trackingValueOf } from "@/lib/people/tracking";
 import { cn } from "@/lib/utils";
 
 /**
@@ -45,6 +46,7 @@ export interface PayPerson {
   overtimeEligible: boolean;
   requiresAttendance: boolean;
   flexibleHours: boolean;
+  payrollExempt: boolean;
   components: {
     id: string;
     label: string;
@@ -160,6 +162,11 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
   const monthly = Number(salary) || 0;
   const perDay = monthly / days;
   const perOtHour = perDay / 8;
+
+  const trackingValue = trackingValueOf({
+    requires_attendance: person.requiresAttendance,
+    payroll_exempt: person.payrollExempt,
+  });
 
   const deductions = person.components
     .filter((c) => c.kind !== "earning")
@@ -309,24 +316,16 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
                   className={INPUT}
                 />
               </Field>
-              <label className="flex items-center gap-2 self-end pb-2 text-xs font-semibold text-foreground">
-                <input
-                  type="checkbox"
-                  name="requires_attendance"
-                  defaultChecked={person.requiresAttendance}
-                  className="size-4 rounded border-input"
-                />
-                Pay from attendance
-              </label>
-              <label className="flex items-center gap-2 self-end pb-2 text-xs font-semibold text-foreground">
-                <input
-                  type="checkbox"
-                  name="flexible_hours"
-                  defaultChecked={person.flexibleHours}
-                  className="size-4 rounded border-input"
-                />
-                No fixed in/out time
-              </label>
+              <Field label="Attendance and pay">
+                <select name="tracking" defaultValue={trackingValue} className={INPUT}>
+                  <option value="tracked">Tracked — attendance and salary</option>
+                  <option value="salary_only">Salary only — no attendance kept</option>
+                  <option value="exempt">Neither — owner</option>
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  An owner draws nothing through this system and appears on no payroll run.
+                </p>
+              </Field>
               <label className="flex items-center gap-2 self-end pb-2 text-xs font-semibold text-foreground">
                 <input
                   type="checkbox"

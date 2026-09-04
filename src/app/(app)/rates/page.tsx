@@ -45,7 +45,7 @@ export default async function RatesPage({
     supabase
       .from("profiles")
       .select(
-        "id, full_name, employee_code, cnic, department_id, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours, overtime_eligible",
+        "id, full_name, employee_code, cnic, department_id, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours, payroll_exempt, overtime_eligible",
       )
       .eq("status", "active")
       .order("full_name"),
@@ -82,6 +82,7 @@ export default async function RatesPage({
     sundayPolicy: row.sunday_policy,
     requiresAttendance: row.requires_attendance,
     flexibleHours: row.flexible_hours,
+    payrollExempt: row.payroll_exempt,
     overtimeEligible: row.overtime_eligible,
     components: componentsByPerson.get(row.id) ?? [],
   }));

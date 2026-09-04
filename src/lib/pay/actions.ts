@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requirePermission } from "@/lib/auth/session";
+import { trackingFlags } from "@/lib/people/tracking";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -60,8 +61,7 @@ export async function updateUserPay(_prev: PayResult, form: FormData): Promise<P
       hourly_rate: hourlyRate,
       duty_hours: dutyHours,
       sunday_policy: sundayPolicy,
-      requires_attendance: form.get("requires_attendance") !== null,
-      flexible_hours: form.get("flexible_hours") !== null,
+      ...trackingFlags(text(form, "tracking")),
       overtime_eligible: form.get("overtime_eligible") !== null,
     })
     .eq("id", userId);

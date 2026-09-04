@@ -31,7 +31,7 @@ export default async function UsersPage() {
     supabase
       .from("profiles")
       .select(
-        "id, employee_code, full_name, cnic, email, phone, designation, status, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours, overtime_eligible, site_id, department_id, shift_id",
+        "id, employee_code, full_name, cnic, email, phone, designation, status, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours, payroll_exempt, overtime_eligible, site_id, department_id, shift_id",
       )
       .order("full_name"),
     supabase.from("roles").select("id, name, is_superuser").order("rank"),
@@ -96,6 +96,7 @@ export default async function UsersPage() {
       sundayPolicy: profile.sunday_policy,
       requiresAttendance: profile.requires_attendance,
       flexibleHours: profile.flexible_hours,
+      payrollExempt: profile.payroll_exempt,
       overtimeEligible: profile.overtime_eligible,
       siteId: profile.site_id,
       departmentId: profile.department_id,

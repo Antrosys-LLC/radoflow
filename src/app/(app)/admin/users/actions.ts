@@ -348,6 +348,9 @@ export async function updateUserProfile(_prev: UserResult, form: FormData): Prom
       site_id: text(form, "site_id") || null,
       department_id: text(form, "department_id") || null,
       shift_id: text(form, "shift_id") || null,
+      // An empty shift selection is the no-shift option, and someone with no
+      // shift has no in or out time to keep.
+      flexible_hours: text(form, "shift_id") === "",
     })
     .eq("id", userId);
 

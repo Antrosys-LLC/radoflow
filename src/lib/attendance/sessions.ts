@@ -49,15 +49,10 @@ const EMPTY: SessionSplit = {
   hasOpenSession: false,
 };
 
-export function splitIntoSessions(
-  punches: readonly TimedPunch[],
-  windowHours = 12,
-): SessionSplit {
+export function splitIntoSessions(punches: readonly TimedPunch[], windowHours = 12): SessionSplit {
   if (punches.length === 0) return { ...EMPTY, sessions: [], directions: [] };
 
-  const times = punches
-    .map((p) => p.punchedAt)
-    .sort((a, b) => a.getTime() - b.getTime());
+  const times = punches.map((p) => p.punchedAt).sort((a, b) => a.getTime() - b.getTime());
 
   const windowMs = windowHours * HOUR_MS;
 

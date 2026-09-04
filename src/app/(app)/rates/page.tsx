@@ -153,7 +153,10 @@ export default async function RatesPage({
             id: firm.id,
             name: firm.name,
             contractAmount: Number(firm.contract_amount ?? 0),
-            headcount: people.filter(
+            // Headcount is a property of the firm, not of whatever search or
+            // filter the operator currently has typed in — count from the
+            // unfiltered roster.
+            headcount: everyone.filter(
               (p) => p.departmentId === firm.id && p.workerType === "contractor",
             ).length,
           }))}

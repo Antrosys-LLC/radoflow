@@ -2214,7 +2214,7 @@ git commit -m "feat: contractors and exempt staff never reach the payroll engine
 - Modify: `AGENTS.md`
 
 **Interfaces:**
-- Consumes: `payroll_contract_items` (Task 11), the engine guards (Task 12)
+- Consumes: `payroll_contract_items` (Task 11), the engine guards (Task 12), `AttendanceDay.hoursAreFinal` (Task 8), `attendance_days.hours_are_final` (Task 3, written by Task 10)
 - Produces: `RunSummary` unchanged in shape; `skipped` gains contract-firm entries
 
 - [ ] **Step 1: Select the new columns**
@@ -2240,6 +2240,28 @@ In `toEmployee`, add:
     payrollExempt: row.payroll_exempt ?? false,
 ```
 
+- [ ] **Step 2b: Read the floored-hours flag back out of attendance**
+
+Task 10 writes `hours_are_final` on every day whose clock-out was floored, and
+Task 8 taught `splitDayHours` to honour it — but a run never selects the
+column, so `AttendanceDay.hoursAreFinal` would arrive `undefined` on every row
+and the flag would do nothing outside its own unit tests. This step is what
+connects the two.
+
+In the `attendance_days` query, add `hours_are_final` to the select list:
+
+```ts
+    .select(
+      "profile_id, work_date, day_type, status, regular_hours, minutes_late, hours_are_final",
+    )
+```
+
+and in the `daysByProfile` loop that builds each `AttendanceDay`, add:
+
+```ts
+      hoursAreFinal: row.hours_are_final ?? false,
+```
+
 - [ ] **Step 3: Filter both groups out of the per-person loop**
 
 Immediately inside `for (const person of staff) {`, before `const employee = toEmployee(person);`:
@@ -2253,6 +2275,11 @@ Immediately inside `for (const person of staff) {`, before `const employee = toE
      */
     if (person.worker_type === "contractor" || person.payroll_exempt) continue;
 ```
+
+This makes the existing `employee.workerType !== "contractor"` clause in the
+no-attendance skip check below unreachable. Delete that clause — the condition
+becomes `if (employee.requiresAttendance && days.length === 0)` — rather than
+leaving a guard that reads as though contractors still flow through here.
 
 - [ ] **Step 4: Emit one line per firm, and warn on the unset ones**
 

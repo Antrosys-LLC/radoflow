@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarDays, Clock, ScrollText, TriangleAlert, Users } from "lucide-react";
 
+import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refresh";
 import { ExportButtons } from "@/components/export-buttons";
 import { matchesPerson } from "@/lib/people/match";
 import { Card, SectionTitle } from "@/components/ui-kit";
@@ -196,8 +197,18 @@ export default async function AttendanceLogPage({
     };
   }
 
+  /*
+   * A log whose window reaches today is still filling up, so it refreshes on
+   * the same half-minute the terminals are polled on and new punches appear
+   * without anyone reloading. A window that ended in the past cannot change,
+   * and re-rendering a closed month on a timer is pure load.
+   */
+  const showsToday = to >= todayInPakistan();
+
   return (
     <div className="space-y-5 pb-6">
+      {showsToday ? <AutoRefresh seconds={ATTENDANCE_REFRESH_SECONDS} /> : null}
+
       <Card className="p-4 sm:p-6">
         <SectionTitle
           icon={ScrollText}

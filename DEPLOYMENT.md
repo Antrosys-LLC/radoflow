@@ -58,7 +58,7 @@ address, so:
 
 - **Polling from Railway will always fail.** The background poller is therefore
   off unless `DEVICE_SYNC_ENABLED=true`, so a cloud deploy does not retry an
-  unreachable device every minute and bury real errors.
+  unreachable device every 30 seconds and bury real errors.
 - **Push mode needs a path inward.** The terminal uploads to
   `/iclock/cdata`, so it must be able to reach the deployed URL. That means
   outbound internet access from the factory network, with the public URL and

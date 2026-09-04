@@ -31,7 +31,7 @@ import { networkInterfaces } from "node:os";
 const BASE_URL = (process.env.RADO_URL ?? "").replace(/\/+$/, "");
 const SECRET = process.env.RADO_DEVICE_SECRET ?? "";
 const DEVICES_RAW = process.env.RADO_DEVICES ?? "";
-const INTERVAL_MS = Number(process.env.RADO_INTERVAL_SECONDS ?? 60) * 1000;
+const INTERVAL_MS = Number(process.env.RADO_INTERVAL_SECONDS ?? 30) * 1000;
 const CLEAR_AFTER_SYNC = process.env.RADO_CLEAR_DEVICE_LOG === "true";
 
 /**
@@ -530,43 +530,61 @@ function stamp() {
   return new Date().toLocaleString("en-PK", { timeZone: "Asia/Karachi" });
 }
 
+/** One terminal's turn. Never rejects: a dead device must not stop the others. */
+async function syncOne(device) {
+  // Back off a terminal that is switched off, rather than retrying every
+  // half minute all night and burying real errors.
+  if (device.failures >= 3 && device.failures % 5 !== 0) {
+    device.failures += 1;
+    return;
+  }
+
+  try {
+    const records = await readAttendance(device);
+    const result = await upload(device, records);
+    device.failures = 0;
+
+    if (result.accepted > 0) {
+      console.log(
+        `[${stamp()}] ${device.serialNumber}: ${result.accepted} new, ${result.duplicates} already stored`,
+      );
+    }
+    if (result.unmapped?.length) {
+      console.warn(
+        `[${stamp()}] ${device.serialNumber}: unlinked terminal id(s): ${result.unmapped.join(", ")}`,
+      );
+    }
+  } catch (error) {
+    device.failures += 1;
+    if (device.failures <= 3) {
+      console.error(`[${stamp()}] ${device.serialNumber}: ${error.message}`);
+    }
+  }
+}
+
 async function syncAll() {
   // A slow terminal must not overlap the next tick and open a second session.
   if (running) return;
   running = true;
 
-  for (const device of devices) {
-    // Back off a terminal that is switched off, rather than retrying every
-    // minute all night and burying real errors.
-    if (device.failures >= 3 && device.failures % 5 !== 0) {
-      device.failures += 1;
-      continue;
-    }
-
-    try {
-      const records = await readAttendance(device);
-      const result = await upload(device, records);
-      device.failures = 0;
-
-      if (result.accepted > 0) {
-        console.log(
-          `[${stamp()}] ${device.serialNumber}: ${result.accepted} new, ${result.duplicates} already stored`,
-        );
-      }
-      if (result.unmapped?.length) {
-        console.warn(
-          `[${stamp()}] ${device.serialNumber}: unlinked terminal id(s): ${result.unmapped.join(", ")}`,
-        );
-      }
-    } catch (error) {
-      device.failures += 1;
-      if (device.failures <= 3) {
-        console.error(`[${stamp()}] ${device.serialNumber}: ${error.message}`);
-      }
-    }
+  /*
+   * All terminals at once.
+   *
+   * Each is a separate TCP conversation with a different box on the LAN, and
+   * an unreachable one blocks for its whole connect timeout. Polled one after
+   * another, a single dead terminal pushes every healthy one behind it past
+   * the interval, and the 30s cadence quietly becomes a minute or more.
+   *
+   * try/finally rather than a bare assignment at the end: if anything here
+   * ever throws outside syncOne, `running` would otherwise stay true and the
+   * agent would go silent for the rest of its life — the kind of failure that
+   * looks exactly like terminals that stopped punching.
+   */
+  try {
+    await Promise.all(devices.map((device) => syncOne(device)));
+  } finally {
+    running = false;
   }
-
-  running = false;
 }
 
 /**

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { CalendarDays, Clock, LogIn, LogOut, TriangleAlert, UserCheck, UserX } from "lucide-react";
 
-import { AutoRefresh } from "@/components/auto-refresh";
+import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refresh";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
 import {
@@ -112,7 +112,7 @@ export default async function RegisterPage({
   return (
     <div className="space-y-5 pb-6">
       {/* Only today's register changes under the reader; a past date is settled. */}
-      {isToday ? <AutoRefresh seconds={15} /> : null}
+      {isToday ? <AutoRefresh seconds={ATTENDANCE_REFRESH_SECONDS} /> : null}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile

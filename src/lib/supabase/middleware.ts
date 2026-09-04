@@ -70,11 +70,25 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
-  // getUser() revalidates against the auth server. getSession() only reads the
-  // cookie, which a client could have forged — never gate on it.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  /*
+   * getClaims() verifies the access token's signature locally.
+   *
+   * This project signs tokens with an asymmetric key (ES256), so the check is
+   * done in-process against the project's published JWKS, which is fetched
+   * once and cached. A forged cookie fails the signature check exactly as it
+   * would have failed getUser() — but without a round trip.
+   *
+   * That round trip was not free: the auth server answers in ~600ms from here,
+   * and this runs on every single request, before anything renders. getUser()
+   * on this line and again in loadSession() was over a second of dead time on
+   * every navigation in the app.
+   *
+   * Never swap this back to getSession(): that only decodes the cookie without
+   * verifying it, and a client can write whatever it likes into a cookie.
+   */
+  const { data: claims } = await supabase.auth.getClaims();
+
+  const user = claims?.claims ?? null;
 
   const isDeviceRoute = DEVICE_PATHS.some((p) => pathname.startsWith(p));
   const isPublicRoute = PUBLIC_PATHS.some((p) => pathname.startsWith(p));

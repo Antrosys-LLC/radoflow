@@ -74,7 +74,9 @@ export function calculateLatePenalties(
     const amount =
       tier.basis === "minute"
         ? roundMoney((minutesLate * perMinuteRate * tier.penaltyPercent) / 100)
-        : roundMoney(((tier.basis === "month" ? monthlyBase : dayRate) * tier.penaltyPercent) / 100);
+        : roundMoney(
+            ((tier.basis === "month" ? monthlyBase : dayRate) * tier.penaltyPercent) / 100,
+          );
 
     if (amount <= 0) continue;
 

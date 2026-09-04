@@ -1008,6 +1008,28 @@ describe("run totals", () => {
   });
 });
 
+describe("hours that are already final", () => {
+  it("does not round a day whose clock-out was floored", () => {
+    // 7.58h with a 15-minute step would round up to 7.5... and then to 7.58's
+    // nearest quarter, 7.5. The floored figure must survive untouched.
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-03", hoursWorked: 7.58, hoursAreFinal: true }),
+      rule,
+    );
+
+    expect(buckets.regular).toBe(7.58);
+  });
+
+  it("still rounds a day that was not floored", () => {
+    const buckets = splitDayHours(
+      day({ workDate: "2026-08-03", hoursWorked: 7.58 }),
+      rule,
+    );
+
+    expect(buckets.regular).toBe(7.5);
+  });
+});
+
 function roundTo2(v: number): number {
   return Math.round(v * 100) / 100;
 }

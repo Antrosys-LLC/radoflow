@@ -124,6 +124,12 @@ export interface AttendanceDay {
   overrideHourlyRate?: number | null;
   /** Minutes past shift start at first check-in, grace already deducted. */
   minutesLate?: number;
+  /**
+   * The clock-out was already floored to the half hour, so these hours must
+   * not be rounded again. Rounding twice — down to the slot, then half-up to
+   * the site's fifteen-minute step — hands back some of what the floor took.
+   */
+  hoursAreFinal?: boolean;
 }
 
 /** Worked time split into the buckets that are paid at different rates. */

@@ -114,13 +114,25 @@ export function overtimeRate(monthlySalary: number, daysInMonth: number): number
  * same shift are overtime. Omitted, it falls back to the site's standard day,
  * which is what every caller wanted before duty hours existed.
  */
+/**
+ * A day's worked hours at the granularity payroll should price.
+ *
+ * One place, because `splitDayHours` and `excessHours` must agree: if the
+ * ceiling measured a differently-rounded figure from the one being paid, the
+ * flagged-hours total would drift away from the hours it is meant to describe.
+ */
+export function workedHoursOf(day: AttendanceDay, rule: PayRule): number {
+  const worked = Math.max(0, day.hoursWorked);
+  return day.hoursAreFinal ? round2(worked) : roundHours(worked, rule.roundToMinutes);
+}
+
 export function splitDayHours(
   day: AttendanceDay,
   rule: PayRule,
   dutyHours?: number,
   terms: DutyTerms = {},
 ): HourBuckets {
-  const worked = roundHours(Math.max(0, day.hoursWorked), rule.roundToMinutes);
+  const worked = workedHoursOf(day, rule);
   if (worked <= 0) return { ...EMPTY_BUCKETS };
 
   const earnsOvertime = terms.overtimeEligible ?? true;
@@ -213,7 +225,7 @@ export function excessHours(
   dutyHours?: number,
   terms: DutyTerms = {},
 ): number {
-  const worked = roundHours(Math.max(0, day.hoursWorked), rule.roundToMinutes);
+  const worked = workedHoursOf(day, rule);
   if (worked <= 0) return 0;
 
   // A default (uncalendared) Sunday and every premium-rated day type pay the

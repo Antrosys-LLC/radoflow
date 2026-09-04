@@ -141,3 +141,36 @@ export async function removeUserComponent(componentId: string): Promise<PayResul
   revalidatePath("/payroll");
   return { ok: true, message: "Removed." };
 }
+
+/**
+ * Sets what a contract firm is owed for a month.
+ *
+ * One figure for the whole department, because that is what was agreed with
+ * the firm. The people inside it cost nothing individually — see
+ * `runPayrollForPeriod`, which emits one contract line per department and no
+ * payroll item for its people.
+ */
+export async function setContractAmount(_prev: PayResult, form: FormData): Promise<PayResult> {
+  await requirePermission("rates.manage");
+
+  const departmentId = text(form, "department_id");
+  const amount = Number(text(form, "contract_amount") || 0);
+
+  if (!departmentId) return { ok: false, message: "Pick a contract firm." };
+  if (!Number.isFinite(amount) || amount < 0) {
+    return { ok: false, message: "The contract amount cannot be negative." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("departments")
+    .update({ contract_amount: amount })
+    .eq("id", departmentId);
+
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath("/rates");
+  revalidatePath("/payroll");
+
+  return { ok: true, message: "Contract amount saved." };
+}

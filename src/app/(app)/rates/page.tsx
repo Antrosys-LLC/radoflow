@@ -9,6 +9,7 @@ import { requireAnyPermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { todayInPakistan } from "@/lib/time";
 
+import { ContractFirms } from "./contract-firms";
 import { PeoplePay, type PayPerson } from "./people-pay";
 import { LateRulesEditor, RatesForm, type LateRule, type RateValues } from "./rates-forms";
 
@@ -35,6 +36,7 @@ export default async function RatesPage({
     { data: rules },
     { data: lateRules },
     { data: departments },
+    { data: contractFirms },
     { data: staff },
     { data: components },
   ] = await Promise.all([
@@ -42,6 +44,12 @@ export default async function RatesPage({
     supabase.from("pay_rules").select("*").order("effective_from", { ascending: false }),
     supabase.from("late_penalty_rules").select("*").order("from_minutes"),
     supabase.from("departments").select("id, name").order("name"),
+    supabase
+      .from("departments")
+      .select("id, name, contract_amount, site_id")
+      .eq("default_worker_type", "contractor")
+      .eq("is_active", true)
+      .order("name"),
     supabase
       .from("profiles")
       .select(
@@ -138,6 +146,19 @@ export default async function RatesPage({
           </p>
         )}
       </Card>
+
+      {canManage ? (
+        <ContractFirms
+          firms={(contractFirms ?? []).map((firm) => ({
+            id: firm.id,
+            name: firm.name,
+            contractAmount: Number(firm.contract_amount ?? 0),
+            headcount: people.filter(
+              (p) => p.departmentId === firm.id && p.workerType === "contractor",
+            ).length,
+          }))}
+        />
+      ) : null}
 
       {(sites ?? []).map((site) => {
         // Effective-dated: the newest row that has already taken effect.

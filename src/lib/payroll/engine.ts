@@ -299,7 +299,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   // A contractor is not paid by the day, so there is no day to dock.
   const late = isContractor
     ? { total: 0, daysLate: 0, lines: [] as PayslipLine[] }
-    : calculateLatePenalties(days, latePenaltyTiers, dayRate, employee.monthlySalary);
+    : calculateLatePenalties(days, latePenaltyTiers, dayRate, employee.monthlySalary, dutyHours);
   lines.push(...late.lines);
 
   // ---- Components ---------------------------------------------------------

@@ -106,7 +106,13 @@ export interface LatePenaltyTier {
   /** Exclusive upper bound; null means "and beyond". */
   toMinutes: number | null;
   penaltyPercent: number;
-  basis: "day" | "month";
+  /**
+   * What the percentage is taken of.
+   *
+   * `minute` is the exception: it charges one minute of pay per minute late,
+   * so `penaltyPercent` is 100 and means "all of one minute's wage".
+   */
+  basis: "day" | "month" | "minute";
 }
 
 /** One person's attendance for one calendar date. */

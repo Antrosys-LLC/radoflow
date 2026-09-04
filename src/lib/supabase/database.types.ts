@@ -2553,7 +2553,7 @@ export type Database = {
         | "approved"
         | "paid"
         | "cancelled"
-      penalty_basis: "day" | "month"
+      penalty_basis: "day" | "month" | "minute"
       permission_effect: "grant" | "deny"
       punch_direction: "in" | "out" | "unknown"
       punch_source: "device" | "manual" | "import"
@@ -2727,7 +2727,7 @@ export const Constants = {
         "paid",
         "cancelled",
       ],
-      penalty_basis: ["day", "month"],
+      penalty_basis: ["day", "month", "minute"],
       permission_effect: ["grant", "deny"],
       punch_direction: ["in", "out", "unknown"],
       punch_source: ["device", "manual", "import"],

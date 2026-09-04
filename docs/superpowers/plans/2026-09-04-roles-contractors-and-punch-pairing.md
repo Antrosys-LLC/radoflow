@@ -18,7 +18,7 @@
 - **Money and hours round half-up to 2 decimals** through `round2`/`roundMoney` in `src/lib/payroll/hours.ts`. Do not use bare `Math.round`.
 - **Superuser roles are `admin-antrosys` and `ceo` only.** Nothing in this plan adds a third.
 - **Every new table gets RLS.** `alter table ... enable row level security`, a read policy, a write policy, and `grant` to `authenticated, service_role`.
-- **After any migration:** run `npm run db:reset`, then `npm run db:types`, then `npm run typecheck`. The regenerated `src/lib/supabase/database.types.ts` is the proof the columns landed.
+- **After any migration:** run `npm run db:reset`, then `npm run db:types:local`, then `npm run typecheck`. The regenerated `src/lib/supabase/database.types.ts` is the proof the columns landed. Use `db:types:local` and never bare `db:types` — the latter targets the linked REMOTE Supabase project and will silently generate types that do not reflect your local migrations.
 - **Test command:** `npm test` (vitest, `src/**/*.test.ts` only — there is no database test harness; migrations are verified through `db:reset` + `db:types`).
 
 ---
@@ -231,7 +231,7 @@ Then confirm through the app rather than psql (there is no SQL test harness): st
 
 - [ ] **Step 4: Regenerate types and typecheck**
 
-Run: `npm run db:types && npm run typecheck`
+Run: `npm run db:types:local && npm run typecheck`
 Expected: both succeed. `database.types.ts` changes only if the view's column list changed — it did not, so an empty diff here is correct and expected.
 
 - [ ] **Step 5: Commit**
@@ -536,7 +536,7 @@ comment on column public.attendance_days.hours_are_final is
 
 - [ ] **Step 2: Apply and regenerate types**
 
-Run: `npm run db:reset && npm run db:types`
+Run: `npm run db:reset && npm run db:types:local`
 Expected: both succeed.
 
 - [ ] **Step 3: Verify the columns reached the generated types**
@@ -1663,7 +1663,7 @@ select s.id, null, 'Late arrival — per minute', 0, null, 100, 'minute', true
 
 - [ ] **Step 2: Apply and regenerate**
 
-Run: `npm run db:reset && npm run db:types`
+Run: `npm run db:reset && npm run db:types:local`
 Expected: both succeed; `grep -n "\"minute\"" src/lib/supabase/database.types.ts` finds the new enum value.
 
 - [ ] **Step 3: Write the failing test**
@@ -2066,7 +2066,7 @@ grant select, insert, update, delete on public.payroll_contract_items
 
 - [ ] **Step 2: Apply, regenerate, typecheck**
 
-Run: `npm run db:reset && npm run db:types && npm run typecheck`
+Run: `npm run db:reset && npm run db:types:local && npm run typecheck`
 Expected: all three succeed.
 
 - [ ] **Step 3: Verify the table reached the types**
@@ -2643,7 +2643,7 @@ create policy attendance_approve on public.attendance_days
 
 - [ ] **Step 2: Apply and regenerate**
 
-Run: `npm run db:reset && npm run db:types && npm run typecheck`
+Run: `npm run db:reset && npm run db:types:local && npm run typecheck`
 Expected: all three succeed.
 
 If `create policy` fails saying the policy already exists, a policy of that
@@ -2795,7 +2795,7 @@ Expected: every migration applies in order, no errors. This is the only check th
 
 - [ ] **Step 2: Regenerate types and confirm no drift**
 
-Run: `npm run db:types && git diff --stat src/lib/supabase/database.types.ts`
+Run: `npm run db:types:local && git diff --stat src/lib/supabase/database.types.ts`
 Expected: no diff. A diff here means a migration was applied to the local database without the types being regenerated in its own task.
 
 - [ ] **Step 3: Full suite**

@@ -60,7 +60,7 @@ export function AppShell({ session, children }: { session: Session; children: Re
       </header>
 
       <div className="mx-auto flex max-w-[1500px] gap-5 px-3 py-5 sm:px-5">
-        <aside className="sticky top-28 hidden h-fit w-64 shrink-0 rounded-3xl border border-border bg-card p-3 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_rgb(0_0_0/0.05)] lg:block">
+        <aside className="sticky top-28 hidden max-h-[calc(100vh-8rem)] w-64 shrink-0 overflow-y-auto overscroll-contain rounded-3xl border border-border bg-card p-3 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_rgb(0_0_0/0.05)] lg:block">
           <SidebarNav sections={sections} />
         </aside>
 

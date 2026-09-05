@@ -181,7 +181,8 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
                     )}
                   >
                     {isIn ? <LogIn className="size-4" /> : <LogOut className="size-4" />}
-                    {formatTime(punch.punched_at)}
+                    <span className="tabular-nums">{formatTime(punch.punched_at)}</span>
+                    <span className="font-extrabold">{isIn ? "IN" : "OUT"}</span>
                   </span>
                 </div>
               );

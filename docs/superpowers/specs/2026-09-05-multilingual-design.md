@@ -183,6 +183,57 @@ leading. The Urdu stylesheet therefore sets its own `line-height`, and the wave
 that introduces the font checks the screens for clipping rather than assuming
 the existing spacing holds.
 
+### Names and numbers stay Latin, in the Latin font
+
+Even in Urdu, a person's name, an employee code, a CNIC, a rupee figure, a time
+and a date render in **Plus Jakarta Sans, left-to-right** — never in Nastaliq.
+
+Two separate reasons, and the second is a real bug rather than a preference.
+
+**The font.** Nastaliq is a Perso-Arabic face; its Latin coverage is not its
+purpose. `Muhammad Umar Riaz` set in it would fall back to some other face
+anyway, inconsistently, and `RD-1042` would look nothing like the same code on
+the payslip or the terminal display it is being checked against.
+
+**The direction.** This is the part that silently corrupts data on screen. In a
+right-to-left paragraph, digits are weak-directional and hyphens are neutral
+under the Unicode bidirectional algorithm, so a mixed run like `RD-1042` can be
+**reordered on display to `1042-RD`**. Nothing in the database changes; the
+screen simply shows a different employee code from the one stored. A worker
+reading their own code back to the office would read it wrong, and nobody would
+be able to reproduce it from the data.
+
+The fix is bidi **isolation**, not merely alignment. A single component:
+
+```tsx
+/**
+ * Content that is Latin whatever the interface language — a person's name, an
+ * employee code, a CNIC, money, a time, a date.
+ *
+ * `<bdi>` isolates the run from the surrounding paragraph's direction, so a
+ * code like RD-1042 cannot be reordered to 1042-RD by the bidi algorithm when
+ * the page is right-to-left. `dir="ltr"` states the direction outright rather
+ * than leaving it to be inferred from the first strong character — a string
+ * beginning with a digit has none.
+ */
+export function Latin({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <bdi dir="ltr" className={cn("font-latin", className)}>
+      {children}
+    </bdi>
+  );
+}
+```
+
+`font-latin` is a Tailwind utility bound to the Plus Jakarta Sans variable, so
+it wins over the document font in Urdu and is a no-op in the other two
+languages.
+
+Every name, code, CNIC, money figure, time and date goes through it. That is a
+large number of call sites, and it is why the waves are scoped by screen: each
+wave converts the strings *and* wraps the Latin content on its own screens, so
+neither job is left half-done on a page somebody is using.
+
 ## Section 5 — Translation quality, and what is honestly uncertain
 
 I write all three languages. English is authoritative; Urdu and Roman Urdu are
@@ -239,6 +290,12 @@ The dictionary is pure data and pure functions, and that is where the tests go:
 - **An empty-string test** — no value in any dictionary is an empty string. An
   empty string satisfies the type and renders as a blank label, which is the one
   failure the type system cannot see.
+
+`Latin` is a five-line component whose whole job is two attributes, so it gets
+no unit test — a jsdom assertion that `<bdi dir="ltr">` renders would be
+asserting the JSX back to itself. What it exists to prevent is verified by
+looking at an employee code and a rupee figure on an Urdu screen and confirming
+they read in the same order as on the English one.
 
 RTL layout and the font are visual and are verified by looking at the three
 Wave 1 screens in each language — a jsdom assertion that `dir="rtl"` is present

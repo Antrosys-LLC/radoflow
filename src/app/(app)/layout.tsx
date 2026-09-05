@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { LanguageProvider } from "@/components/language-provider";
 import { requireSession } from "@/lib/auth/session";
 
 /**
@@ -18,5 +19,16 @@ export const dynamic = "force-dynamic";
  */
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const session = await requireSession();
-  return <AppShell session={session}>{children}</AppShell>;
+
+  /*
+   * The provider is seeded here rather than in the root layout because this is
+   * the first point at which the session — and so the person's language — is
+   * known. Server components below read `session.profile.language` directly;
+   * this is the same value, handed to the client components that cannot.
+   */
+  return (
+    <LanguageProvider language={session.profile.language}>
+      <AppShell session={session}>{children}</AppShell>
+    </LanguageProvider>
+  );
 }

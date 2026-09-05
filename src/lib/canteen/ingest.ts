@@ -81,7 +81,15 @@ export async function ingestMealScans(
     (enrolments ?? []).map((e) => [e.device_user_id as string, e.profile_id as string]),
   );
 
-  for (const punch of punches) {
+  /*
+   * Oldest first. The 24-hour test compares each scan against the claims
+   * already written, so processing a batch out of order lets an earlier scan
+   * be judged against a later one and slip through. A terminal replays its
+   * buffer in wire order, which is not guaranteed to be chronological.
+   */
+  const ordered = [...punches].sort((a, b) => a.localTimestamp.localeCompare(b.localTimestamp));
+
+  for (const punch of ordered) {
     // The terminal reports the clock on the factory wall with no zone. Meal
     // windows are written in that same local time, so they are compared
     // directly rather than converted. The instant is resolved separately just

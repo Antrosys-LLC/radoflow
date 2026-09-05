@@ -90,16 +90,18 @@ begin
   perform pg_advisory_xact_lock(hashtextextended(new.profile_id::text, 0));
 
   /*
-   * Bounded on both sides. The upper bound matters: a backdated correction
-   * inserted after a later meal must not be refused by a claim that happened
-   * after it, which an open-ended "within 24 hours" test would do.
+   * Bounded on both sides, and symmetric. A claim on either side within 24
+   * hours means the person has eaten: nothing in this system backdates a
+   * claim, so the only way a row can land on the "wrong" side of new.claimed_at
+   * is a batch being processed out of chronological order, and this trigger
+   * must catch that case rather than trust the caller to have sorted first.
    */
   if exists (
     select 1
       from public.meal_claims c
      where c.profile_id = new.profile_id
        and c.claimed_at >  new.claimed_at - interval '24 hours'
-       and c.claimed_at <= new.claimed_at
+       and c.claimed_at <  new.claimed_at + interval '24 hours'
   ) then
     raise exception 'This person was already served within the last 24 hours.'
       using errcode = 'unique_violation';

@@ -123,7 +123,15 @@ export async function POST(request: NextRequest) {
   try {
     const runner = client.beta.messages.toolRunner({
       model: "claude-sonnet-5",
-      max_tokens: 1024,
+      /*
+       * A ceiling, not a reservation — unused tokens cost nothing, so this is
+       * set well clear of any real answer rather than tuned down. The runner
+       * has to call tools and then compose a reply, and Urdu and Roman Urdu
+       * spend markedly more tokens per sentence than English; at a low cap the
+       * reply is cut off mid-sentence and reaches the floor looking like a bad
+       * answer rather than a truncated one.
+       */
+      max_tokens: 16000,
       system,
       tools,
       messages: [...history, { role: "user", content: question }],

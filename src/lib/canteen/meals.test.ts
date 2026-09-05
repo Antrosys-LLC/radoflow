@@ -117,18 +117,58 @@ describe("deciding a scan", () => {
     expect(decision.outcome).toBe("unknown_person");
   });
 
-  it("says the counter is closed before it says who scanned", () => {
-    // Outside a window, identity is irrelevant — "closed" is the useful answer
-    // for the person standing at the counter.
+  it("serves a scan that no window covers, recording no window", () => {
+    // The counter being shut no longer refuses anybody: the terminal is the
+    // rule now, and a meal eaten at 03:00 is still a meal.
     const decision = decideMealScan({
-      ...base,
-      localTime: "09:00",
-      profileId: null,
+      profileId: "p1",
+      windows: [{ id: "w1", code: "LUNCH", name: "Lunch", startsAt: "12:00", endsAt: "14:00" }],
+      localDate: "2026-09-05",
+      localTime: "03:00",
       alreadyClaimed: false,
     });
-    expect(decision.outcome).toBe("outside_window");
+
+    expect(decision.outcome).toBe("served");
     expect(decision.window).toBeNull();
-    expect(decision.servedOn).toBeNull();
+    // With no window to credit it to, the meal counts against today.
+    expect(decision.servedOn).toBe("2026-09-05");
+  });
+
+  it("still labels a scan with the window that was running", () => {
+    const decision = decideMealScan({
+      profileId: "p1",
+      windows: [{ id: "w1", code: "LUNCH", name: "Lunch", startsAt: "12:00", endsAt: "14:00" }],
+      localDate: "2026-09-05",
+      localTime: "12:30",
+      alreadyClaimed: false,
+    });
+
+    expect(decision.outcome).toBe("served");
+    expect(decision.window?.code).toBe("LUNCH");
+  });
+
+  it("still refuses an unrecognised finger, window or not", () => {
+    const decision = decideMealScan({
+      profileId: null,
+      windows: [],
+      localDate: "2026-09-05",
+      localTime: "03:00",
+      alreadyClaimed: false,
+    });
+
+    expect(decision.outcome).toBe("unknown_person");
+  });
+
+  it("reports a repeat as a duplicate rather than a refusal", () => {
+    const decision = decideMealScan({
+      profileId: "p1",
+      windows: [],
+      localDate: "2026-09-05",
+      localTime: "03:00",
+      alreadyClaimed: true,
+    });
+
+    expect(decision.outcome).toBe("duplicate");
   });
 
   it("lets the same person eat lunch and dinner on the same day", () => {

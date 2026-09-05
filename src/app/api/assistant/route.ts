@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { ASK_MODEL, costInPkr, resolveEffort, type UsageTotals } from "@/lib/assistant/models";
 import { buildAssistantTools } from "@/lib/assistant/tools";
 import { getSession } from "@/lib/auth/session";
 import { requireAnthropicEnv } from "@/lib/env";
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not allowed to use the assistant." }, { status: 403 });
   }
 
-  let body: { question?: unknown; language?: unknown; history?: unknown };
+  let body: { question?: unknown; language?: unknown; history?: unknown; effort?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -92,6 +93,7 @@ export async function POST(request: NextRequest) {
 
   const question = typeof body.question === "string" ? body.question.trim() : "";
   const language = typeof body.language === "string" ? body.language : "en";
+  const effort = resolveEffort(body.effort);
 
   if (!question) {
     return NextResponse.json({ error: "Ask a question first." }, { status: 400 });
@@ -122,7 +124,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const runner = client.beta.messages.toolRunner({
-      model: "claude-sonnet-5",
+      model: ASK_MODEL,
       /*
        * A ceiling, not a reservation — unused tokens cost nothing, so this is
        * set well clear of any real answer rather than tuned down. The runner
@@ -132,12 +134,37 @@ export async function POST(request: NextRequest) {
        * answer rather than a truncated one.
        */
       max_tokens: 16000,
+      output_config: { effort },
       system,
       tools,
       messages: [...history, { role: "user", content: question }],
     });
 
-    const finalMessage = await runner.runUntilDone();
+    /*
+     * Usage is summed across every turn, not read off the final message.
+     *
+     * The runner makes one API call per tool round-trip, and each message's
+     * `usage` describes only its own call. A question that resolves an
+     * employee, reads their attendance and then prices a salary costs four
+     * calls; reporting the last one would understate the real spend severalfold
+     * — and a cost readout that is wrong in the cheap direction is worse than
+     * none, because it will be believed.
+     */
+    const totals: UsageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    let finalMessage: Awaited<ReturnType<typeof runner.runUntilDone>> | undefined;
+
+    for await (const message of runner) {
+      totals.input += message.usage.input_tokens;
+      totals.output += message.usage.output_tokens;
+      totals.cacheRead += message.usage.cache_read_input_tokens ?? 0;
+      totals.cacheWrite += message.usage.cache_creation_input_tokens ?? 0;
+      finalMessage = message;
+    }
+
+    if (!finalMessage) {
+      throw new Error("The assistant returned no messages.");
+    }
+
     const text = finalMessage.content
       .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === "text")
       .map((block) => block.text)
@@ -149,10 +176,13 @@ export async function POST(request: NextRequest) {
       action: "assistant.ask",
       entity_type: "assistant_query",
       note: question.slice(0, 500),
-      after: { language, answer: text.slice(0, 2000) },
+      after: { language, effort, cost_pkr: costInPkr(totals), answer: text.slice(0, 2000) },
     });
 
-    return NextResponse.json({ answer: text || "I couldn't work out an answer to that." });
+    return NextResponse.json({
+      answer: text || "I couldn't work out an answer to that.",
+      costPkr: costInPkr(totals),
+    });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "The assistant could not answer that." },

@@ -17,7 +17,10 @@ import type { Dictionary } from "./index";
  * dictionary-correct term nobody on the floor uses is worse than leaving it in
  * English:
  *   duty hours · overtime · grace period · flexible hours · shift ·
- *   contract firm · attendance · payroll · leave
+ *   contract firm · attendance · payroll · leave ·
+ *   the pay-run stages "draft" (kacha hisab) and "in review" (janch mein) ·
+ *   the machine states "offline" (rabta nahi) against "disabled" (band),
+ *   which must stay tellable apart · the "Engineered by" byline
  *
  * This file reads left to right — see `directionFor` in ./index.
  *
@@ -66,6 +69,29 @@ const roman: Dictionary = {
     minutesLate: "{minutes} minute der",
     identifyMethods: "Finger print, card, chehra ya passcode",
     identifyMethodsHint: "Machinein finger print, card, chehra ya passcode qubool karti hain",
+    engineeredBy: "Banaya hai {company} ne",
+    nameFallback: "ji",
+  },
+  status: {
+    payroll: {
+      draft: "Kacha hisab",
+      calculating: "Hisab ho raha hai",
+      review: "Janch mein",
+      approved: "Manzoor",
+      paid: "Ada ho gayi",
+      cancelled: "Mansookh",
+    },
+    device: {
+      online: "Chal rahi hai",
+      offline: "Rabta nahi",
+      unknown: "Maloom nahi",
+      disabled: "Band",
+    },
+    employment: {
+      active: "Mulazmat jari",
+      suspended: "Muattal",
+      terminated: "Mulazmat khatam",
+    },
   },
   dashboard: {
     title: "Aap ka din ek nazar mein",
@@ -82,11 +108,9 @@ const roman: Dictionary = {
     notYet: "Abhi nahi",
     onTime: "Waqt par",
     monthlySalaryNote: "Aap mahana tankhwah par hain, machine aap ki haazri nahi lagati.",
-    onSiteNow: "Abhi factory mein",
     workingNow: "Abhi kaam par",
     clockedInNotOut: "IN hain, abhi OUT nahi hue",
     notCheckedIn: "Haazri nahi lagi",
-    notInYet: "Abhi aaye nahi",
     shiftStartedWithout: "Shift shuru ho gayi, yeh nahi aaye",
     lateToday: "Aaj der se aaye",
     afterGrace: "Riayati waqt ke baad",
@@ -107,7 +131,8 @@ const roman: Dictionary = {
     mostRecentPeriod: "Sab se haaliya muddat",
     gross: "Kul tankhwah",
     netPayable: "Qabil-e-adaigi raqam",
-    payRunSummary: "{count} mulazim · {date} tak",
+    payRunSummary: "{count} mulazimeen · {date} tak",
+    payRunSummaryOne: "{count} mulazim · {date} tak",
     openPayroll: "Tankhwah kholein",
     noPayPeriod: "Abhi tankhwah ki koi muddat nahi banai gayi.",
     terminals: "Machinein",

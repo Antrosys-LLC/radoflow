@@ -11,7 +11,10 @@ import type { Dictionary } from "./index";
  * for its own trades. Check these first, because a dictionary-correct term
  * nobody on the floor uses is worse than leaving it in English:
  *   duty hours · overtime · grace period · flexible hours · shift ·
- *   contract firm · attendance · payroll · leave
+ *   contract firm · attendance · payroll · leave ·
+ *   the pay-run stages "draft" (کچا حساب) and "in review" (جانچ میں) ·
+ *   the machine states "offline" (رابطہ نہیں) against "disabled" (بند),
+ *   which must stay tellable apart · the "Engineered by" byline
  *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
  */
@@ -58,6 +61,29 @@ const ur: Dictionary = {
     minutesLate: "{minutes} منٹ دیر",
     identifyMethods: "فنگر پرنٹ، کارڈ، چہرہ یا پاس کوڈ",
     identifyMethodsHint: "مشینیں فنگر پرنٹ، کارڈ، چہرہ یا پاس کوڈ قبول کرتی ہیں",
+    engineeredBy: "بنایا ہے {company} نے",
+    nameFallback: "جی",
+  },
+  status: {
+    payroll: {
+      draft: "کچا حساب",
+      calculating: "حساب ہو رہا ہے",
+      review: "جانچ میں",
+      approved: "منظور",
+      paid: "ادا ہو گئی",
+      cancelled: "منسوخ",
+    },
+    device: {
+      online: "چل رہی ہے",
+      offline: "رابطہ نہیں",
+      unknown: "معلوم نہیں",
+      disabled: "بند",
+    },
+    employment: {
+      active: "ملازمت جاری",
+      suspended: "معطل",
+      terminated: "ملازمت ختم",
+    },
   },
   dashboard: {
     title: "آپ کا دن ایک نظر میں",
@@ -74,11 +100,9 @@ const ur: Dictionary = {
     notYet: "ابھی نہیں",
     onTime: "وقت پر",
     monthlySalaryNote: "آپ ماہانہ تنخواہ پر ہیں، مشین آپ کی حاضری نہیں لگاتی۔",
-    onSiteNow: "ابھی فیکٹری میں",
     workingNow: "ابھی کام پر",
     clockedInNotOut: "اِن ہیں، ابھی آؤٹ نہیں ہوئے",
     notCheckedIn: "حاضری نہیں لگی",
-    notInYet: "ابھی آئے نہیں",
     shiftStartedWithout: "شفٹ شروع ہو گئی، یہ نہیں آئے",
     lateToday: "آج دیر سے آئے",
     afterGrace: "رعایتی وقت کے بعد",
@@ -99,7 +123,8 @@ const ur: Dictionary = {
     mostRecentPeriod: "سب سے حالیہ مدت",
     gross: "کل تنخواہ",
     netPayable: "قابلِ ادائیگی رقم",
-    payRunSummary: "{count} ملازم · {date} تک",
+    payRunSummary: "{count} ملازمین · {date} تک",
+    payRunSummaryOne: "{count} ملازم · {date} تک",
     openPayroll: "تنخواہ کھولیں",
     noPayPeriod: "ابھی تنخواہ کی کوئی مدت نہیں بنائی گئی۔",
     terminals: "مشینیں",

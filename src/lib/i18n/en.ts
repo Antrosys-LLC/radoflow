@@ -62,6 +62,41 @@ const en = {
     // nothing to anyone on the floor; the four ways in do.
     identifyMethods: "Fingerprint, card, face or passcode",
     identifyMethodsHint: "Terminals accept fingerprint, card, face or passcode",
+    // The byline under the logo. The company name is a placeholder so it stays
+    // Latin in every language, like every other name in this app.
+    engineeredBy: "Engineered by {company}",
+    // Stands in for a first name when the profile has no usable one, so the
+    // greeting still reads as a greeting.
+    nameFallback: "there",
+  },
+  /**
+   * Database enum values that reach the screen as badge or field text, keyed by
+   * enum then by value so a row's column can be looked up directly. The members
+   * are exactly those declared in the migrations — `payroll_status`,
+   * `device_status` and `employment_status`. Adding a member to an enum without
+   * adding it here is a typecheck error in the two translations, not a blank
+   * badge.
+   */
+  status: {
+    payroll: {
+      draft: "Draft",
+      calculating: "Calculating",
+      review: "In review",
+      approved: "Approved",
+      paid: "Paid",
+      cancelled: "Cancelled",
+    },
+    device: {
+      online: "Online",
+      offline: "Offline",
+      unknown: "Unknown",
+      disabled: "Disabled",
+    },
+    employment: {
+      active: "Active",
+      suspended: "Suspended",
+      terminated: "Terminated",
+    },
   },
   dashboard: {
     title: "Your day at a glance",
@@ -79,11 +114,9 @@ const en = {
     notYet: "Not yet",
     onTime: "On time",
     monthlySalaryNote: "You are on a monthly salary and are not tracked by the terminals.",
-    onSiteNow: "On site now",
     workingNow: "Working now",
     clockedInNotOut: "Clocked in, not yet out",
     notCheckedIn: "Not checked in",
-    notInYet: "Not in yet",
     shiftStartedWithout: "Shift started without them",
     lateToday: "Late today",
     afterGrace: "After the grace period",
@@ -105,7 +138,10 @@ const en = {
     mostRecentPeriod: "Most recent period",
     gross: "Gross",
     netPayable: "Net payable",
+    // Two keys because a one-person pay period would otherwise read
+    // "1 employees". The caller picks on the count; both carry the same tokens.
     payRunSummary: "{count} employees · to {date}",
+    payRunSummaryOne: "{count} employee · to {date}",
     openPayroll: "Open payroll",
     noPayPeriod: "No pay period has been created yet.",
     terminals: "Terminals",

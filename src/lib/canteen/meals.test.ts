@@ -171,7 +171,7 @@ describe("deciding a scan", () => {
     expect(decision.outcome).toBe("duplicate");
   });
 
-  it("lets the same person eat lunch and dinner on the same day", () => {
+  it("labels a lunch scan and a dinner scan with their own windows", () => {
     const atLunch = decideMealScan({ ...base, profileId: "p1", alreadyClaimed: false });
     const atDinner = decideMealScan({
       ...base,
@@ -182,7 +182,10 @@ describe("deciding a scan", () => {
 
     expect(atLunch.outcome).toBe("served");
     expect(atDinner.outcome).toBe("served");
-    // Different windows, so the unique constraint never collides.
+    // decideMealScan only labels a window; whether a second scan is actually
+    // allowed is the 24-hour trigger's call, not this function's — both come
+    // back "served" here because the caller passed alreadyClaimed: false for
+    // each, not because the rule permits both.
     expect(atLunch.window?.id).not.toBe(atDinner.window?.id);
   });
 });

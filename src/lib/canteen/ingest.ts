@@ -33,6 +33,10 @@ export interface MealIngestResult {
   served: number;
   duplicates: number;
   unknown: number;
+  // Stays at zero: decideMealScan never returns outside_window now that a
+  // closed counter can no longer refuse a scan. Left on the interface because
+  // it is part of the JSON these routes already return, and historical
+  // reporting still reads the outcome from meal_scan_log.
   outsideWindow: number;
 }
 
@@ -114,12 +118,7 @@ export async function ingestMealScans(
 
     let outcome: MealScanOutcome = provisional.outcome;
 
-    if (
-      provisional.outcome === "served" &&
-      profileId &&
-      provisional.window &&
-      provisional.servedOn
-    ) {
+    if (provisional.outcome === "served" && profileId && provisional.servedOn) {
       /*
        * Insert first and let the unique index answer, rather than checking
        * for an existing row and then writing. A read-then-write races: two
@@ -130,7 +129,11 @@ export async function ingestMealScans(
       const { error } = await supabase.from("meal_claims").insert({
         profile_id: profileId,
         site_id: device.site_id,
-        meal_window_id: provisional.window.id,
+        // The generated types still require a string here — they predate the
+        // migration that dropped the not-null constraint, and cannot be
+        // regenerated until it has actually been applied to a database. The
+        // column itself accepts null; this cast only tells the compiler so.
+        meal_window_id: (provisional.window?.id ?? null) as string,
         served_on: provisional.servedOn,
         claimed_at: scannedAtIso,
         device_id: device.id,

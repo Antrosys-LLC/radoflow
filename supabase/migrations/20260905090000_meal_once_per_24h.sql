@@ -50,6 +50,20 @@ create index if not exists meal_claims_profile_recent
 -- src/lib/canteen/ingest.ts already inserts first and reads 23505 as "already
 -- ate", so the ingestion path needs no new branch and a replayed buffer keeps
 -- being absorbed silently instead of being logged as a refusal.
+--
+-- The guarantee is the advisory lock below *plus* this interval test, not the
+-- interval test alone. The constraint it replaces was a unique index, which
+-- is atomic by construction: two concurrent inserts, one wins, the loser gets
+-- 23505 from Postgres itself. An `exists (...)` check has no such guarantee
+-- under READ COMMITTED (Supabase's default) — two transactions each read a
+-- snapshot taken before the other's insert commits, so two scanners firing on
+-- the same person at the same instant would both see "not served yet," both
+-- pass, and both commit. That is exactly the case the original canteen
+-- migration's header cites as the reason this lives in the database rather
+-- than application code. `pg_advisory_xact_lock` closes that gap: the second
+-- transaction blocks on the first, so by the time it runs its own `exists`
+-- check the first transaction's row is already visible. Do not remove the
+-- lock as a "simplification" — without it this function is not atomic.
 -- ---------------------------------------------------------------------------
 
 create or replace function app.enforce_meal_interval()
@@ -59,6 +73,22 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
+  /*
+   * Serialise concurrent scans for this one person before testing.
+   *
+   * The check this replaces was a unique index, which is atomic. An EXISTS
+   * test is not: under READ COMMITTED two terminals scanning the same finger
+   * at the same instant would each see a snapshot without the other's
+   * uncommitted row, both pass, and both commit — serving twice inside the
+   * window this trigger exists to enforce. The lock is transaction-scoped, so
+   * it is released on commit or rollback with nothing to clean up.
+   *
+   * Keyed on the profile, so two different people never wait on each other.
+   * A hash collision between two profiles costs a moment of contention and
+   * can never produce a wrong answer.
+   */
+  perform pg_advisory_xact_lock(hashtextextended(new.profile_id::text, 0));
+
   /*
    * Bounded on both sides. The upper bound matters: a backdated correction
    * inserted after a later meal must not be refused by a claim that happened
@@ -84,4 +114,4 @@ create trigger meal_claims_once_per_24h
   for each row execute function app.enforce_meal_interval();
 
 comment on function app.enforce_meal_interval() is
-  'One meal per person per rolling 24 hours. Raises 23505 so the ingestion path reads it as a duplicate rather than an error.';
+  'One meal per person per rolling 24 hours, made atomic by a per-profile pg_advisory_xact_lock taken before the interval check (an EXISTS test alone is not atomic under READ COMMITTED). Raises 23505 so the ingestion path reads it as a duplicate rather than an error.';

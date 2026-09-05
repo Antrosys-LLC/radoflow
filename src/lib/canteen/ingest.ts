@@ -120,20 +120,25 @@ export async function ingestMealScans(
 
     if (provisional.outcome === "served" && profileId && provisional.servedOn) {
       /*
-       * Insert first and let the unique index answer, rather than checking
-       * for an existing row and then writing. A read-then-write races: two
+       * Insert first and let the trigger answer, rather than checking for an
+       * existing row and then writing. A read-then-write races: two
        * terminals, or one replayed batch, can both see "not yet claimed" and
-       * both insert. The constraint cannot be raced, so a 23505 here *is* the
-       * duplicate detection.
+       * both insert. app.enforce_meal_interval() takes a per-profile advisory
+       * lock before its own interval check, so the two inserts are
+       * serialised there and the second necessarily sees the first's
+       * committed row — a 23505 here *is* the duplicate detection.
        */
       const { error } = await supabase.from("meal_claims").insert({
         profile_id: profileId,
         site_id: device.site_id,
         // The generated types still require a string here — they predate the
-        // migration that dropped the not-null constraint, and cannot be
-        // regenerated until it has actually been applied to a database. The
-        // column itself accepts null; this cast only tells the compiler so.
-        meal_window_id: (provisional.window?.id ?? null) as string,
+        // migration that dropped the not-null constraint and cannot be
+        // regenerated until it has been applied. `@ts-expect-error` rather
+        // than a cast on purpose: once the types are regenerated this line
+        // stops being an error, and the suppression itself then fails the
+        // build, which is what removes it.
+        // @ts-expect-error meal_window_id is nullable in the database
+        meal_window_id: provisional.window?.id ?? null,
         served_on: provisional.servedOn,
         claimed_at: scannedAtIso,
         device_id: device.id,

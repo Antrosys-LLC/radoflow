@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 
 import { DeviceDialog } from "../device-dialog";
 import { DeviceControls } from "./device-controls";
-import { EnrollmentManager } from "./enrollment-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -37,38 +36,22 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
 
   if (!device) notFound();
 
-  const [{ data: sites }, { data: enrollments }, { data: punches }, { data: staff }] =
-    await Promise.all([
-      supabase.from("sites").select("id, name").order("name"),
-      supabase
-        .from("device_enrollments")
-        .select("id, device_user_id, profile_id, enrolled_at")
-        .eq("device_id", id),
-      supabase
-        .from("punches")
-        .select("id, device_user_id, profile_id, punched_at, direction, work_date")
-        .eq("device_id", id)
-        .order("punched_at", { ascending: false })
-        .limit(25),
-      supabase
-        .from("employee_directory")
-        .select("id, full_name, employee_code, department_id")
-        .eq("status", "active")
-        .order("full_name"),
-    ]);
+  const [{ data: sites }, { data: punches }, { data: staff }] = await Promise.all([
+    supabase.from("sites").select("id, name").order("name"),
+    supabase
+      .from("punches")
+      .select("id, device_user_id, profile_id, punched_at, direction, work_date")
+      .eq("device_id", id)
+      .order("punched_at", { ascending: false })
+      .limit(25),
+    supabase
+      .from("employee_directory")
+      .select("id, full_name, employee_code, department_id")
+      .eq("status", "active")
+      .order("full_name"),
+  ]);
 
   const nameById = new Map((staff ?? []).map((s) => [s.id, s]));
-
-  // Enrolment ids the terminal has sent that nobody has claimed yet — the most
-  // common reason a worker's punches never reach their timesheet.
-  const mappedIds = new Set((enrollments ?? []).map((e) => e.device_user_id));
-  const unmapped = [
-    ...new Set(
-      (punches ?? [])
-        .filter((p) => !p.profile_id && p.device_user_id)
-        .map((p) => p.device_user_id as string),
-    ),
-  ].filter((deviceUserId) => !mappedIds.has(deviceUserId));
 
   return (
     <div className="space-y-5 pb-6">
@@ -153,27 +136,6 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
           </div>
         ) : null}
       </Card>
-
-      {canManage ? (
-        <EnrollmentManager
-          deviceId={device.id}
-          enrollments={(enrollments ?? []).map((e) => ({
-            id: e.id,
-            deviceUserId: e.device_user_id,
-            profileId: e.profile_id,
-            employeeName: nameById.get(e.profile_id)?.full_name ?? "Unknown employee",
-            employeeCode: nameById.get(e.profile_id)?.employee_code ?? "—",
-          }))}
-          unmapped={unmapped}
-          // The directory is a view, so every column types as nullable even
-          // though these are NOT NULL on the underlying table.
-          staff={(staff ?? []).flatMap((s) =>
-            s.id && s.full_name
-              ? [{ id: s.id, name: s.full_name, code: s.employee_code ?? "—" }]
-              : [],
-          )}
-        />
-      ) : null}
 
       <Card className="p-4 sm:p-6">
         <SectionTitle

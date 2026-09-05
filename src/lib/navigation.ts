@@ -129,13 +129,6 @@ const GOVERNANCE_MODULES: readonly NavItem[] = [
     description: "Create roles and choose what each can do",
   },
   {
-    href: "/admin/registers",
-    label: "Digitize Registers",
-    icon: "registers",
-    requires: ["registers.import"],
-    description: "Photograph a paper register and import it, row by row",
-  },
-  {
     href: "/canteen/settings",
     label: "Canteen Settings",
     icon: "canteen",

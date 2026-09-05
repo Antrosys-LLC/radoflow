@@ -10,9 +10,10 @@
  * Everything here is pure: given the meal windows, a wall-clock reading and
  * whether this person has already been served, it returns the outcome. No
  * database, no clock of its own. The actual "you may not eat twice" guarantee
- * is a unique index in the schema, not this function — this only decides what
- * to *show* the counter staff, and the constraint is what makes it true even
- * if two scanners fire at the same instant.
+ * is a trigger in the schema — one meal per person per rolling 24 hours, not
+ * per window per day — not this function; this only decides what to *show*
+ * the counter staff, and the trigger is what makes it true even if two
+ * scanners fire at the same instant.
  */
 
 /** One serving period at one site, e.g. lunch 12:00–15:00. */
@@ -26,9 +27,9 @@ export interface MealWindow {
 }
 
 export type MealScanOutcome =
-  /** Fed. The first scan of this window today. */
+  /** Fed. Nobody within this profile's rolling 24 hours has a claim yet. */
   | "served"
-  /** Already ate this meal today — the case tokens could never catch. */
+  /** Already ate within the last 24 hours — the case tokens could never catch. */
   | "duplicate"
   /** The finger matched nobody enrolled on this terminal. */
   | "unknown_person"

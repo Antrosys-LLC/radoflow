@@ -5,6 +5,7 @@ import { Loader2, Mic, Send, Square, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
+import { DEFAULT_EFFORT, EFFORT_LEVELS, type EffortLevel } from "@/lib/assistant/models";
 
 /**
  * The "Ask" conversation — shared by the full /assistant page and the
@@ -96,6 +97,8 @@ const COPY = {
 interface ChatMessage {
   role: "user" | "assistant";
   text: string;
+  /** Rupees this answer cost. Absent on the user's own messages. */
+  costPkr?: number;
 }
 
 /** The subset of the Web Speech API this component uses — not in TS's DOM lib. */
@@ -142,6 +145,7 @@ export function AssistantConversation({
   compact?: boolean;
 }) {
   const [language, setLanguage] = useState<Language>(initialLanguage);
+  const [effort, setEffort] = useState<EffortLevel>(DEFAULT_EFFORT);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -196,10 +200,11 @@ export function AssistantConversation({
       const response = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: trimmed, language, history }),
+        body: JSON.stringify({ question: trimmed, language, history, effort }),
       });
       const body = (await response.json().catch(() => null)) as {
         answer?: string;
+        costPkr?: number;
         error?: string;
       } | null;
 
@@ -209,7 +214,16 @@ export function AssistantConversation({
         return;
       }
 
-      setMessages((prev) => [...prev, { role: "assistant", text: body.answer! }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: body.answer!,
+          // Spread rather than assign: exactOptionalPropertyTypes treats an
+          // explicit undefined as different from an absent key.
+          ...(typeof body.costPkr === "number" ? { costPkr: body.costPkr } : {}),
+        },
+      ]);
       speak(body.answer);
     } catch {
       toast.error("Could not reach the assistant. Check your connection.");
@@ -256,6 +270,9 @@ export function AssistantConversation({
   // In the widget the presets are a starting nudge, not a permanent panel —
   // once a conversation is underway the small space is better spent on it.
   const showPresets = !compact || messages.length === 0;
+  // Derived from the messages already in state rather than tracked separately,
+  // so it cannot drift from the per-answer figures shown above it.
+  const sessionCostPkr = messages.reduce((total, message) => total + (message.costPkr ?? 0), 0);
 
   return (
     <div className={compact ? "flex min-h-0 flex-1 flex-col" : "space-y-5"}>
@@ -277,6 +294,31 @@ export function AssistantConversation({
           </button>
         ))}
       </div>
+
+      <div className={cn("flex gap-1.5", compact ? "mt-1.5" : "mt-2")}>
+        {EFFORT_LEVELS.map((level) => (
+          <button
+            key={level.value}
+            type="button"
+            onClick={() => setEffort(level.value)}
+            title={level.hint}
+            className={cn(
+              "flex-1 rounded-2xl font-bold transition-all",
+              compact ? "px-2 py-1.5 text-[0.65rem]" : "px-3 py-2 text-xs",
+              effort === level.value
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {level.label}
+          </button>
+        ))}
+      </div>
+      {sessionCostPkr > 0 ? (
+        <p className="mt-1 text-[0.65rem] text-muted-foreground">
+          This session: Rs {sessionCostPkr.toLocaleString("en-PK")}
+        </p>
+      ) : null}
 
       {showPresets ? (
         <div className={compact ? "mt-3 shrink-0" : ""}>
@@ -338,6 +380,11 @@ export function AssistantConversation({
                 )}
               >
                 <p>{message.text}</p>
+                {message.role === "assistant" && typeof message.costPkr === "number" ? (
+                  <p className="mt-1 text-[0.65rem] font-semibold text-muted-foreground">
+                    Rs {message.costPkr.toLocaleString("en-PK")}
+                  </p>
+                ) : null}
                 {message.role === "assistant" ? (
                   <button
                     type="button"

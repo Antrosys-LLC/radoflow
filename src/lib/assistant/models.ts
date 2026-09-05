@@ -22,17 +22,25 @@ export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 export interface EffortOption {
   value: EffortLevel;
   label: string;
+  /**
+   * What the compact widget's dial renders instead of `label`. Measured, not
+   * guessed: on a 360px phone the widget gives five buttons ~56px each, and
+   * three of the five full labels (Balanced, Thorough, Maximum) need 64-66px
+   * in the real font — they overflow. Every `short` must stay at or under 4
+   * characters, which is what the test in models.test.ts pins.
+   */
+  short: string;
   /** Shown under the label. Empty where the label already says it. */
   hint: string;
 }
 
 /** Ordered fastest to most thorough — the order the dial renders in. */
 export const EFFORT_LEVELS: readonly EffortOption[] = [
-  { value: "low", label: "Fast", hint: "A quick answer" },
-  { value: "medium", label: "Balanced", hint: "" },
-  { value: "high", label: "Thorough", hint: "Default" },
-  { value: "xhigh", label: "Deeper", hint: "For hard questions" },
-  { value: "max", label: "Maximum", hint: "Slowest and dearest" },
+  { value: "low", label: "Fast", short: "Fast", hint: "A quick answer" },
+  { value: "medium", label: "Balanced", short: "Mid", hint: "" },
+  { value: "high", label: "Thorough", short: "Full", hint: "Default" },
+  { value: "xhigh", label: "Deeper", short: "Deep", hint: "For hard questions" },
+  { value: "max", label: "Maximum", short: "Max", hint: "Slowest and dearest" },
 ];
 
 /** The API's own default. Neither the cheapest nor the dearest on purpose. */

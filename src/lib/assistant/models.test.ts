@@ -33,6 +33,20 @@ describe("the effort ladder", () => {
       expect(level.label.length).toBeGreaterThan(0);
     }
   });
+
+  /*
+   * The compact widget gives five dial buttons ~56px each on a 360px phone;
+   * measuring the real labels in the real font showed three of five need
+   * 64-66px and overflow. `short` is the fix, and this is the constraint the
+   * layout depends on — without it, the next added level silently reintroduces
+   * the overflow.
+   */
+  it("gives every level a short form that fits the compact dial", () => {
+    for (const level of EFFORT_LEVELS) {
+      expect(level.short.length).toBeGreaterThan(0);
+      expect(level.short.length).toBeLessThanOrEqual(4);
+    }
+  });
 });
 
 describe("resolveEffort", () => {

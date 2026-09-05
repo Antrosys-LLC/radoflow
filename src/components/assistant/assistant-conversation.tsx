@@ -301,7 +301,9 @@ export function AssistantConversation({
             key={level.value}
             type="button"
             onClick={() => setEffort(level.value)}
-            title={level.hint}
+            title={
+              compact ? (level.hint ? `${level.label} — ${level.hint}` : level.label) : level.hint
+            }
             className={cn(
               "flex-1 rounded-2xl font-bold transition-all",
               compact ? "px-2 py-1.5 text-[0.65rem]" : "px-3 py-2 text-xs",
@@ -310,12 +312,12 @@ export function AssistantConversation({
                 : "bg-secondary text-muted-foreground hover:text-foreground",
             )}
           >
-            {level.label}
+            {compact ? level.short : level.label}
           </button>
         ))}
       </div>
       {sessionCostPkr > 0 ? (
-        <p className="mt-1 text-[0.65rem] text-muted-foreground">
+        <p className={cn("mt-1 text-muted-foreground", compact ? "text-[0.65rem]" : "text-xs")}>
           This session: Rs {sessionCostPkr.toLocaleString("en-PK")}
         </p>
       ) : null}
@@ -381,7 +383,12 @@ export function AssistantConversation({
               >
                 <p>{message.text}</p>
                 {message.role === "assistant" && typeof message.costPkr === "number" ? (
-                  <p className="mt-1 text-[0.65rem] font-semibold text-muted-foreground">
+                  <p
+                    className={cn(
+                      "mt-1 font-semibold text-muted-foreground",
+                      compact ? "text-[0.65rem]" : "text-xs",
+                    )}
+                  >
                     Rs {message.costPkr.toLocaleString("en-PK")}
                   </p>
                 ) : null}

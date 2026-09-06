@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import { CircleDot, Clock, LogIn, TriangleAlert, UserCheck, Users } from "lucide-react";
 
 import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refresh";
+import { Fill } from "@/components/fill";
+import { Latin } from "@/components/latin";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
+import { dictionaryFor, type Dictionary } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { formatHours, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -18,24 +21,38 @@ export const dynamic = "force-dynamic";
 
 type LiveStatus = "working" | "finished" | "missing" | "not_started" | "no_shift";
 
-const STATUS_META: Record<LiveStatus, { label: string; tone: string; dot: string }> = {
-  working: { label: "Working now", tone: "bg-success-soft text-success", dot: "bg-success" },
+/**
+ * The badge for each live status.
+ *
+ * `labelKey` rather than a label, because this table is module-level and the
+ * language is only known once the request has a session.
+ */
+const STATUS_META: Record<
+  LiveStatus,
+  { labelKey: keyof Dictionary["attendance"]; tone: string; dot: string }
+> = {
+  working: { labelKey: "workingNow", tone: "bg-success-soft text-success", dot: "bg-success" },
   finished: {
-    label: "Shift finished",
+    labelKey: "shiftFinished",
     tone: "bg-secondary text-muted-foreground",
     dot: "bg-muted-foreground",
   },
-  missing: { label: "Not checked in", tone: "bg-danger-soft text-danger", dot: "bg-danger" },
+  missing: { labelKey: "notCheckedIn", tone: "bg-danger-soft text-danger", dot: "bg-danger" },
   not_started: {
-    label: "Shift not started",
+    labelKey: "shiftNotStarted",
     tone: "bg-warning-soft text-warning",
     dot: "bg-warning",
   },
-  no_shift: { label: "No shift assigned", tone: "bg-warning-soft text-warning", dot: "bg-warning" },
+  no_shift: {
+    labelKey: "noShiftAssigned",
+    tone: "bg-warning-soft text-warning",
+    dot: "bg-warning",
+  },
 };
 
 export default async function AttendancePage() {
-  await requireAnyPermission(["attendance.view", "attendance.view.all"]);
+  const session = await requireAnyPermission(["attendance.view", "attendance.view.all"]);
+  const t = dictionaryFor(session.profile.language);
   const supabase = await createClient();
 
   const { data: rows } = await supabase.from("live_attendance").select("*").order("full_name");
@@ -57,62 +74,71 @@ export default async function AttendancePage() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile
           icon={UserCheck}
-          label="Working now"
+          label={t.attendance.workingNow}
           value={working.length}
-          hint="Checked in, not yet out"
+          hint={t.attendance.checkedInNotOut}
           tone="success"
         />
         <Tile
           icon={TriangleAlert}
-          label="Not checked in"
+          label={t.attendance.notCheckedIn}
           value={missing.length}
-          hint="Shift started without them"
+          hint={t.attendance.shiftStartedWithout}
           tone="danger"
         />
         <Tile
           icon={Clock}
-          label="Late today"
+          label={t.attendance.lateToday}
           value={lateToday.length}
-          hint="Arrived after grace period"
+          hint={t.attendance.arrivedAfterGrace}
           tone="warning"
         />
         <Tile
           icon={Users}
-          label="Shift finished"
+          label={t.attendance.shiftFinished}
           value={finished.length}
-          hint="Clocked out"
+          hint={t.attendance.clockedOut}
           tone="neutral"
         />
       </div>
 
       <PeopleCard
+        t={t}
         icon={TriangleAlert}
-        title="Not checked in"
-        subtitle="Their shift has started and no punch has arrived — chase these first"
+        title={t.attendance.notCheckedIn}
+        subtitle={t.attendance.chaseFirst}
         people={missing}
-        emptyText="Everyone on shift has checked in."
+        emptyText={t.attendance.everyoneCheckedIn}
         emptyTone="good"
       />
 
       <PeopleCard
+        t={t}
         icon={CircleDot}
-        title="On the floor now"
-        subtitle="Checked in and still working"
+        title={t.attendance.onFloorNow}
+        subtitle={t.attendance.checkedInStillWorking}
         people={working}
-        emptyText="Nobody is currently clocked in."
+        emptyText={t.attendance.nobodyClockedIn}
       />
 
       {pending.length > 0 ? (
         <PeopleCard
+          t={t}
           icon={Clock}
-          title="Shift not started yet"
-          subtitle="Not due on the floor at this time"
+          title={t.attendance.shiftNotStartedYet}
+          subtitle={t.attendance.notDueYet}
           people={pending}
         />
       ) : null}
 
       {finished.length > 0 ? (
-        <PeopleCard icon={Users} title="Finished today" subtitle="Clocked out" people={finished} />
+        <PeopleCard
+          t={t}
+          icon={Users}
+          title={t.attendance.finishedToday}
+          subtitle={t.attendance.clockedOut}
+          people={finished}
+        />
       ) : null}
     </div>
   );
@@ -133,6 +159,7 @@ interface LiveRow {
 }
 
 function PeopleCard({
+  t,
   icon,
   title,
   subtitle,
@@ -140,6 +167,7 @@ function PeopleCard({
   emptyText,
   emptyTone,
 }: {
+  t: Dictionary;
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   subtitle: string;
@@ -151,7 +179,11 @@ function PeopleCard({
     <Card className="p-4 sm:p-6">
       <SectionTitle
         icon={icon as never}
-        title={`${title} · ${people.length}`}
+        title={
+          <>
+            {title} · <Latin>{people.length}</Latin>
+          </>
+        }
         subtitle={subtitle}
       />
 
@@ -164,7 +196,7 @@ function PeopleCard({
               : "bg-secondary text-muted-foreground",
           )}
         >
-          {emptyText ?? "Nobody here right now."}
+          {emptyText ?? t.attendance.nobodyHere}
         </div>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
@@ -180,20 +212,35 @@ function PeopleCard({
                 <Avatar name={person.full_name ?? "??"} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-foreground">
-                    {person.full_name}
+                    <Latin>{person.full_name}</Latin>
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {person.employee_code} · {person.shift_name ?? "No shift"}
-                    {person.shift_starts_at ? ` from ${person.shift_starts_at.slice(0, 5)}` : ""}
+                    {/* The shift name is data the office typed, so it renders as
+                        stored; the code beside it is not, and must not be able
+                        to reorder. */}
+                    <Latin>{person.employee_code}</Latin> ·{" "}
+                    {person.shift_name ?? t.attendance.noShift}
+                    {person.shift_starts_at ? (
+                      <>
+                        {" "}
+                        <Fill
+                          template={t.attendance.shiftFrom}
+                          values={{ time: person.shift_starts_at.slice(0, 5) }}
+                        />
+                      </>
+                    ) : null}
                   </p>
                   {person.is_late && person.minutes_late ? (
                     <p className="mt-0.5 text-xs font-bold text-warning">
-                      {person.minutes_late} min late
+                      <Fill
+                        template={t.common.minutesLate}
+                        values={{ minutes: person.minutes_late }}
+                      />
                     </p>
                   ) : null}
                 </div>
 
-                <div className="shrink-0 text-right">
+                <div className="shrink-0 text-end">
                   <span
                     className={cn(
                       "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold",
@@ -201,17 +248,19 @@ function PeopleCard({
                     )}
                   >
                     <span className={cn("size-1.5 rounded-full", meta.dot)} />
-                    {meta.label}
+                    {t.attendance[meta.labelKey]}
                   </span>
                   {person.first_in ? (
                     <p className="mt-1 flex items-center justify-end gap-1 text-xs font-semibold text-foreground">
+                      {/* Not flipped: mirroring this glyph turns "in" into the
+                          log-out icon, which is the opposite of what it says. */}
                       <LogIn className="size-3" />
-                      {formatTime(person.first_in)}
+                      <Latin>{formatTime(person.first_in)}</Latin>
                     </p>
                   ) : null}
                   {person.regular_hours ? (
                     <p className="text-[11px] text-muted-foreground">
-                      {formatHours(person.regular_hours)}
+                      <Latin>{formatHours(person.regular_hours)}</Latin>
                     </p>
                   ) : null}
                 </div>
@@ -249,7 +298,9 @@ function Tile({
       <span className={cn("flex size-11 items-center justify-center rounded-2xl", tones[tone])}>
         <Icon className="size-5" />
       </span>
-      <p className="mt-3 text-3xl font-bold tracking-tight tabular-nums text-foreground">{value}</p>
+      <p className="mt-3 text-3xl font-bold tracking-tight tabular-nums text-foreground">
+        <Latin>{value}</Latin>
+      </p>
       <p className="text-sm font-semibold text-foreground">{label}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
     </div>

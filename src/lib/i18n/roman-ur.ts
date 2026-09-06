@@ -22,6 +22,14 @@ import type { Dictionary } from "./index";
  *   the machine states "offline" (rabta nahi) against "disabled" (band),
  *   which must stay tellable apart · the "Engineered by" byline
  *
+ * Added for Wave 2's floor screens, and least sure of these:
+ *   "Person" as a table column and a filter (Mulazim), which is not what a
+ *   contract firm's man is · "Close" on a dialog (Band karein) against the
+ *   machine state "disabled" (Band), which must stay tellable apart ·
+ *   "Nobody matches these filters" (Is talash mein koi nahi mila) ·
+ *   the attendance-log approval sentences, above all "will not be
+ *   recalculated" (hisab dobara nahi hoga) and "reports to you" (matehat)
+ *
  * This file reads left to right — see `directionFor` in ./index.
  *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
@@ -71,6 +79,14 @@ const roman: Dictionary = {
     identifyMethodsHint: "Machinein finger print, card, chehra ya passcode qubool karti hain",
     engineeredBy: "Banaya hai {company} ne",
     nameFallback: "ji",
+    person: "Mulazim",
+    date: "Tareekh",
+    search: "Talash",
+    searchPlaceholder: "Naam, code ya shanakhti card",
+    everyDepartment: "Har shoba",
+    show: "Dikhayein",
+    close: "Band karein",
+    nobodyMatches: "Is talash mein koi nahi mila.",
   },
   status: {
     payroll: {
@@ -167,6 +183,14 @@ const roman: Dictionary = {
     noShift: "Koi shift nahi",
     shiftFrom: "{time} se",
     flexibleHours: "Lachakdar auqat",
+  },
+  logs: {
+    pickPersonAndRange: "Mulazim aur tareekhein chunein.",
+    endBeforeStart: "Aakhri tareekh pehli tareekh se pehle nahi ho sakti.",
+    nothingToApprove:
+      "Manzoor karne ko kuch nahi — in tareekhon mein aap ke matehat kisi ki haazri nahi.",
+    approvedOne: "{count} din manzoor. Is ka hisab dobara nahi hoga.",
+    approvedMany: "{count} din manzoor. In ka hisab dobara nahi hoga.",
   },
   profile: {
     title: "Meri profile",

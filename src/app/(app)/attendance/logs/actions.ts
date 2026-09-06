@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requirePermission } from "@/lib/auth/session";
+import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -16,6 +17,13 @@ import { createClient } from "@/lib/supabase/server";
  * Scope is enforced by RLS, not here: `app.manages()` keeps a manager to their
  * own reports, so a request naming somebody else's employee updates no rows
  * rather than being refused with a message that confirms the person exists.
+ *
+ * `message` comes back already translated. The permission check hands back the
+ * whole session, so the action knows the reader's language without a second
+ * load and without the caller telling it — which is the only way an Urdu
+ * screen avoids toasting an English sentence at somebody. The one exception is
+ * a Postgres error, which is passed through untouched: it is developer-facing
+ * and untranslatable, and an invented Urdu wrapper would hide what failed.
  */
 
 export interface ApproveResult {
@@ -29,12 +37,13 @@ export async function approveAttendanceRange(input: {
   to: string;
 }): Promise<ApproveResult> {
   const session = await requirePermission("attendance.approve");
+  const t = dictionaryFor(session.profile.language);
 
   if (!input.profileId || !input.from || !input.to) {
-    return { ok: false, message: "Pick a person and a date range." };
+    return { ok: false, message: t.logs.pickPersonAndRange };
   }
   if (input.to < input.from) {
-    return { ok: false, message: "The end date cannot be before the start date." };
+    return { ok: false, message: t.logs.endBeforeStart };
   }
 
   const supabase = await createClient();
@@ -56,17 +65,19 @@ export async function approveAttendanceRange(input: {
   const count = data?.length ?? 0;
   if (count === 0) {
     // Either there is nothing in the range, or the policy filtered it out.
-    return {
-      ok: false,
-      message: "Nothing to approve — no attendance in that range for someone who reports to you.",
-    };
+    return { ok: false, message: t.logs.nothingToApprove };
   }
 
   revalidatePath("/attendance/logs");
   revalidatePath("/payroll");
 
-  return {
-    ok: true,
-    message: `Approved ${count} day${count === 1 ? "" : "s"}. They will not be recalculated.`,
-  };
+  /*
+   * A slot rather than a concatenation: Urdu orders the sentence differently,
+   * so the count has to be dropped into a whole sentence rather than glued to
+   * a fragment. `String.replace` is right here and wrong in a component —
+   * this is a plain string bound for a toast, not React children, so there is
+   * no `<Latin>` to render through and no bidi run to isolate.
+   */
+  const template = count === 1 ? t.logs.approvedOne : t.logs.approvedMany;
+  return { ok: true, message: template.replace("{count}", String(count)) };
 }

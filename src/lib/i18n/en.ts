@@ -68,6 +68,16 @@ const en = {
     // Stands in for a first name when the profile has no usable one, so the
     // greeting still reads as a greeting.
     nameFallback: "there",
+    // The filter-and-table vocabulary Wave 2's floor screens share. A word only
+    // one screen uses belongs in that screen's group, not here.
+    person: "Person",
+    date: "Date",
+    search: "Search",
+    searchPlaceholder: "Name, code or CNIC",
+    everyDepartment: "Every department",
+    show: "Show",
+    close: "Close",
+    nobodyMatches: "Nobody matches these filters.",
   },
   /**
    * Database enum values that reach the screen as badge or field text, keyed by
@@ -176,6 +186,31 @@ const en = {
     noShift: "No shift",
     shiftFrom: "from {time}",
     flexibleHours: "Flexible hours",
+  },
+  /**
+   * What `approveAttendanceRange` puts in the toast.
+   *
+   * A server action already holds the session, so it already knows the reader's
+   * language — it looks the sentence up itself and returns it translated,
+   * rather than handing the client an English string to sit beside Urdu
+   * labels.
+   *
+   * The count is a slot rather than something concatenated on, because Urdu
+   * puts the words in a different order. Two templates rather than one, because
+   * "1 days" is wrong in English and the one-day and many-day sentences differ
+   * in the other two languages as well.
+   *
+   * Postgres errors are deliberately absent: they are passed through untouched.
+   * They are developer-facing, and an invented Urdu sentence wrapping one would
+   * hide what actually failed.
+   */
+  logs: {
+    pickPersonAndRange: "Pick a person and a date range.",
+    endBeforeStart: "The end date cannot be before the start date.",
+    nothingToApprove:
+      "Nothing to approve — no attendance in that range for someone who reports to you.",
+    approvedOne: "Approved {count} day. It will not be recalculated.",
+    approvedMany: "Approved {count} days. They will not be recalculated.",
   },
   profile: {
     title: "My profile",

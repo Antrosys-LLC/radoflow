@@ -16,6 +16,14 @@ import type { Dictionary } from "./index";
  *   the machine states "offline" (رابطہ نہیں) against "disabled" (بند),
  *   which must stay tellable apart · the "Engineered by" byline
  *
+ * Added for Wave 2's floor screens, and least sure of these:
+ *   "Person" as a table column and a filter (ملازم), which is not what a
+ *   contract firm's man is · "Close" on a dialog (بند کریں) against the
+ *   machine state "disabled" (بند), which must stay tellable apart ·
+ *   "Nobody matches these filters" (اِس تلاش میں کوئی نہیں ملا) ·
+ *   the attendance-log approval sentences, above all "will not be
+ *   recalculated" (حساب دوبارہ نہیں ہوگا) and "reports to you" (ماتحت)
+ *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
  */
 const ur: Dictionary = {
@@ -63,6 +71,14 @@ const ur: Dictionary = {
     identifyMethodsHint: "مشینیں فنگر پرنٹ، کارڈ، چہرہ یا پاس کوڈ قبول کرتی ہیں",
     engineeredBy: "بنایا ہے {company} نے",
     nameFallback: "جی",
+    person: "ملازم",
+    date: "تاریخ",
+    search: "تلاش",
+    searchPlaceholder: "نام، کوڈ یا شناختی کارڈ",
+    everyDepartment: "ہر شعبہ",
+    show: "دکھائیں",
+    close: "بند کریں",
+    nobodyMatches: "اِس تلاش میں کوئی نہیں ملا۔",
   },
   status: {
     payroll: {
@@ -159,6 +175,13 @@ const ur: Dictionary = {
     noShift: "کوئی شفٹ نہیں",
     shiftFrom: "{time} سے",
     flexibleHours: "لچکدار اوقات",
+  },
+  logs: {
+    pickPersonAndRange: "ملازم اور تاریخیں چنیں۔",
+    endBeforeStart: "آخری تاریخ پہلی تاریخ سے پہلے نہیں ہو سکتی۔",
+    nothingToApprove: "منظور کرنے کو کچھ نہیں — اِن تاریخوں میں آپ کے ماتحت کسی کی حاضری نہیں۔",
+    approvedOne: "{count} دن منظور۔ اِس کا حساب دوبارہ نہیں ہوگا۔",
+    approvedMany: "{count} دن منظور۔ اِن کا حساب دوبارہ نہیں ہوگا۔",
   },
   profile: {
     title: "میری پروفائل",

@@ -109,7 +109,7 @@ export default async function MyProfilePage() {
             value={profile?.requires_attendance ? t.common.yes : t.common.no}
           />
           <Fact
-            label={t.profile.status}
+            label={t.common.status}
             value={profile ? t.status.employment[profile.status] : t.profile.notRecorded}
           />
         </dl>

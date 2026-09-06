@@ -42,6 +42,13 @@ import type { Dictionary } from "./index";
  *   uses), which must all stay tellable apart from "on leave" (Chutti par) ·
  *   "Contract" on a worker's badge (Theka)
  *
+ * Added by the check in/out register, and least sure of these:
+ *   "Still in" — checked in, not yet out (Abhi IN hain) — against "Present"
+ *   (Hazir), which sit next to each other as two tiles and two badges and must
+ *   stay tellable apart · "Not required" for someone the terminals do not
+ *   track, which is not absence (Haazri lazmi nahi) · "A settled day" for a
+ *   past date whose figures can no longer change (Guzra hua din)
+ *
  * This file reads left to right — see `directionFor` in ./index.
  *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
@@ -100,6 +107,7 @@ const roman: Dictionary = {
     show: "Dikhayein",
     close: "Band karein",
     nobodyMatches: "Is talash mein koi nahi mila.",
+    status: "Halat",
   },
   status: {
     payroll: {
@@ -197,6 +205,17 @@ const roman: Dictionary = {
     shiftFrom: "{time} se",
     flexibleHours: "Lachakdar auqat",
   },
+  register: {
+    title: "Aamad / Rawangi",
+    subtitleToday: "Aaj — har {seconds} second baad khud taza hota rahega",
+    subtitleSettled: "Guzra hua din — ab adad nahi badlenge",
+    stillIn: "Abhi IN hain",
+    notRequired: "Haazri lazmi nahi",
+    checkIn: "Aamad",
+    checkOut: "Rawangi",
+    showing: "{count} log dikhaye ja rahe hain · {expected} ki haazri lagni hai",
+    showingOne: "{count} mulazim dikhaya ja raha hai · {expected} ki haazri lagni hai",
+  },
   logs: {
     title: "Haazri ka Record",
     subtitleAll: "Har haazri aur us se banne wali raqam — ek mulazim, chune hue shobe, ya sab.",
@@ -280,7 +299,6 @@ const roman: Dictionary = {
     hourlyWage: "Ghante ke hisab se ujrat",
     hourlyRate: "Fi ghanta rate",
     clockInRequired: "Haazri lagana zaroori",
-    status: "Halat",
     notRecorded: "Darj nahi",
     managedByAdmin:
       "Yeh tafseelat aap ka admin sambhalta hai. Tabdeeli ke liye un se rabta karein.",

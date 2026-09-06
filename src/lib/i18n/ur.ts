@@ -35,6 +35,13 @@ import type { Dictionary } from "./index";
  *   "pending" (پینڈنگ), which must all stay tellable apart from
  *   "on leave" (چھٹی پر) · "Contract" on a worker's badge (ٹھیکہ)
  *
+ * Added by the check in/out register, and least sure of these:
+ *   "Still in" — checked in, not yet out (ابھی اِن ہیں) — against "Present"
+ *   (حاضر), which sit next to each other as two tiles and two badges and must
+ *   stay tellable apart · "Not required" for someone the terminals do not
+ *   track, which is not absence (حاضری لازمی نہیں) · "A settled day" for a
+ *   past date whose figures can no longer change (گزرا ہوا دن)
+ *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
  */
 const ur: Dictionary = {
@@ -91,6 +98,7 @@ const ur: Dictionary = {
     show: "دکھائیں",
     close: "بند کریں",
     nobodyMatches: "اِس تلاش میں کوئی نہیں ملا۔",
+    status: "حالت",
   },
   status: {
     payroll: {
@@ -188,6 +196,17 @@ const ur: Dictionary = {
     shiftFrom: "{time} سے",
     flexibleHours: "لچکدار اوقات",
   },
+  register: {
+    title: "آمد / روانگی",
+    subtitleToday: "آج — ہر {seconds} سیکنڈ بعد خود تازہ ہوتا رہے گا",
+    subtitleSettled: "گزرا ہوا دن — اب اعداد نہیں بدلیں گے",
+    stillIn: "ابھی اِن ہیں",
+    notRequired: "حاضری لازمی نہیں",
+    checkIn: "آمد",
+    checkOut: "روانگی",
+    showing: "{count} لوگ دکھائے جا رہے ہیں · {expected} کی حاضری لگنی ہے",
+    showingOne: "{count} ملازم دکھایا جا رہا ہے · {expected} کی حاضری لگنی ہے",
+  },
   logs: {
     title: "حاضری کا ریکارڈ",
     subtitleAll: "ہر حاضری اور اُس سے بننے والی رقم — ایک ملازم، چنے ہوئے شعبے، یا سب۔",
@@ -270,7 +289,6 @@ const ur: Dictionary = {
     hourlyWage: "گھنٹے کے حساب سے اجرت",
     hourlyRate: "فی گھنٹہ ریٹ",
     clockInRequired: "حاضری لگانا ضروری",
-    status: "حالت",
     notRecorded: "درج نہیں",
     managedByAdmin: "یہ تفصیلات آپ کا ایڈمن سنبھالتا ہے۔ تبدیلی کے لیے ان سے رابطہ کریں۔",
     language: "زبان",

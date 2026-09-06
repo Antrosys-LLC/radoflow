@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import { CalendarDays, Clock, LogIn, LogOut, TriangleAlert, UserCheck, UserX } from "lucide-react";
 
 import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refresh";
+import { Fill } from "@/components/fill";
+import { Latin } from "@/components/latin";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
+import { dictionaryFor, type Dictionary } from "@/lib/i18n";
 import {
   buildRegister,
   summarise,
@@ -34,12 +37,38 @@ export const dynamic = "force-dynamic";
  * question asked at the end of a shift.
  */
 
-const STATE_META: Record<RegisterState, { label: string; tone: string }> = {
-  present: { label: "Present", tone: "bg-success-soft text-success" },
-  working: { label: "Still in", tone: "bg-warning-soft text-warning" },
-  absent: { label: "Absent", tone: "bg-danger-soft text-danger" },
-  not_required: { label: "Not required", tone: "bg-secondary text-muted-foreground" },
+/**
+ * The badge colour for each state, and only the colour.
+ *
+ * The words are read from the dictionary at render time instead: a
+ * module-level constant is built once for the process and cannot know which
+ * language this particular request is being drawn in.
+ */
+const STATE_TONE: Record<RegisterState, string> = {
+  present: "bg-success-soft text-success",
+  working: "bg-warning-soft text-warning",
+  absent: "bg-danger-soft text-danger",
+  not_required: "bg-secondary text-muted-foreground",
 };
+
+/**
+ * A register state in the reader's language.
+ *
+ * Two of the four already had a word in `common` — `present` and `absent` — so
+ * they are read from there rather than repeated in this screen's group.
+ *
+ * Typed `Record<RegisterState, …>` so that adding a state to the union is a
+ * typecheck error here rather than a blank badge found on the floor.
+ */
+function stateLabel(t: Dictionary, state: RegisterState): string {
+  const labels: Record<RegisterState, string> = {
+    present: t.common.present,
+    working: t.register.stillIn,
+    absent: t.common.absent,
+    not_required: t.register.notRequired,
+  };
+  return labels[state];
+}
 
 export default async function RegisterPage({
   searchParams,
@@ -47,6 +76,7 @@ export default async function RegisterPage({
   searchParams: Promise<{ date?: string; q?: string; dept?: string }>;
 }) {
   const session = await requireAnyPermission(["attendance.view", "attendance.view.all"]);
+  const t = dictionaryFor(session.profile.language);
   const params = await searchParams;
   const supabase = await createClient();
 
@@ -117,29 +147,40 @@ export default async function RegisterPage({
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile
           icon={UserCheck}
-          label="Present"
+          label={t.common.present}
           value={totals.present + totals.working}
           tone="text-success"
         />
-        <Tile icon={Clock} label="Still in" value={totals.working} tone="text-warning" />
-        <Tile icon={UserX} label="Absent" value={totals.absent} tone="text-danger" />
-        <Tile icon={TriangleAlert} label="Late" value={totals.late} tone="text-warning" />
+        <Tile icon={Clock} label={t.register.stillIn} value={totals.working} tone="text-warning" />
+        <Tile icon={UserX} label={t.common.absent} value={totals.absent} tone="text-danger" />
+        <Tile icon={TriangleAlert} label={t.common.late} value={totals.late} tone="text-warning" />
       </div>
 
       <Card>
         <SectionTitle
           icon={CalendarDays}
-          title="Check in / check out"
+          title={t.register.title}
           subtitle={
-            isToday
-              ? "Today, refreshing on its own every 15 seconds"
-              : "A settled day — figures will not change"
+            isToday ? (
+              /*
+               * The interval is a slot rather than a number written into the
+               * sentence: it is set by `ATTENDANCE_REFRESH_SECONDS`, and the
+               * English promised fifteen seconds long after the timer had been
+               * moved to thirty.
+               */
+              <Fill
+                template={t.register.subtitleToday}
+                values={{ seconds: ATTENDANCE_REFRESH_SECONDS }}
+              />
+            ) : (
+              t.register.subtitleSettled
+            )
           }
         />
 
         <form className="mt-4 grid gap-3 sm:grid-cols-[11rem_1fr_12rem_auto]">
           <label className="block">
-            <span className="text-xs font-semibold text-muted-foreground">Date</span>
+            <span className="text-xs font-semibold text-muted-foreground">{t.common.date}</span>
             <input
               type="date"
               name="date"
@@ -148,26 +189,34 @@ export default async function RegisterPage({
             />
           </label>
           <label className="block">
-            <span className="text-xs font-semibold text-muted-foreground">Search</span>
+            <span className="text-xs font-semibold text-muted-foreground">{t.common.search}</span>
             <input
               type="search"
               name="q"
               defaultValue={params.q ?? ""}
-              placeholder="Name, code or CNIC"
+              placeholder={t.common.searchPlaceholder}
               className="mt-1 w-full rounded-2xl border border-input bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
             />
           </label>
           <label className="block">
-            <span className="text-xs font-semibold text-muted-foreground">Department</span>
+            <span className="text-xs font-semibold text-muted-foreground">
+              {t.common.department}
+            </span>
             <select
               name="dept"
               defaultValue={params.dept ?? ""}
               disabled={!canSeeEveryone}
               className="mt-1 w-full rounded-2xl border border-input bg-background px-4 py-2.5 text-sm outline-none focus:border-primary disabled:opacity-60"
             >
-              <option value="">Every department</option>
+              <option value="">{t.common.everyDepartment}</option>
               {(departments ?? []).map((d) => (
-                <option key={d.id} value={d.id}>
+                /*
+                 * `dir` and the class rather than `<Latin>`: an <option> may
+                 * only contain text, so the <bdi> element cannot go inside one.
+                 * A department name is a name — it is not translated, and it is
+                 * not to be reordered or set in Nastaliq either.
+                 */
+                <option key={d.id} value={d.id} dir="ltr" className="font-latin">
                   {d.name}
                 </option>
               ))}
@@ -177,94 +226,96 @@ export default async function RegisterPage({
             type="submit"
             className="mt-[1.35rem] h-[2.7rem] rounded-2xl bg-charcoal px-5 text-sm font-bold text-charcoal-foreground transition-opacity hover:opacity-90"
           >
-            Show
+            {t.common.show}
           </button>
         </form>
 
         <p className="mt-3 text-xs text-muted-foreground">
-          Showing {rows.length} {rows.length === 1 ? "person" : "people"} · {totals.expected}{" "}
-          expected to attend
+          <Fill
+            template={rows.length === 1 ? t.register.showingOne : t.register.showing}
+            values={{ count: rows.length, expected: totals.expected }}
+          />
         </p>
 
         {rows.length === 0 ? (
           <p className="mt-6 rounded-2xl bg-secondary px-4 py-6 text-center text-sm text-muted-foreground">
-            Nobody matches this search.
+            {t.common.nobodyMatches}
           </p>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[46rem] border-collapse text-sm">
               <thead>
-                <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="pb-2 pr-3 font-semibold">Person</th>
-                  <th className="pb-2 pr-3 font-semibold">Department</th>
-                  <th className="pb-2 pr-3 font-semibold">Check in</th>
-                  <th className="pb-2 pr-3 font-semibold">Check out</th>
-                  <th className="pb-2 pr-3 text-right font-semibold">Hours</th>
-                  <th className="pb-2 font-semibold">Status</th>
+                <tr className="border-b border-border text-start text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="pb-2 pe-3 font-semibold">{t.common.person}</th>
+                  <th className="pb-2 pe-3 font-semibold">{t.common.department}</th>
+                  <th className="pb-2 pe-3 font-semibold">{t.register.checkIn}</th>
+                  <th className="pb-2 pe-3 font-semibold">{t.register.checkOut}</th>
+                  <th className="pb-2 pe-3 text-end font-semibold">{t.common.hours}</th>
+                  <th className="pb-2 font-semibold">{t.common.status}</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => {
-                  const meta = STATE_META[row.state];
-                  return (
-                    <tr key={row.person.id} className="border-b border-border/60 last:border-0">
-                      <td className="py-2.5 pr-3">
-                        <div className="flex items-center gap-2.5">
-                          <Avatar name={row.person.fullName} />
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-foreground">
-                              {row.person.fullName}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {row.person.employeeCode}
-                            </p>
-                          </div>
+                {rows.map((row) => (
+                  <tr key={row.person.id} className="border-b border-border/60 last:border-0">
+                    <td className="py-2.5 pe-3">
+                      <div className="flex items-center gap-2.5">
+                        <Avatar name={row.person.fullName} />
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-foreground">
+                            <Latin>{row.person.fullName}</Latin>
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            <Latin>{row.person.employeeCode}</Latin>
+                          </p>
                         </div>
-                      </td>
-                      <td className="py-2.5 pr-3 text-muted-foreground">
-                        {row.person.department ?? "—"}
-                      </td>
-                      <td className="py-2.5 pr-3">
-                        {row.checkIn ? (
-                          <span className="inline-flex items-center gap-1.5 font-medium tabular-nums text-foreground">
-                            <LogIn className="h-3.5 w-3.5 text-success" aria-hidden />
-                            {formatTime(row.checkIn)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 pr-3">
-                        {row.checkOut ? (
-                          <span className="inline-flex items-center gap-1.5 font-medium tabular-nums text-foreground">
-                            <LogOut className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-                            {formatTime(row.checkOut)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 pr-3 text-right font-semibold tabular-nums text-foreground">
-                        {row.hours > 0 ? formatHours(row.hours) : "—"}
-                      </td>
-                      <td className="py-2.5">
-                        <span
-                          className={cn(
-                            "inline-block rounded-full px-2.5 py-1 text-xs font-bold",
-                            meta.tone,
-                          )}
-                        >
-                          {meta.label}
+                      </div>
+                    </td>
+                    <td className="py-2.5 pe-3 text-muted-foreground">
+                      {row.person.department ? <Latin>{row.person.department}</Latin> : "—"}
+                    </td>
+                    <td className="py-2.5 pe-3">
+                      {row.checkIn ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium tabular-nums text-foreground">
+                          <LogIn className="h-3.5 w-3.5 text-success" aria-hidden />
+                          <Latin>{formatTime(row.checkIn)}</Latin>
                         </span>
-                        {row.isLate ? (
-                          <span className="ml-1.5 text-xs font-semibold text-warning">
-                            {row.minutesLate}m late
-                          </span>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                })}
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 pe-3">
+                      {row.checkOut ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium tabular-nums text-foreground">
+                          <LogOut className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+                          <Latin>{formatTime(row.checkOut)}</Latin>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 pe-3 text-end font-semibold tabular-nums text-foreground">
+                      {row.hours > 0 ? <Latin>{formatHours(row.hours)}</Latin> : "—"}
+                    </td>
+                    <td className="py-2.5">
+                      <span
+                        className={cn(
+                          "inline-block rounded-full px-2.5 py-1 text-xs font-bold",
+                          STATE_TONE[row.state],
+                        )}
+                      >
+                        {stateLabel(t, row.state)}
+                      </span>
+                      {row.isLate ? (
+                        <span className="ms-1.5 text-xs font-semibold text-warning">
+                          <Fill
+                            template={t.common.minutesLate}
+                            values={{ minutes: row.minutesLate }}
+                          />
+                        </span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -292,7 +343,11 @@ function Tile({
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {label}
         </p>
-        <p className="text-xl font-bold tabular-nums text-foreground">{value}</p>
+        {/* Always a headcount, so it is wrapped here once rather than at each
+            of the four call sites. */}
+        <p className="text-xl font-bold tabular-nums text-foreground">
+          <Latin>{value}</Latin>
+        </p>
       </div>
     </Card>
   );

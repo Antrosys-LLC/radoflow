@@ -81,6 +81,11 @@ const en = {
     show: "Show",
     close: "Close",
     nobodyMatches: "Nobody matches these filters.",
+    // Moved here from `profile` by the check in/out register, the second
+    // screen to need it. This is the *word* — a field label and a column
+    // heading. The `status` group below holds the enum *values* a row's
+    // column is looked up in, and the two are not the same thing.
+    status: "Status",
   },
   /**
    * Database enum values that reach the screen as badge or field text, keyed by
@@ -189,6 +194,38 @@ const en = {
     noShift: "No shift",
     shiftFrom: "from {time}",
     flexibleHours: "Flexible hours",
+  },
+  /**
+   * The check in/out register — the whole roster for one day, present or not.
+   *
+   * Nearly every cell on this screen is a name, an employee code, a time or an
+   * hour figure, so nearly none of it is here: those are rendered from the row
+   * through `<Latin>` in every language. What is here is the six words around
+   * them, and only the four that no other screen already owns — `Person`,
+   * `Department`, `Hours` and `Status` are read from `common`, and so are the
+   * `Present` and `Absent` badges.
+   */
+  register: {
+    title: "Check in / check out",
+    // The refresh interval is a slot rather than a number set in the sentence:
+    // it comes from ATTENDANCE_REFRESH_SECONDS, and a hard-coded one goes
+    // stale the moment the timer is retuned. It did.
+    subtitleToday: "Today, refreshing on its own every {seconds} seconds",
+    subtitleSettled: "A settled day — figures will not change",
+    // Checked in with no check-out yet: on today's register someone still on
+    // the floor, on a past date a missed check-out worth correcting.
+    stillIn: "Still in",
+    // Someone attendance is not required of — a monthly employee the terminals
+    // do not track. Not absent; nothing is owed.
+    notRequired: "Not required",
+    // The two time columns. `common.checkedIn`/`checkedOut` are the IN and OUT
+    // badges and `dashboard.checkedIn` is a stat with a time under it; these
+    // are the column headings, and all three differ in English.
+    checkIn: "Check in",
+    checkOut: "Check out",
+    // Two templates because "1 people" is wrong; both carry the same slots.
+    showing: "Showing {count} people · {expected} expected to attend",
+    showingOne: "Showing {count} person · {expected} expected to attend",
   },
   /**
    * The attendance log — the audit trail behind a payslip, and the toasts its
@@ -323,7 +360,6 @@ const en = {
     hourlyWage: "Hourly wage",
     hourlyRate: "Hourly rate",
     clockInRequired: "Clock-in required",
-    status: "Status",
     notRecorded: "Not recorded",
     managedByAdmin:
       "These details are managed by your administrator. Contact them to make a change.",

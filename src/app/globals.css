@@ -154,6 +154,20 @@
   line-height: normal;
 }
 
+/*
+ * An icon that means "back", "forward", "next" or "previous" points along the
+ * reading direction, so it must mirror when the reading direction does. Applied
+ * by hand rather than to every icon: an arrow that points at a real-world thing
+ * — a download, an external link, a chart trending up — means the same in both
+ * directions and must NOT flip.
+ *
+ * `scaleX(-1)` rather than swapping the component, because the icon set has no
+ * logical variants and a mirrored glyph is exactly what is wanted.
+ */
+[dir="rtl"] .rtl-flip {
+  transform: scaleX(-1);
+}
+
 @utility card-soft {
   background-color: var(--color-card);
   border: 1px solid var(--color-border);

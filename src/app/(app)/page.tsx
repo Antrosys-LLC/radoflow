@@ -290,7 +290,7 @@ export default async function DashboardPage() {
                 >
                   {t.dashboard.floorBoard}
                   {/* "Onward" is a direction, so the arrow turns round with the page. */}
-                  <ArrowRight className="size-4 rtl:rotate-180" />
+                  <ArrowRight className="size-4 rtl-flip" />
                 </Link>
               }
             ></SectionTitle>
@@ -399,7 +399,7 @@ export default async function DashboardPage() {
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5"
                   >
                     {t.dashboard.openPayroll}
-                    <ArrowRight className="size-4 rtl:rotate-180" />
+                    <ArrowRight className="size-4 rtl-flip" />
                   </Link>
                 </div>
               ) : (
@@ -460,7 +460,7 @@ export default async function DashboardPage() {
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition-all hover:-translate-y-0.5"
               >
                 {t.dashboard.openMyProfile}
-                <ArrowRight className="size-4 rtl:rotate-180" />
+                <ArrowRight className="size-4 rtl-flip" />
               </Link>
             </Card>
           ) : null}

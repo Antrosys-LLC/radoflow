@@ -62,7 +62,7 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
         href="/devices"
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="size-4" />
+        <ArrowLeft className="size-4 rtl-flip" />
         All terminals
       </Link>
 

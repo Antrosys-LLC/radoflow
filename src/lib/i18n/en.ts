@@ -197,6 +197,14 @@ const en = {
    * Every figure the screen shows is a time, a duration, a rupee amount or a
    * code, so none of them are here: they are rendered from the row through
    * `<Latin>` in every language. What is here is only the words around them.
+   *
+   * The one exception is `approvedOne`/`approvedMany` below, whose `{count}`
+   * is filled in by plain `String.replace` in the server action, not `<Latin>`
+   * — a toast has no JSX to render through. That is safe only because a count
+   * is a bare integer with no script of its own to be reordered. A future
+   * template here that interpolates a name, code, serial or time the same way
+   * needs the value passed through `isolate()` (`src/lib/i18n/index.ts`)
+   * first — the plain-string equivalent of `<Latin>` for exactly that case.
    */
   logs: {
     title: "Attendance log",

@@ -45,3 +45,24 @@ export function dictionaryFor(language: LanguageCode): Dictionary {
 export function directionFor(language: LanguageCode): "ltr" | "rtl" {
   return language === "ur" ? "rtl" : "ltr";
 }
+
+/**
+ * The plain-string sibling of `<Latin>` (`src/components/latin.tsx`), for the
+ * places `<Latin>` cannot reach: a server action returns `message: string` for
+ * a toast, and a string has no JSX to render through.
+ *
+ * The problem is the same one `<Latin>` solves. Inside a right-to-left
+ * sentence, a Latin run with no strong RTL character of its own — a serial
+ * number, a firmware string, a quoted name — is fair game for the Unicode
+ * bidirectional algorithm to reorder on display. Wrapping it in U+2066
+ * (LEFT-TO-RIGHT ISOLATE) and U+2069 (POP DIRECTIONAL ISOLATE) tells the
+ * algorithm to leave the run alone, the same way `<bdi dir="ltr">` does for
+ * React children. Nothing about the value changes; only the two invisible
+ * control characters are added around it.
+ */
+const LEFT_TO_RIGHT_ISOLATE = "\u2066";
+const POP_DIRECTIONAL_ISOLATE = "\u2069";
+
+export function isolate(value: string): string {
+  return `${LEFT_TO_RIGHT_ISOLATE}${value}${POP_DIRECTIONAL_ISOLATE}`;
+}

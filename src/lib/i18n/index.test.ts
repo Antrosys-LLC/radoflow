@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import en from "./en";
 import roman from "./roman-ur";
 import ur from "./ur";
-import { dictionaryFor, directionFor, LANGUAGE_LABELS, resolveLanguage } from "./index";
+import { dictionaryFor, directionFor, isolate, LANGUAGE_LABELS, resolveLanguage } from "./index";
 
 /** Every leaf path in a nested dictionary, e.g. "nav.dashboard". */
 function paths(value: unknown, prefix = ""): string[] {
@@ -50,6 +50,37 @@ describe("directionFor", () => {
   });
 });
 
+describe("isolate", () => {
+  const LRI = "⁦";
+  const PDI = "⁩";
+
+  it("wraps the value in LEFT-TO-RIGHT ISOLATE and POP DIRECTIONAL ISOLATE", () => {
+    expect(isolate("RD-1042")).toBe(`${LRI}RD-1042${PDI}`);
+  });
+
+  it("is safe on an empty string", () => {
+    // Still two control characters and nothing else — not a no-op, since an
+    // empty run has no value to protect, but it must not throw or drop a mark.
+    expect(isolate("")).toBe(`${LRI}${PDI}`);
+  });
+
+  it("does not corrupt a value that is isolated twice", () => {
+    // A value isolated a second time — through a helper composed with itself,
+    // say — must stay recoverable: nesting adds marks, it does not mangle the
+    // text between them.
+    const once = isolate("RD-1042");
+    const twice = isolate(once);
+    expect(twice).toBe(`${LRI}${LRI}RD-1042${PDI}${PDI}`);
+  });
+
+  it("does not corrupt a value that already contains isolate marks", () => {
+    // The value itself might carry marks — e.g. from being built out of two
+    // already-isolated pieces — and isolate() must not strip or collapse them.
+    const nested = `${LRI}inner${PDI}`;
+    expect(isolate(nested)).toBe(`${LRI}${LRI}inner${PDI}${PDI}`);
+  });
+});
+
 describe("dictionaryFor", () => {
   it("returns the matching dictionary", () => {
     expect(dictionaryFor("en")).toBe(en);
@@ -93,9 +124,14 @@ describe("the dictionaries agree", () => {
     expect(LANGUAGE_LABELS["roman-ur"]).toBe("Roman Urdu");
   });
 
-  // Arabic Presentation Forms and the two main Arabic blocks — Urdu script
-  // spills into all three as ligatures and extended letters are added.
-  const ARABIC_SCRIPT = /[؀-ۿݐ-ݿﭐ-﷿]/;
+  // The Unicode Script property, not a hand-rolled set of code point ranges —
+  // Urdu script spills across the main Arabic block, Arabic Supplement,
+  // Arabic Extended-A/B/C and Arabic Presentation Forms-A *and* -B as
+  // ligatures and extended letters are added, and a range list drifts stale
+  // the moment one of those blocks is missed. `ﻻ` (U+FEFB, ARABIC LIGATURE
+  // LAM WITH ALEF ISOLATED FORM) lives in Presentation Forms-B and would slip
+  // past a guard that only reaches Forms-A.
+  const ARABIC_SCRIPT = /\p{Script=Arabic}/u;
 
   it("ur is written in Arabic script and roman-ur never is", () => {
     // The two Urdu dictionaries are easy to paste into the wrong file — same
@@ -104,6 +140,14 @@ describe("the dictionaries agree", () => {
     // and says nothing about the surrounding sentence's script. A value that
     // is nothing but a stripped token or punctuation carries no script of its
     // own, so it is skipped rather than failed either way.
+    //
+    // This half would fail an all-Latin `ur` value outright — a hardware
+    // model name, say, with no Urdu translation. That is deliberate, not an
+    // oversight: `ur` is Urdu script by definition here, so a value with no
+    // Arabic-script character in it is either mistranslated or belongs in a
+    // dictionary this test does not police (e.g. left untranslated on
+    // purpose). A future value like that needs its path excluded above, not
+    // this assertion loosened.
     for (const path of paths(en)) {
       const urValue = path
         .split(".")

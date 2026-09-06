@@ -76,7 +76,14 @@ export async function approveAttendanceRange(input: {
    * so the count has to be dropped into a whole sentence rather than glued to
    * a fragment. `String.replace` is right here and wrong in a component —
    * this is a plain string bound for a toast, not React children, so there is
-   * no `<Latin>` to render through and no bidi run to isolate.
+   * no `<Latin>` to render through.
+   *
+   * No bidi run to isolate either, but only because `count` is a bare integer
+   * — an unambiguous European-number run the bidi algorithm will not reorder.
+   * That is a property of this value, not of toast strings in general: a
+   * name, code, serial, time, or any other Latin run interpolated into a
+   * translated message needs `isolate()` (`src/lib/i18n/index.ts`) around it,
+   * the plain-string equivalent of `<Latin>` for exactly this situation.
    */
   const template = count === 1 ? t.logs.approvedOne : t.logs.approvedMany;
   return { ok: true, message: template.replace("{count}", String(count)) };

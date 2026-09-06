@@ -55,6 +55,34 @@ import type { Dictionary } from "./index";
  *   track, which is not absence (حاضری لازمی نہیں) · "A settled day" for a
  *   past date whose figures can no longer change (گزرا ہوا دن)
  *
+ * Added by the canteen. Read these out loud before reading them on paper —
+ * they are shown at a serving hatch, in the largest type in the product, to
+ * a man in a queue who may not read confidently in any language. Plain beats
+ * elegant here, and short beats complete.
+ *
+ * The three refusals matter most, because a worker reads one while being
+ * turned away from food:
+ *   "Already taken" (پہلے لے چکا ہے) — he ate inside the last 24 hours ·
+ *   "Not recognised" (پہچان نہیں ہوئی) — the finger matched nobody, which is
+ *   the machine's failure and not his, and the wording should not sound like
+ *   an accusation · "Counter closed" (کھانے کا وقت نہیں) — no serving is open
+ *   Alongside them, "Second attempts" (دوسری بار کوشش), the tally that counts
+ *   those refusals, and "Give food" (کھانا دے دیں), the one instruction the
+ *   counter staff act on. These four and "Scan a finger" (انگلی لگائیں) were
+ *   already on the counter screen before it was translated — they are the
+ *   wording the floor has been reading, moved into this file unchanged rather
+ *   than reworded, so a change to them is a change to something in use.
+ *
+ * And in the settings screen behind it, least sure of these:
+ *   `canteenSettings.noServingSwitchedOn` quotes the counter's own refusal, so
+ *   the words inside its ”…“ must stay identical to `canteen.counterClosed` ·
+ *   "serving time" for a meal window (کھانے کا وقت), the noun the whole
+ *   settings screen is built on, against "Opens"/"Closes" (کھلنے کا وقت /
+ *   بند ہونے کا وقت) which are the two ends of one · three near-neighbours
+ *   that must stay tellable apart: a terminal that is "Inactive" (غیر فعال),
+ *   a serving time that is "Off" (بند), and the machine state "disabled"
+ *   (بند) in `status.device`
+ *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
  */
 const ur: Dictionary = {
@@ -105,6 +133,7 @@ const ur: Dictionary = {
     searchPlaceholder: "نام، کوڈ یا شناختی کارڈ",
     department: "شعبہ",
     everyDepartment: "ہر شعبہ",
+    site: "فیکٹری",
     show: "دکھائیں",
     close: "بند کریں",
     nobodyMatches: "اِس تلاش میں کوئی نہیں ملا۔",
@@ -292,6 +321,61 @@ const ur: Dictionary = {
     approvedOne: "{count} دن منظور۔ اِس کا حساب دوبارہ نہیں ہوگا۔",
     approvedMany: "{count} دن منظور۔ اِن کا حساب دوبارہ نہیں ہوگا۔",
   },
+  canteen: {
+    giveFood: "کھانا دے دیں",
+    alreadyTaken: "پہلے لے چکا ہے",
+    notRecognised: "پہچان نہیں ہوئی",
+    counterClosed: "کھانے کا وقت نہیں",
+    scanFinger: "انگلی لگائیں",
+    servedToday: "آج کھانا دیا",
+    secondAttempts: "دوسری بار کوشش",
+  },
+  canteenSettings: {
+    counterInactive: "کینٹین کا کاؤنٹر ابھی کچھ نہیں کرے گا",
+    noCanteenTerminal:
+      "کوئی مشین کینٹین کے لیے مقرر نہیں، اِس لیے اُس کے اسکین حاضری میں درج ہو رہے ہیں۔",
+    setOneOnDevices: "مشینوں والی اسکرین پر ایک مقرر کریں",
+    // یہ جملہ کاؤنٹر کے اپنے الفاظ دہراتا ہے، اِس لیے واوین کے اندر
+    // بالکل وہی الفاظ رہنے چاہئیں جو `canteen.counterClosed` میں ہیں۔
+    noServingSwitchedOn:
+      "کوئی کھانے کا وقت چالو نہیں، اِس لیے ہر اسکین پر ”کھانے کا وقت نہیں“ آئے گا۔",
+    servingTimes: "کھانے کے اوقات",
+    servingTimesHint: "کاؤنٹر کب کھلا رہتا ہے۔ ہر وقت میں فی آدمی ایک کھانا۔",
+    addServing: "نیا وقت شامل کریں",
+    noServingsYet: "ابھی کوئی وقت مقرر نہیں",
+    noServingsHint: "ایک شامل کریں — دوپہر کا کھانا، یا رات کی شفٹ کے لیے رات کا کھانا۔",
+    terminals: "کینٹین کی مشینیں",
+    terminalsHint:
+      "مشینوں والی اسکرین پر مقرر ہوتی ہیں — یہاں اِس لیے دکھائی ہیں کہ کمی صاف نظر آئے",
+    noTerminalScanning: "کوئی مشین کھانے کے لیے اسکین نہیں کر رہی۔",
+    inactive: "غیر فعال",
+    off: "بند",
+    runsPastMidnight: "رات بارہ بجے کے بعد تک — جس دن کھلے، اُسی دن میں شمار",
+    edit: "تبدیل کریں",
+    editServing: "{name} میں تبدیلی",
+    addServingTitle: "نیا کھانے کا وقت",
+    overnightHint:
+      "رات بارہ بجے کے بعد تک چلنے والا وقت ٹھیک ہے — اِسے {time} پر ختم کریں، رات کی شفٹ کا کھانا پھر بھی ایک ہی شمار ہوگا۔",
+    servingName: "نام",
+    namePlaceholder: "دوپہر کا کھانا",
+    opens: "کھلنے کا وقت",
+    closes: "بند ہونے کا وقت",
+    orderOnScreen: "اسکرین پر ترتیب",
+    openLabel: "کھلا — اِس وقت میں کاؤنٹر اسکین قبول کرے گا",
+    saveServingTime: "کھانے کا وقت محفوظ کریں",
+    removeConfirm:
+      "{name} ہٹا دیں؟ پہلے سے درج کھانے اِسی وقت سے جڑے رہتے ہیں، اِس لیے یہ صرف تب ہٹے گا جب اِس میں کسی نے کھانا نہ لیا ہو۔",
+    remove: "ہٹا دیں",
+    removeServing: "یہ کھانے کا وقت ہٹا دیں",
+    chooseFactoryAndName: "فیکٹری چنیں اور نام لکھیں۔",
+    enterTimes: "دونوں اوقات HH:MM کی صورت میں لکھیں۔",
+    sameStartEnd: "کھلنے اور بند ہونے کا وقت ایک نہیں ہو سکتا — ایسا وقت کبھی کھلے گا ہی نہیں۔",
+    duplicateName: "اِس فیکٹری میں ”{name}“ نام کا کھانے کا وقت پہلے سے موجود ہے۔",
+    servingUpdated: "کھانے کا وقت تبدیل ہو گیا۔",
+    servingAdded: "کھانے کا وقت شامل ہو گیا۔",
+    windowInUse: "اِس وقت میں پہلے ہی کھانا دیا جا چکا ہے — اِسے حذف کرنے کے بجائے بند کر دیں۔",
+    servingRemoved: "کھانے کا وقت ہٹا دیا گیا۔",
+  },
   profile: {
     title: "میری پروفائل",
     subtitle: "دفتر کے پاس آپ کا ریکارڈ",
@@ -302,7 +386,6 @@ const ur: Dictionary = {
     email: "ای میل",
     designation: "عہدہ",
     noDesignation: "کوئی عہدہ نہیں",
-    site: "فیکٹری",
     shift: "شفٹ",
     joinedOn: "ملازمت شروع کی",
     payType: "تنخواہ کی قسم",

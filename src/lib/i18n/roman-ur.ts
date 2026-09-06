@@ -63,6 +63,35 @@ import type { Dictionary } from "./index";
  *
  * This file reads left to right — see `directionFor` in ./index.
  *
+ * Added by the canteen. Read these out loud before reading them on paper —
+ * they are shown at a serving hatch, in the largest type in the product, to
+ * a man in a queue who may not read confidently in any language. Plain beats
+ * elegant here, and short beats complete.
+ *
+ * The three refusals matter most, because a worker reads one while being
+ * turned away from food:
+ *   "Already taken" (Pehle le chuka hai) — he ate inside the last 24 hours ·
+ *   "Not recognised" (Pehchan nahi hui) — the finger matched nobody, which is
+ *   the machine's failure and not his, and the wording should not sound like
+ *   an accusation · "Counter closed" (Khane ka waqt nahi) — no serving is open
+ *   Alongside them, "Second attempts" (Doosri baar koshish), the tally that
+ *   counts those refusals, and "Give food" (Khana de dein), the one
+ *   instruction the counter staff act on. These four and "Scan a finger"
+ *   (Ungli lagayein) are transliterations of wording that was already on the
+ *   counter screen before it was translated — the words the floor has been
+ *   reading, not new ones, so a change to them is a change to something in
+ *   use.
+ *
+ * And in the settings screen behind it, least sure of these:
+ *   `canteenSettings.noServingSwitchedOn` quotes the counter's own refusal, so
+ *   the words inside its “…” must stay identical to `canteen.counterClosed` ·
+ *   "serving time" for a meal window (Khane ka waqt), the noun the whole
+ *   settings screen is built on, against "Opens"/"Closes" (Khulne ka waqt /
+ *   Band hone ka waqt) which are the two ends of one · three near-neighbours
+ *   that must stay tellable apart: a terminal that is "Inactive" (Ghair faal),
+ *   a serving time that is "Off" (Band), and the machine state "disabled"
+ *   (Band) in `status.device`
+ *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
  */
 const roman: Dictionary = {
@@ -113,6 +142,7 @@ const roman: Dictionary = {
     searchPlaceholder: "Naam, code ya shanakhti card",
     department: "Shoba",
     everyDepartment: "Har shoba",
+    site: "Factory",
     show: "Dikhayein",
     close: "Band karein",
     nobodyMatches: "Is talash mein koi nahi mila.",
@@ -302,6 +332,63 @@ const roman: Dictionary = {
     approvedOne: "{count} din manzoor. Is ka hisab dobara nahi hoga.",
     approvedMany: "{count} din manzoor. In ka hisab dobara nahi hoga.",
   },
+  canteen: {
+    giveFood: "Khana de dein",
+    alreadyTaken: "Pehle le chuka hai",
+    notRecognised: "Pehchan nahi hui",
+    counterClosed: "Khane ka waqt nahi",
+    scanFinger: "Ungli lagayein",
+    servedToday: "Aaj khana diya",
+    secondAttempts: "Doosri baar koshish",
+  },
+  canteenSettings: {
+    counterInactive: "Canteen ka counter abhi kuch nahi kare ga",
+    noCanteenTerminal:
+      "Koi machine canteen ke liye muqarrar nahi, is liye us ke scan haazri mein darj ho rahe hain.",
+    setOneOnDevices: "Machines wali screen par ek muqarrar karein",
+    // Yeh jumla counter ke apne alfaz dohrata hai, is liye waavain ke andar
+    // bilkul wohi alfaz rehne chahiye jo `canteen.counterClosed` mein hain.
+    noServingSwitchedOn:
+      "Koi khane ka waqt chaalu nahi, is liye har scan par “Khane ka waqt nahi” aaye ga.",
+    servingTimes: "Khane ke auqat",
+    servingTimesHint: "Counter kab khula rehta hai. Har waqt mein fi aadmi ek khana.",
+    addServing: "Naya waqt shamil karein",
+    noServingsYet: "Abhi koi waqt muqarrar nahi",
+    noServingsHint: "Ek shamil karein — dopahar ka khana, ya raat ki shift ke liye raat ka khana.",
+    terminals: "Canteen ki machinein",
+    terminalsHint:
+      "Machines wali screen par muqarrar hoti hain — yahan is liye dikhai hain ke kami saaf nazar aaye",
+    noTerminalScanning: "Koi machine khane ke liye scan nahi kar rahi.",
+    inactive: "Ghair faal",
+    off: "Band",
+    runsPastMidnight: "Raat barah baje ke baad tak — jis din khule, usi din mein shumar",
+    edit: "Tabdeel karein",
+    editServing: "{name} mein tabdeeli",
+    addServingTitle: "Naya khane ka waqt",
+    overnightHint:
+      "Raat barah baje ke baad tak chalne wala waqt theek hai — ise {time} par khatam karein, raat ki shift ka khana phir bhi ek hi shumar hoga.",
+    servingName: "Naam",
+    namePlaceholder: "Dopahar ka khana",
+    opens: "Khulne ka waqt",
+    closes: "Band hone ka waqt",
+    orderOnScreen: "Screen par tarteeb",
+    openLabel: "Khula — is waqt mein counter scan qabool kare ga",
+    saveServingTime: "Khane ka waqt mehfooz karein",
+    removeConfirm:
+      "{name} hata dein? Pehle se darj khane isi waqt se jure rehte hain, is liye yeh sirf tab hate ga jab is mein kisi ne khana na liya ho.",
+    remove: "Hata dein",
+    removeServing: "Yeh khane ka waqt hata dein",
+    chooseFactoryAndName: "Factory chunein aur naam likhein.",
+    enterTimes: "Dono auqat HH:MM ki soorat mein likhein.",
+    sameStartEnd:
+      "Khulne aur band hone ka waqt ek nahi ho sakta — aisa waqt kabhi khule ga hi nahi.",
+    duplicateName: "Is factory mein “{name}” naam ka khane ka waqt pehle se mojood hai.",
+    servingUpdated: "Khane ka waqt tabdeel ho gaya.",
+    servingAdded: "Khane ka waqt shamil ho gaya.",
+    windowInUse:
+      "Is waqt mein pehle hi khana diya ja chuka hai — ise hazf karne ke bajaye band kar dein.",
+    servingRemoved: "Khane ka waqt hata diya gaya.",
+  },
   profile: {
     title: "Meri profile",
     subtitle: "Daftar ke paas aap ka record",
@@ -312,7 +399,6 @@ const roman: Dictionary = {
     email: "Email",
     designation: "Ohda",
     noDesignation: "Koi ohda nahi",
-    site: "Factory",
     shift: "Shift",
     joinedOn: "Mulazmat shuru ki",
     payType: "Tankhwah ki qism",

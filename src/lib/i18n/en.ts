@@ -79,6 +79,10 @@ const en = {
     // screen to need it. One home per word; the profile screen reads it here.
     department: "Department",
     everyDepartment: "Every department",
+    // Moved here from `profile` by the canteen settings form, the second
+    // screen to need it — a serving time belongs to a factory the same way a
+    // person does. One home per word; the profile screen reads it here.
+    site: "Factory",
     show: "Show",
     close: "Close",
     nobodyMatches: "Nobody matches these filters.",
@@ -381,6 +385,114 @@ const en = {
     approvedOne: "Approved {count} day. It will not be recalculated.",
     approvedMany: "Approved {count} days. They will not be recalculated.",
   },
+  /**
+   * The canteen counter — the most floor-facing screen in the product.
+   *
+   * Read at a serving hatch by workers queuing for a meal, several of whom do
+   * not read confidently in any language, so every one of these is a short
+   * spoken phrase rather than a sentence. Three of them are refusals: a worker
+   * reads them while being turned away from food.
+   *
+   * These are deliberately *not* in `status.mealScan` beside the other
+   * database enums, even though the counter picks one per `meal_scan_outcome`
+   * value. What the panel shows is the counter staff's instruction for that
+   * outcome — "Give food", not "Served" — and an instruction is not the
+   * enum member's label. A future screen listing scan outcomes as badges
+   * would want the noun, and would be wrong to reuse the imperative.
+   */
+  canteen: {
+    // served
+    giveFood: "Give food",
+    // duplicate — already fed inside the rolling 24 hours
+    alreadyTaken: "Already taken",
+    // unknown_person — the finger matched nobody
+    notRecognised: "Not recognised",
+    // outside_window — no serving is open right now
+    counterClosed: "Counter closed",
+    // Between scans.
+    scanFinger: "Scan a finger",
+    // The two tallies, which only someone with `canteen.view` sees.
+    servedToday: "Served today",
+    secondAttempts: "Second attempts",
+  },
+  /**
+   * Serving times, and which terminals scan for meals.
+   *
+   * An office screen rather than a floor one, but it is the screen that
+   * decides what the counter does — so its two warnings matter as much as
+   * anything on the counter itself.
+   *
+   * A meal window's name, the factory's name and the terminal's name are
+   * names: they are rendered from the row through `<Latin>`, not from here.
+   */
+  canteenSettings: {
+    // The two configuration gaps that make the counter silently do nothing.
+    counterInactive: "The canteen counter will not do anything yet",
+    noCanteenTerminal: "No terminal is set to Canteen, so its scans are recorded as attendance.",
+    // The link that follows it. A whole clause rather than the word "Devices"
+    // dropped into the sentence above: a link cannot be a `<Fill>` slot, and
+    // a translated sentence built around embedded markup cannot be reordered.
+    setOneOnDevices: "Set one on the Devices screen",
+    // Quotes the counter's own refusal, so this phrase and `canteen.counterClosed`
+    // must stay word-for-word the same in every language.
+    noServingSwitchedOn: "No serving time is switched on, so every scan reads “counter closed”.",
+    servingTimes: "Serving times",
+    servingTimesHint: "When the counter is open. One meal per person per serving.",
+    addServing: "Add serving",
+    noServingsYet: "No serving times yet",
+    noServingsHint: "Add one — lunch, or dinner for the night shift.",
+    terminals: "Canteen terminals",
+    terminalsHint: "Set on the Devices screen — shown here so a missing one is obvious",
+    noTerminalScanning: "No terminal is scanning for meals.",
+    // Two switched-off badges on one screen, for two different columns:
+    // `devices.is_active` on a terminal, `meal_windows.is_active` on a serving
+    // time. Neither is `device_status.disabled`, which is a third thing again.
+    inactive: "Inactive",
+    off: "Off",
+    runsPastMidnight: "Runs past midnight — counted against the day it opens",
+    edit: "Edit",
+    // The dialog, adding or editing. `{name}` is the serving's own name.
+    editServing: "Edit {name}",
+    addServingTitle: "Add a serving",
+    // `{time}` is an example end time, so it is a slot like every other time
+    // on every other screen rather than digits set in the sentence.
+    overnightHint:
+      "A serving that runs past midnight is fine — end it at {time} and the night shift's meal still counts as one.",
+    servingName: "Name",
+    namePlaceholder: "Lunch",
+    opens: "Opens",
+    closes: "Closes",
+    orderOnScreen: "Order on screen",
+    openLabel: "Open — the counter accepts scans in this window",
+    saveServingTime: "Save serving time",
+    removeConfirm:
+      "Remove {name}? Servings already recorded against it keep this window, so it can only be removed if nobody has eaten in it.",
+    remove: "Remove",
+    removeServing: "Remove this serving",
+    /*
+     * What `saveMealWindow` and `deleteMealWindow` put in the toast.
+     *
+     * The action holds the session, so it knows the reader's language and
+     * looks the sentence up itself rather than handing the client English to
+     * sit beside Urdu labels. Postgres errors are deliberately absent — they
+     * are passed through untouched, being developer-facing.
+     *
+     * `duplicateName` carries a name the administrator typed, quoted, between
+     * two runs of Urdu — so the action passes it through `isolate()` before
+     * substituting it. `HH:MM` in `enterTimes` is not a slot: it is part of
+     * the sentence, and strong left-to-right letters are not reordered by the
+     * surrounding paragraph the way a code or a number would be.
+     */
+    chooseFactoryAndName: "Choose a factory and give it a name.",
+    enterTimes: "Enter both times as HH:MM.",
+    sameStartEnd: "Start and end cannot be the same — that window would never open.",
+    duplicateName: "A serving named “{name}” already exists at this factory.",
+    servingUpdated: "Serving time updated.",
+    servingAdded: "Serving time added.",
+    windowInUse:
+      "Meals have already been served in this window — switch it off instead of deleting it.",
+    servingRemoved: "Serving time removed.",
+  },
   profile: {
     title: "My profile",
     subtitle: "Your record as the office holds it",
@@ -391,7 +503,8 @@ const en = {
     email: "Email",
     designation: "Designation",
     noDesignation: "No designation",
-    site: "Factory",
+    // `Factory` moved to `common.site` when the canteen settings form became
+    // the second screen to label one. This screen reads it from there.
     shift: "Shift",
     joinedOn: "Joined on",
     payType: "Pay type",

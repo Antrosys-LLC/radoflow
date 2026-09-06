@@ -47,9 +47,10 @@ const en = {
     nothingYet: "Nothing to show yet",
     today: "Today",
     hours: "Hours",
-    present: "Present",
-    absent: "Absent",
-    onLeave: "On leave",
+    // `Late` is a word this app owns, not an `attendance_status` member: it
+    // labels the `is_late` flag and the count of late arrivals. The seven enum
+    // values — `present`, `absent`, `leave` and the rest — live in
+    // `status.attendance` below, with every other database enum.
     late: "Late",
     checkedIn: "IN",
     checkedOut: "OUT",
@@ -86,14 +87,35 @@ const en = {
     // heading. The `status` group below holds the enum *values* a row's
     // column is looked up in, and the two are not the same thing.
     status: "Status",
+    // The export buttons (`src/components/export-buttons.tsx`). They sit on
+    // three screens — the attendance log, pay rates and reports — so the words
+    // belong here rather than in any one screen's group.
+    //
+    // `download` is the default caption noun; a screen with a better word for
+    // what the file is passes its own (the attendance log passes `Payslip`).
+    // `downloadFormat` is the whole caption, because "Download" + " " + "PDF"
+    // is a sentence assembled in code and Urdu puts the two the other way
+    // round. `{format}` is a file-format name — Excel, PDF — and stays Latin in
+    // every language, like every other name in this app.
+    download: "Download",
+    downloadFormat: "{label} {format}",
+    // The filename comes from the server's content-disposition, so it is a
+    // Latin run inside a right-to-left sentence and reaches the toast through
+    // `isolate()`.
+    downloaded: "{name} downloaded.",
+    // The two failures the reader can act on. A Postgres or fetch error is
+    // passed through in English instead: it is developer-facing, and an
+    // invented Urdu sentence around one would hide what actually failed.
+    downloadFailed: "Download failed.",
+    downloadNotBuilt: "Could not build the file ({status}).",
   },
   /**
    * Database enum values that reach the screen as badge or field text, keyed by
    * enum then by value so a row's column can be looked up directly. The members
    * are exactly those declared in the migrations — `payroll_status`,
-   * `device_status` and `employment_status`. Adding a member to an enum without
-   * adding it here is a typecheck error in the two translations, not a blank
-   * badge.
+   * `device_status`, `employment_status` and `attendance_status`. Adding a
+   * member to an enum without adding it here is a typecheck error in the two
+   * translations, not a blank badge.
    */
   status: {
     payroll: {
@@ -114,6 +136,29 @@ const en = {
       active: "Active",
       suspended: "Suspended",
       terminated: "Terminated",
+    },
+    /*
+     * All seven `attendance_status` members, in one place.
+     *
+     * Wave 1 left three of them in `common` (`present`, `absent`, `onLeave`)
+     * and Wave 2's attendance log added the other four to `logs`, which left
+     * one database enum wearing labels in two shapes and neither of them the
+     * shape the other three enums use. The words were identical in all three
+     * languages, so they are one set here and every call site reads them from
+     * here: the attendance log's day column, and the check in/out register,
+     * whose four-state badge borrows `present` and `absent`.
+     *
+     * `Late` is deliberately not among them — it is not a member of this enum.
+     * It stays in `common`, where it labels the `is_late` flag.
+     */
+    attendance: {
+      present: "Present",
+      absent: "Absent",
+      leave: "On leave",
+      holiday: "Holiday",
+      off: "Off",
+      partial: "Partial",
+      pending: "Pending",
     },
   },
   dashboard: {
@@ -202,8 +247,8 @@ const en = {
    * hour figure, so nearly none of it is here: those are rendered from the row
    * through `<Latin>` in every language. What is here is the six words around
    * them, and only the four that no other screen already owns — `Person`,
-   * `Department`, `Hours` and `Status` are read from `common`, and so are the
-   * `Present` and `Absent` badges.
+   * `Department`, `Hours` and `Status` are read from `common`, and the
+   * `Present` and `Absent` badges from `status.attendance`.
    */
   register: {
     title: "Check in / check out",
@@ -304,15 +349,9 @@ const en = {
     countsDay: "{count} day",
     overtimeOnly: "overtime only",
     noAttendanceBetween: "No attendance recorded between {from} and {to}.",
-    /*
-     * The four `attendance_status` members that have no word in `common`
-     * already — `present`, `absent` and `leave` are read from `common.present`,
-     * `common.absent` and `common.onLeave` rather than repeated here.
-     */
-    statusHoliday: "Holiday",
-    statusOff: "Off",
-    statusPartial: "Partial",
-    statusPending: "Pending",
+    // The `attendance_status` labels this screen's day column shows are not
+    // here: they are the database enum, so they live in `status.attendance`
+    // with every other enum's values.
     // The approve button. The range is one slot rather than two, so the two
     // dates and the dash between them stay a single unbreakable Latin run.
     approving: "Approving…",

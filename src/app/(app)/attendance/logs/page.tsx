@@ -66,9 +66,11 @@ const money = (value: number) =>
 /**
  * A stored `attendance_status` in the reader's language.
  *
- * Three of the seven members already had a word in `common` — `present`,
- * `absent` and `leave` — so they are read from there rather than repeated in
- * this screen's group. The other four are new and live in `logs`.
+ * All seven members are read from `status.attendance`, which is where every
+ * other database enum's values live too. They used to be split across
+ * `common` and this screen's own group, which left one enum wearing labels in
+ * two shapes; the words were the same in all three languages, so they are now
+ * one set.
  *
  * Typed `Record<AttendanceStatus, …>` so that adding a member to the enum is a
  * typecheck error here rather than a raw `special_leave` appearing in a cell.
@@ -76,15 +78,7 @@ const money = (value: number) =>
  * it is the truth, and a wrong label on an attendance day is not.
  */
 function statusLabel(t: Dictionary, status: string | null): string {
-  const labels: Record<AttendanceStatus, string> = {
-    present: t.common.present,
-    absent: t.common.absent,
-    leave: t.common.onLeave,
-    holiday: t.logs.statusHoliday,
-    off: t.logs.statusOff,
-    partial: t.logs.statusPartial,
-    pending: t.logs.statusPending,
-  };
+  const labels: Record<AttendanceStatus, string> = t.status.attendance;
 
   const stored = status ?? "pending";
   return labels[stored as AttendanceStatus] ?? stored;
@@ -378,7 +372,15 @@ export default async function AttendanceLogPage({
                           "peer-focus-visible:ring-2 peer-focus-visible:ring-primary peer-focus-visible:ring-offset-1",
                         )}
                       >
-                        {d.name}
+                        {/* A department name is a Latin string the office
+                            typed — `Auto 01`, `Zafar Nug Packing` — so it is
+                            isolated like every other stored value on this
+                            screen, and like the person names in the
+                            `<option>` list above. Left bare it would be set
+                            in Nastaliq and left to the paragraph's direction,
+                            which is the reordering this wave exists to
+                            prevent. */}
+                        <Latin>{d.name}</Latin>
                       </span>
                     </label>
                   );
@@ -543,10 +545,13 @@ function Cohort({
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {/* The department name is data the office typed, so it
-                        renders as stored, in whatever script they typed it. */}
-                    {row.person.department_id
-                      ? (deptName.get(row.person.department_id) ?? "—")
-                      : "—"}
+                        renders as stored — but isolated, like the chips in
+                        the filter above and every other stored value here. */}
+                    {row.person.department_id && deptName.get(row.person.department_id) ? (
+                      <Latin>{deptName.get(row.person.department_id)}</Latin>
+                    ) : (
+                      "—"
+                    )}
                     {row.contractor ? (
                       <span className="ms-2 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold uppercase text-warning">
                         {t.logs.contract}
@@ -692,8 +697,14 @@ function PersonLog({
           <span className="font-normal text-muted-foreground">
             · <Latin>{person.employee_code}</Latin>
             {/* The department name is data the office typed, so — like in
-                the cohort table — it renders as stored, untranslated. */}
-            {departmentName ? <> · {departmentName}</> : null}
+                the cohort table — it renders as stored, untranslated, and
+                isolated so the paragraph cannot reorder it. */}
+            {departmentName ? (
+              <>
+                {" · "}
+                <Latin>{departmentName}</Latin>
+              </>
+            ) : null}
           </span>
         </p>
 
@@ -832,10 +843,17 @@ function PersonLog({
                           className="ms-1.5 text-[10px] font-bold uppercase text-muted-foreground"
                           title={t.logs.unpaidHint}
                         >
-                          +
+                          {/* The plus belongs to the figure, not to the
+                              sentence. A plus sign is bidi-neutral, so left
+                              outside the isolated run its position is decided
+                              by the paragraph, and `+2.00` typesets as
+                              `2.00 +` in Urdu — the same mechanism that turns
+                              `RD-1042` into `1042-RD`. Passed as part of the
+                              slot value, it goes through `<Latin>` with its
+                              number, as one unit. */}
                           <Fill
                             template={t.logs.unpaidHours}
-                            values={{ hours: formatHours(unpaid) }}
+                            values={{ hours: `+${formatHours(unpaid)}` }}
                           />
                         </span>
                       ) : null}

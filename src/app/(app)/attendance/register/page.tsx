@@ -54,17 +54,19 @@ const STATE_TONE: Record<RegisterState, string> = {
 /**
  * A register state in the reader's language.
  *
- * Two of the four already had a word in `common` — `present` and `absent` — so
- * they are read from there rather than repeated in this screen's group.
+ * Two of the four are `attendance_status` members — `present` and `absent` —
+ * so they are read from `status.attendance`, where the database enum's labels
+ * live, rather than repeated in this screen's group. The other two are states
+ * this screen derives and no column stores.
  *
  * Typed `Record<RegisterState, …>` so that adding a state to the union is a
  * typecheck error here rather than a blank badge found on the floor.
  */
 function stateLabel(t: Dictionary, state: RegisterState): string {
   const labels: Record<RegisterState, string> = {
-    present: t.common.present,
+    present: t.status.attendance.present,
     working: t.register.stillIn,
-    absent: t.common.absent,
+    absent: t.status.attendance.absent,
     not_required: t.register.notRequired,
   };
   return labels[state];
@@ -147,12 +149,17 @@ export default async function RegisterPage({
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile
           icon={UserCheck}
-          label={t.common.present}
+          label={t.status.attendance.present}
           value={totals.present + totals.working}
           tone="text-success"
         />
         <Tile icon={Clock} label={t.register.stillIn} value={totals.working} tone="text-warning" />
-        <Tile icon={UserX} label={t.common.absent} value={totals.absent} tone="text-danger" />
+        <Tile
+          icon={UserX}
+          label={t.status.attendance.absent}
+          value={totals.absent}
+          tone="text-danger"
+        />
         <Tile icon={TriangleAlert} label={t.common.late} value={totals.late} tone="text-warning" />
       </div>
 

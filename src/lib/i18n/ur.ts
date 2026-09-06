@@ -30,10 +30,23 @@ import type { Dictionary } from "./index";
  *   different figures on the same row and must stay tellable apart ·
  *   "unpaid" for overtime past the daily ceiling (بلا معاوضہ) ·
  *   "Counts" as the column that says whether a day was counted (شمار) ·
- *   the four attendance states with no word already in `common`:
+ *   the four attendance states the log added, now in `status.attendance`
+ *   with the other three:
  *   "holiday" (تعطیل), "off" (آرام کا دن), "partial" (ادھورا دن) and
  *   "pending" (پینڈنگ), which must all stay tellable apart from
  *   "on leave" (چھٹی پر) · "Contract" on a worker's badge (ٹھیکہ)
+ *
+ * Added by the export buttons, and least sure of these:
+ *   the download caption, which is assembled from a file-format name and a
+ *   noun ("{format} {label}" — ایکسل ڈاؤن لوڈ, and with the attendance log's
+ *   own noun, PDF تنخواہ کی پرچی). The English reads "Payslip PDF"; whether
+ *   the format name should lead in Urdu, or whether a floor reader would
+ *   rather see "تنخواہ کی پرچی PDF میں", is the open question ·
+ *   "Download failed" (ڈاؤن لوڈ نہیں ہو سکا) against "Could not build the
+ *   file" (فائل نہیں بن سکی), which are two different failures — the second
+ *   is the server refusing or breaking, the first is the browser — and must
+ *   stay tellable apart · "{name} downloaded" (ڈاؤن لوڈ ہو گئی), whose
+ *   feminine ending assumes the thing named is a فائل
  *
  * Added by the check in/out register, and least sure of these:
  *   "Still in" — checked in, not yet out (ابھی اِن ہیں) — against "Present"
@@ -74,9 +87,6 @@ const ur: Dictionary = {
     nothingYet: "ابھی دکھانے کو کچھ نہیں",
     today: "آج",
     hours: "گھنٹے",
-    present: "حاضر",
-    absent: "غیر حاضر",
-    onLeave: "چھٹی پر",
     late: "دیر سے",
     checkedIn: "اِن",
     checkedOut: "آؤٹ",
@@ -99,6 +109,12 @@ const ur: Dictionary = {
     close: "بند کریں",
     nobodyMatches: "اِس تلاش میں کوئی نہیں ملا۔",
     status: "حالت",
+    download: "ڈاؤن لوڈ",
+    // انگریزی میں "{label} {format}" ہے؛ اردو میں فائل کی قسم پہلے آتی ہے۔
+    downloadFormat: "{format} {label}",
+    downloaded: "{name} ڈاؤن لوڈ ہو گئی۔",
+    downloadFailed: "ڈاؤن لوڈ نہیں ہو سکا۔",
+    downloadNotBuilt: "فائل نہیں بن سکی ({status})۔",
   },
   status: {
     payroll: {
@@ -119,6 +135,15 @@ const ur: Dictionary = {
       active: "ملازمت جاری",
       suspended: "معطل",
       terminated: "ملازمت ختم",
+    },
+    attendance: {
+      present: "حاضر",
+      absent: "غیر حاضر",
+      leave: "چھٹی پر",
+      holiday: "تعطیل",
+      off: "آرام کا دن",
+      partial: "ادھورا دن",
+      pending: "پینڈنگ",
     },
   },
   dashboard: {
@@ -258,10 +283,6 @@ const ur: Dictionary = {
     countsDay: "{count} دن",
     overtimeOnly: "صرف اوور ٹائم",
     noAttendanceBetween: "{from} سے {to} تک کوئی حاضری درج نہیں۔",
-    statusHoliday: "تعطیل",
-    statusOff: "آرام کا دن",
-    statusPartial: "ادھورا دن",
-    statusPending: "پینڈنگ",
     approving: "منظور ہو رہا ہے…",
     approveRest: "باقی منظور کریں ({count})",
     approveRange: "{range} منظور کریں",

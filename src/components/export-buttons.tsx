@@ -4,6 +4,10 @@ import { useState } from "react";
 import { FileDown, FileSpreadsheet, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
+import { isolate } from "@/lib/i18n";
+
 /**
  * Download buttons for the report screens.
  *
@@ -14,16 +18,36 @@ import { toast } from "sonner";
 export function ExportButtons({
   kind,
   params = {},
-  label = "Download",
+  label,
   formats = ["xlsx", "pdf"],
 }: {
   /** Matches the route segment: people, pay, attendance, payroll, payslip. */
   kind: string;
   params?: Record<string, string | undefined>;
+  /**
+   * The noun in the caption, already translated — the attendance log passes
+   * `Payslip` beside the days that produced it. Left out, the button says
+   * `Download`. It is not the whole caption: `common.downloadFormat` decides
+   * where the format name goes relative to it.
+   */
   label?: string;
   formats?: ("xlsx" | "pdf")[];
 }) {
+  const t = useDictionary();
   const [busy, setBusy] = useState<string | null>(null);
+
+  /*
+   * The caption is one dictionary sentence rather than `label` + " " + "PDF":
+   * Urdu puts the format name first, and a caption assembled in code can only
+   * ever be in English order.
+   *
+   * The noun is substituted here, by plain replace, because it is already
+   * translated text — running it through `<Fill>` would set an Urdu word in a
+   * Latin face and force it left-to-right. `{format}` is left for `<Fill>`,
+   * because it is a format name, stays Latin in every language, and is the
+   * only half that needs isolating.
+   */
+  const caption = t.common.downloadFormat.replace("{label}", label ?? t.common.download);
 
   async function download(format: "xlsx" | "pdf") {
     setBusy(format);
@@ -38,7 +62,15 @@ export function ExportButtons({
 
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { error?: string } | null;
-        toast.error(body?.error ?? `Could not build the file (${response.status}).`);
+        /*
+         * The route's own `error` is passed through untouched — it is the
+         * server saying what it refused, and an invented Urdu sentence around
+         * it would hide that. Only our fallback is translated; the status code
+         * is a bare integer, so it needs no isolating.
+         */
+        toast.error(
+          body?.error ?? t.common.downloadNotBuilt.replace("{status}", String(response.status)),
+        );
         return;
       }
 
@@ -61,9 +93,17 @@ export function ExportButtons({
       // in some browsers.
       setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-      toast.success(`${name} downloaded.`);
+      /*
+       * The filename is a Latin run — `attendance-2026-09.xlsx` — and a toast
+       * inherits the page's `dir="rtl"` in Urdu, where a plain string has no
+       * `<bdi>` to protect it. `isolate()` is that protection for a value
+       * going into a `string`.
+       */
+      toast.success(t.common.downloaded.replace("{name}", isolate(name)));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Download failed.");
+      // A fetch error is a raw runtime message: developer-facing, left as it
+      // came. Only the fallback is ours to translate.
+      toast.error(error instanceof Error ? error.message : t.common.downloadFailed);
     } finally {
       setBusy(null);
     }
@@ -83,7 +123,7 @@ export function ExportButtons({
           ) : (
             <FileSpreadsheet className="size-3.5" />
           )}
-          {label} Excel
+          <Fill template={caption} values={{ format: "Excel" }} />
         </button>
       ) : null}
 
@@ -99,7 +139,7 @@ export function ExportButtons({
           ) : (
             <FileDown className="size-3.5" />
           )}
-          {label} PDF
+          <Fill template={caption} values={{ format: "PDF" }} />
         </button>
       ) : null}
     </div>

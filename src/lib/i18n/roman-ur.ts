@@ -36,11 +36,23 @@ import type { Dictionary } from "./index";
  *   different figures on the same row and must stay tellable apart ·
  *   "unpaid" for overtime past the daily ceiling (bila muawza) ·
  *   "Counts" as the column that says whether a day was counted (Shumar) ·
- *   the four attendance states with no word already in `common`:
+ *   the four attendance states the log added, now in `status.attendance`
+ *   with the other three:
  *   "holiday" (Tateel), "off" (Aaram ka din), "partial" (Adhoora din) and
  *   "pending" (Pending, kept in English because that is the word the floor
  *   uses), which must all stay tellable apart from "on leave" (Chutti par) ·
  *   "Contract" on a worker's badge (Theka)
+ *
+ * Added by the export buttons, and least sure of these:
+ *   the download caption, assembled from a noun and a file-format name
+ *   ("{label} {format}" — Download Excel, and with the attendance log's own
+ *   noun, Tankhwah ki parchi PDF). Whether a Roman-Urdu reader wants
+ *   "Excel download karein" instead of the bare "Download Excel" is the open
+ *   question · "Download failed" (Download nahi ho saka) against "Could not
+ *   build the file" (File nahi ban saki), which are two different failures —
+ *   the second is the server refusing or breaking, the first is the browser —
+ *   and must stay tellable apart · "{name} downloaded" (download ho gayi),
+ *   whose feminine ending assumes the thing named is a file
  *
  * Added by the check in/out register, and least sure of these:
  *   "Still in" — checked in, not yet out (Abhi IN hain) — against "Present"
@@ -83,9 +95,6 @@ const roman: Dictionary = {
     nothingYet: "Abhi dikhane ko kuch nahi",
     today: "Aaj",
     hours: "Ghante",
-    present: "Hazir",
-    absent: "Ghair hazir",
-    onLeave: "Chutti par",
     late: "Der se",
     checkedIn: "IN",
     checkedOut: "OUT",
@@ -108,6 +117,13 @@ const roman: Dictionary = {
     close: "Band karein",
     nobodyMatches: "Is talash mein koi nahi mila.",
     status: "Halat",
+    download: "Download",
+    // Roman Urdu reads left to right and both halves are English words the
+    // floor already uses, so the English order is the natural one here.
+    downloadFormat: "{label} {format}",
+    downloaded: "{name} download ho gayi.",
+    downloadFailed: "Download nahi ho saka.",
+    downloadNotBuilt: "File nahi ban saki ({status}).",
   },
   status: {
     payroll: {
@@ -128,6 +144,15 @@ const roman: Dictionary = {
       active: "Mulazmat jari",
       suspended: "Muattal",
       terminated: "Mulazmat khatam",
+    },
+    attendance: {
+      present: "Hazir",
+      absent: "Ghair hazir",
+      leave: "Chutti par",
+      holiday: "Tateel",
+      off: "Aaram ka din",
+      partial: "Adhoora din",
+      pending: "Pending",
     },
   },
   dashboard: {
@@ -267,10 +292,6 @@ const roman: Dictionary = {
     countsDay: "{count} din",
     overtimeOnly: "Sirf overtime",
     noAttendanceBetween: "{from} se {to} tak koi haazri darj nahi.",
-    statusHoliday: "Tateel",
-    statusOff: "Aaram ka din",
-    statusPartial: "Adhoora din",
-    statusPending: "Pending",
     approving: "Manzoor ho raha hai…",
     approveRest: "Baqi manzoor karein ({count})",
     approveRange: "{range} manzoor karein",

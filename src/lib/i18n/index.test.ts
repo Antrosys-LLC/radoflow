@@ -92,4 +92,70 @@ describe("the dictionaries agree", () => {
     expect(LANGUAGE_LABELS.ur).toBe("اردو");
     expect(LANGUAGE_LABELS["roman-ur"]).toBe("Roman Urdu");
   });
+
+  // Arabic Presentation Forms and the two main Arabic blocks — Urdu script
+  // spills into all three as ligatures and extended letters are added.
+  const ARABIC_SCRIPT = /[؀-ۿݐ-ݿﭐ-﷿]/;
+
+  it("ur is written in Arabic script and roman-ur never is", () => {
+    // The two Urdu dictionaries are easy to paste into the wrong file — same
+    // language, same meaning, only the script differs. `{tokens}` are
+    // stripped first: a placeholder like "{total}" is Latin by construction
+    // and says nothing about the surrounding sentence's script. A value that
+    // is nothing but a stripped token or punctuation carries no script of its
+    // own, so it is skipped rather than failed either way.
+    for (const path of paths(en)) {
+      const urValue = path
+        .split(".")
+        .reduce<unknown>((node, key) => (node as Record<string, unknown>)[key], ur) as string;
+      const romanValue = path
+        .split(".")
+        .reduce<unknown>((node, key) => (node as Record<string, unknown>)[key], roman) as string;
+
+      const urStripped = urValue.replace(/\{[^}]*\}/g, "");
+      if (/\p{L}/u.test(urStripped)) {
+        expect(ARABIC_SCRIPT.test(urStripped), `ur.${path} has no Arabic script: ${urValue}`).toBe(
+          true,
+        );
+      }
+
+      const romanStripped = romanValue.replace(/\{[^}]*\}/g, "");
+      expect(
+        ARABIC_SCRIPT.test(romanStripped),
+        `roman-ur.${path} contains Arabic script: ${romanValue}`,
+      ).toBe(false);
+    }
+  });
+
+  it("every translation keeps the same {placeholders} as English", () => {
+    // A translator can drop a token while reordering a sentence around it —
+    // Urdu puts the words in a different order, so the token that carried
+    // "{count}" is easy to lose in the shuffle. The renderer does not
+    // complain when that happens; the number is simply missing from the
+    // sentence. Order is allowed to differ; only the set of names matters.
+    const tokensIn = (value: string) =>
+      new Set([...value.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]));
+
+    for (const path of paths(en)) {
+      const get = (dictionary: unknown) =>
+        path
+          .split(".")
+          .reduce<unknown>(
+            (node, key) => (node as Record<string, unknown>)[key],
+            dictionary,
+          ) as string;
+
+      const expectedTokens = tokensIn(get(en));
+
+      for (const [name, dictionary] of [
+        ["ur", ur],
+        ["roman-ur", roman],
+      ] as const) {
+        expect(
+          [...tokensIn(get(dictionary))].sort(),
+          `${name}.${path} has different placeholders`,
+        ).toEqual([...expectedTokens].sort());
+      }
+    }
+  });
 });

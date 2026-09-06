@@ -1,12 +1,16 @@
+import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarDays, Clock, ScrollText, TriangleAlert, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, Clock, ScrollText, TriangleAlert, Users } from "lucide-react";
 
 import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refresh";
 import { ExportButtons } from "@/components/export-buttons";
+import { Fill } from "@/components/fill";
+import { Latin } from "@/components/latin";
 import { matchesPerson } from "@/lib/people/match";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
+import { dictionaryFor, type Dictionary } from "@/lib/i18n";
 import {
   countWorkingDays,
   dailyRate,
@@ -17,6 +21,7 @@ import {
 import {
   DEFAULT_PAY_RULE,
   type AttendanceDay,
+  type AttendanceStatus,
   type DayType,
   type HourBuckets,
 } from "@/lib/payroll/types";
@@ -57,6 +62,33 @@ function defaultRange(): { from: string; to: string } {
 
 const money = (value: number) =>
   value.toLocaleString("en-PK", { maximumFractionDigits: 0, minimumFractionDigits: 0 });
+
+/**
+ * A stored `attendance_status` in the reader's language.
+ *
+ * Three of the seven members already had a word in `common` — `present`,
+ * `absent` and `leave` — so they are read from there rather than repeated in
+ * this screen's group. The other four are new and live in `logs`.
+ *
+ * Typed `Record<AttendanceStatus, …>` so that adding a member to the enum is a
+ * typecheck error here rather than a raw `special_leave` appearing in a cell.
+ * An unrecognised value still renders as itself: a bare enum name is ugly, but
+ * it is the truth, and a wrong label on an attendance day is not.
+ */
+function statusLabel(t: Dictionary, status: string | null): string {
+  const labels: Record<AttendanceStatus, string> = {
+    present: t.common.present,
+    absent: t.common.absent,
+    leave: t.common.onLeave,
+    holiday: t.logs.statusHoliday,
+    off: t.logs.statusOff,
+    partial: t.logs.statusPartial,
+    pending: t.logs.statusPending,
+  };
+
+  const stored = status ?? "pending";
+  return labels[stored as AttendanceStatus] ?? stored;
+}
 
 /**
  * One stored attendance day.
@@ -105,6 +137,7 @@ export default async function AttendanceLogPage({
   }>;
 }) {
   const session = await requireAnyPermission(["attendance.view", "attendance.view.all"]);
+  const t = dictionaryFor(session.profile.language);
   const params = await searchParams;
   const supabase = await createClient();
 
@@ -228,12 +261,8 @@ export default async function AttendanceLogPage({
       <Card className="p-4 sm:p-6">
         <SectionTitle
           icon={ScrollText}
-          title="Attendance log"
-          subtitle={
-            canSeeEveryone
-              ? "Every punch and the pay it produces — one person, chosen departments, or everyone."
-              : "Every punch of yours, and the pay it produces."
-          }
+          title={t.logs.title}
+          subtitle={canSeeEveryone ? t.logs.subtitleAll : t.logs.subtitleMine}
           action={
             <div className="flex flex-wrap items-center gap-2">
               <ExportButtons kind="attendance" params={{ from, to, dept: selectedDepts[0] }} />
@@ -241,7 +270,7 @@ export default async function AttendanceLogPage({
                 href="/attendance"
                 className="rounded-xl bg-secondary px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:text-primary"
               >
-                Live board
+                {t.logs.liveBoard}
               </Link>
             </div>
           }
@@ -252,7 +281,7 @@ export default async function AttendanceLogPage({
         <form className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_9rem_9rem_auto]">
             <label className="block">
-              <span className="text-xs font-semibold text-muted-foreground">Person</span>
+              <span className="text-xs font-semibold text-muted-foreground">{t.common.person}</span>
               <select
                 name="person"
                 defaultValue={personId}
@@ -260,27 +289,34 @@ export default async function AttendanceLogPage({
                 className="mt-1 w-full rounded-2xl border border-input bg-background px-4 py-2.5 text-sm outline-none focus:border-primary disabled:opacity-60"
               >
                 <option value="">
-                  {selectedDepts.length > 0 ? "Everyone in the departments below" : "Everyone"}
+                  {selectedDepts.length > 0 ? t.logs.everyoneInDepartments : t.logs.everyone}
                 </option>
                 {visible.map((p) => (
-                  <option key={p.id} value={p.id}>
+                  /*
+                   * `dir` and the class rather than `<Latin>`: an <option> may
+                   * only contain text, so the <bdi> element cannot go inside
+                   * one. This is the same guarantee spelt out as attributes —
+                   * without it a right-to-left page can show `1042-RD` for the
+                   * code `RD-1042` in the very list used to pick a person.
+                   */
+                  <option key={p.id} value={p.id} dir="ltr" className="font-latin">
                     {p.full_name} · {p.employee_code}
                   </option>
                 ))}
               </select>
             </label>
             <label className="block sm:col-span-1">
-              <span className="text-xs font-semibold text-muted-foreground">Search</span>
+              <span className="text-xs font-semibold text-muted-foreground">{t.common.search}</span>
               <input
                 type="search"
                 name="q"
                 defaultValue={params.q ?? ""}
-                placeholder="Name, code or CNIC"
+                placeholder={t.common.searchPlaceholder}
                 className="mt-1 w-full rounded-2xl border border-input bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
               />
             </label>
             <label className="block">
-              <span className="text-xs font-semibold text-muted-foreground">From</span>
+              <span className="text-xs font-semibold text-muted-foreground">{t.logs.from}</span>
               <input
                 type="date"
                 name="from"
@@ -289,7 +325,7 @@ export default async function AttendanceLogPage({
               />
             </label>
             <label className="block">
-              <span className="text-xs font-semibold text-muted-foreground">To</span>
+              <span className="text-xs font-semibold text-muted-foreground">{t.logs.to}</span>
               <input
                 type="date"
                 name="to"
@@ -301,14 +337,14 @@ export default async function AttendanceLogPage({
               type="submit"
               className="mt-[1.35rem] h-[2.7rem] rounded-2xl bg-charcoal px-5 text-sm font-bold text-charcoal-foreground transition-opacity hover:opacity-90"
             >
-              Show
+              {t.common.show}
             </button>
           </div>
 
           {canSeeEveryone ? (
             <fieldset>
               <legend className="text-xs font-semibold text-muted-foreground">
-                Departments — none ticked means every department
+                {t.logs.departmentsHint}
               </legend>
               {/* Checkboxes rather than a multi-select: picking four of
                   thirty-four with ctrl-click is a trap on a touch screen. */}
@@ -355,6 +391,7 @@ export default async function AttendanceLogPage({
 
       {person ? (
         <PersonLog
+          t={t}
           person={person}
           summary={summarise(person.id, Number(person.duty_hours ?? 8))}
           daysInMonth={daysInMonth}
@@ -365,6 +402,7 @@ export default async function AttendanceLogPage({
         />
       ) : (
         <Cohort
+          t={t}
           people={cohort}
           summarise={summarise}
           deptName={deptName}
@@ -380,6 +418,7 @@ export default async function AttendanceLogPage({
 
 /** A row per person, for a department or the whole factory. */
 function Cohort({
+  t,
   people,
   summarise,
   deptName,
@@ -388,6 +427,7 @@ function Cohort({
   to,
   selectedDepts,
 }: {
+  t: Dictionary;
   people: {
     id: string;
     full_name: string;
@@ -435,31 +475,38 @@ function Cohort({
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile
           icon={Users}
-          label="People"
-          value={String(rows.length)}
+          label={t.logs.people}
+          value={rows.length}
           hint={
-            selectedDepts.length > 0
-              ? `${selectedDepts.length} department${selectedDepts.length === 1 ? "" : "s"}`
-              : "Every department"
+            selectedDepts.length > 0 ? (
+              <Fill
+                template={
+                  selectedDepts.length === 1 ? t.logs.departmentCountOne : t.logs.departmentCount
+                }
+                values={{ count: selectedDepts.length }}
+              />
+            ) : (
+              t.common.everyDepartment
+            )
           }
         />
         <Tile
           icon={CalendarDays}
-          label="Working days"
-          value={String(totals.workingDays)}
-          hint="Attended, not Sunday"
+          label={t.logs.workingDays}
+          value={totals.workingDays}
+          hint={t.logs.attendedNotSunday}
         />
         <Tile
           icon={Clock}
-          label="Overtime hours"
+          label={t.logs.overtimeHours}
           value={formatHours(totals.overtime)}
-          hint="Capped at 4h a working day"
+          hint={t.logs.overtimeCap}
         />
         <Tile
           icon={TriangleAlert}
-          label="Late arrivals"
-          value={String(totals.late)}
-          hint="Past the grace period"
+          label={t.logs.lateArrivals}
+          value={totals.late}
+          hint={t.logs.pastGrace}
         />
       </div>
 
@@ -467,14 +514,17 @@ function Cohort({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[44rem] text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3 font-semibold">Person</th>
-                <th className="px-4 py-3 font-semibold">Department</th>
-                <th className="px-4 py-3 text-right font-semibold">Working days</th>
-                <th className="px-4 py-3 text-right font-semibold">Hours</th>
-                <th className="px-4 py-3 text-right font-semibold">Overtime</th>
-                <th className="px-4 py-3 text-right font-semibold">Late</th>
-                <th className="px-4 py-3 text-right font-semibold">Earned</th>
+              {/* Column alignment is reading flow: the figures sit at the end
+                  of the line, which is the right in English and the left in
+                  Urdu, so every one of these is logical rather than physical. */}
+              <tr className="border-b border-border text-start text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-4 py-3 font-semibold">{t.common.person}</th>
+                <th className="px-4 py-3 font-semibold">{t.common.department}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.workingDays}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.common.hours}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.overtime}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.common.late}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.earned}</th>
               </tr>
             </thead>
             <tbody>
@@ -485,42 +535,48 @@ function Cohort({
                       href={`/attendance/logs?person=${row.person.id}&from=${from}&to=${to}`}
                       className="font-semibold text-foreground hover:text-primary"
                     >
-                      {row.person.full_name}
+                      <Latin>{row.person.full_name}</Latin>
                     </Link>
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {row.person.employee_code}
+                    <span className="ms-2 text-xs text-muted-foreground">
+                      <Latin>{row.person.employee_code}</Latin>
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
+                    {/* The department name is data the office typed, so it
+                        renders as stored, in whatever script they typed it. */}
                     {row.person.department_id
                       ? (deptName.get(row.person.department_id) ?? "—")
                       : "—"}
                     {row.contractor ? (
-                      <span className="ml-2 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold uppercase text-warning">
-                        Contract
+                      <span className="ms-2 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold uppercase text-warning">
+                        {t.logs.contract}
                       </span>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{row.workingDays}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatHours(row.clocked)}</td>
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>{row.workingDays}</Latin>
+                  </td>
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>{formatHours(row.clocked)}</Latin>
+                  </td>
                   <td
                     className={cn(
-                      "px-4 py-3 text-right tabular-nums",
+                      "px-4 py-3 text-end tabular-nums",
                       row.overtime > 0 && "font-semibold text-success",
                     )}
                   >
-                    {row.overtime > 0 ? formatHours(row.overtime) : "—"}
+                    {row.overtime > 0 ? <Latin>{formatHours(row.overtime)}</Latin> : "—"}
                   </td>
                   <td
                     className={cn(
-                      "px-4 py-3 text-right tabular-nums",
+                      "px-4 py-3 text-end tabular-nums",
                       row.late > 0 && "font-semibold text-danger",
                     )}
                   >
-                    {row.late || "—"}
+                    {row.late > 0 ? <Latin>{row.late}</Latin> : "—"}
                   </td>
-                  <td className="px-4 py-3 text-right font-semibold tabular-nums">
-                    Rs {money(row.earned)}
+                  <td className="px-4 py-3 text-end font-semibold tabular-nums">
+                    <Latin>Rs {money(row.earned)}</Latin>
                   </td>
                 </tr>
               ))}
@@ -528,7 +584,7 @@ function Cohort({
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    Nobody matches these filters.
+                    {t.common.nobodyMatches}
                   </td>
                 </tr>
               ) : null}
@@ -537,15 +593,24 @@ function Cohort({
               <tfoot>
                 <tr className="border-t border-border bg-secondary/60 font-bold">
                   <td className="px-4 py-3" colSpan={2}>
-                    {rows.length} {rows.length === 1 ? "person" : "people"}
+                    <Fill
+                      template={rows.length === 1 ? t.logs.peopleCountOne : t.logs.peopleCount}
+                      values={{ count: rows.length }}
+                    />
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{totals.workingDays}</td>
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>{totals.workingDays}</Latin>
+                  </td>
                   <td className="px-4 py-3" />
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {formatHours(totals.overtime)}
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>{formatHours(totals.overtime)}</Latin>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{totals.late || "—"}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">Rs {money(totals.earned)}</td>
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    {totals.late > 0 ? <Latin>{totals.late}</Latin> : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>Rs {money(totals.earned)}</Latin>
+                  </td>
                 </tr>
               </tfoot>
             ) : null}
@@ -553,16 +618,14 @@ function Cohort({
         </div>
       </Card>
 
-      <p className="px-1 text-xs text-muted-foreground">
-        Earned is base pay plus overtime, before deductions — a contractor&apos;s is their agreed
-        amount. The payroll run recalculates all of it from the same figures.
-      </p>
+      <p className="px-1 text-xs text-muted-foreground">{t.logs.earnedNote}</p>
     </>
   );
 }
 
 /** One person, day by day. */
 function PersonLog({
+  t,
   person,
   summary,
   daysInMonth,
@@ -571,6 +634,7 @@ function PersonLog({
   departmentName,
   canApprove,
 }: {
+  t: Dictionary;
   person: {
     id: string;
     full_name: string;
@@ -598,71 +662,75 @@ function PersonLog({
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile
           icon={CalendarDays}
-          label="Working days"
-          value={String(summary.workingDays)}
-          hint="Attended, not Sunday"
+          label={t.logs.workingDays}
+          value={summary.workingDays}
+          hint={t.logs.attendedNotSunday}
         />
         <Tile
           icon={Clock}
-          label="Hours clocked"
+          label={t.logs.hoursClocked}
           value={formatHours(summary.clocked)}
-          hint="Across every day shown"
+          hint={t.logs.acrossEveryDay}
         />
         <Tile
           icon={Clock}
-          label="Overtime hours"
+          label={t.logs.overtimeHours}
           value={formatHours(summary.overtime)}
-          hint={`Beyond ${dutyHours}h, max 4 a day`}
+          hint={<Fill template={t.logs.overtimeBeyond} values={{ hours: `${dutyHours}h` }} />}
         />
         <Tile
           icon={TriangleAlert}
-          label="Late arrivals"
-          value={String(summary.late)}
-          hint={person.flexible_hours ? "Not tracked — flexible hours" : "Past the grace period"}
+          label={t.logs.lateArrivals}
+          value={summary.late}
+          hint={person.flexible_hours ? t.logs.notTrackedFlexible : t.logs.pastGrace}
         />
       </div>
 
       <Card className="p-4 sm:p-5">
         <p className="text-sm font-bold text-foreground">
-          {person.full_name}{" "}
+          <Latin>{person.full_name}</Latin>{" "}
           <span className="font-normal text-muted-foreground">
-            · {person.employee_code}
-            {departmentName ? ` · ${departmentName}` : ""}
+            · <Latin>{person.employee_code}</Latin>
+            {/* The department name is data the office typed, so — like in
+                the cohort table — it renders as stored, untranslated. */}
+            {departmentName ? <> · {departmentName}</> : null}
           </span>
         </p>
 
         {contractor ? (
-          <p className="mt-2 text-sm text-warning">
-            Paid as a contractor. These hours are recorded so the invoice can be checked, but they
-            do not price anything — the agreed amount is paid flat.
-          </p>
+          <p className="mt-2 text-sm text-warning">{t.logs.contractorNote}</p>
         ) : !person.requires_attendance ? (
-          <p className="mt-2 text-sm text-muted-foreground">
-            Not paid from attendance. The contracted salary is paid in full, so these punches are a
-            record of presence rather than the basis of the payslip.
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground">{t.logs.notPaidFromAttendance}</p>
         ) : perDay > 0 ? (
           <>
             <p className="mt-2 text-sm text-muted-foreground">
-              At <strong className="text-foreground">Rs {money(perDay)}</strong> a day and{" "}
-              <strong className="text-foreground">Rs {money(perOtHour)}</strong> an overtime hour,
-              the days below come to{" "}
-              <strong className="text-foreground">
-                Rs {money(summary.workingDays * perDay + summary.overtime * perOtHour)}
-              </strong>{" "}
-              before deductions.
+              <Fill
+                template={t.logs.rateSentence}
+                values={{
+                  perDay: <strong className="text-foreground">Rs {money(perDay)}</strong>,
+                  perHour: <strong className="text-foreground">Rs {money(perOtHour)}</strong>,
+                  total: (
+                    <strong className="text-foreground">
+                      Rs {money(summary.workingDays * perDay + summary.overtime * perOtHour)}
+                    </strong>
+                  ),
+                }}
+              />
             </p>
+            {/* The arithmetic behind the sentence above — every character in
+                it is a figure or a mathematical symbol, so the whole line is
+                one Latin run rather than four separate wraps. */}
             <p className="mt-1 text-xs text-muted-foreground">
-              {summary.workingDays} × {money(perDay)} + {formatHours(summary.overtime)} ×{" "}
-              {money(perOtHour)}.
+              <Latin>
+                {summary.workingDays} × {money(perDay)} + {formatHours(summary.overtime)} ×{" "}
+                {money(perOtHour)}.
+              </Latin>
             </p>
           </>
         ) : null}
 
         {person.flexible_hours ? (
-          <p className="mt-2 text-xs text-muted-foreground">
-            No in or out time is enforced for this person, so they are never recorded late.
-          </p>
+          <p className="mt-2 text-xs text-muted-foreground">{t.logs.flexibleNote}</p>
         ) : null}
 
         {/* The payslip is the document this screen exists to justify, so it is
@@ -671,7 +739,7 @@ function PersonLog({
           <ExportButtons
             kind="payslip"
             params={{ person: person.id, from, to }}
-            label="Payslip"
+            label={t.logs.payslip}
             formats={["pdf"]}
           />
 
@@ -688,9 +756,11 @@ function PersonLog({
 
         <Link
           href={`/attendance/logs?from=${from}&to=${to}`}
-          className="mt-3 inline-block text-xs font-semibold text-primary hover:underline"
+          className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
         >
-          ← Back to everyone
+          {/* "Back" is a direction, so the arrow turns round with the page. */}
+          <ArrowLeft className="size-3 rtl-flip" />
+          {t.logs.backToEveryone}
         </Link>
       </Card>
 
@@ -698,15 +768,18 @@ function PersonLog({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[48rem] text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3 font-semibold">Date</th>
-                <th className="px-4 py-3 font-semibold">In</th>
-                <th className="px-4 py-3 font-semibold">Out</th>
-                <th className="px-4 py-3 text-right font-semibold">Clocked</th>
-                <th className="px-4 py-3 text-right font-semibold">Duty</th>
-                <th className="px-4 py-3 text-right font-semibold">Overtime</th>
-                <th className="px-4 py-3 text-right font-semibold">Late</th>
-                <th className="px-4 py-3 font-semibold">Counts</th>
+              {/* Column alignment is reading flow, as in the cohort table
+                  above: figures sit at the end of the line, logical rather
+                  than physical. */}
+              <tr className="border-b border-border text-start text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-4 py-3 font-semibold">{t.common.date}</th>
+                <th className="px-4 py-3 font-semibold">{t.common.checkedIn}</th>
+                <th className="px-4 py-3 font-semibold">{t.common.checkedOut}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.clocked}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.duty}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.overtime}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.common.late}</th>
+                <th className="px-4 py-3 font-semibold">{t.logs.counts}</th>
               </tr>
             </thead>
             <tbody>
@@ -727,67 +800,73 @@ function PersonLog({
                     )}
                   >
                     <td className="px-4 py-3">
-                      <span className="font-semibold text-foreground">{row.work_date}</span>
+                      <span className="font-semibold text-foreground">
+                        <Latin>{row.work_date}</Latin>
+                      </span>
                       {sunday ? (
-                        <span className="ml-2 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold uppercase text-warning">
-                          Sunday
+                        <span className="ms-2 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold uppercase text-warning">
+                          {t.logs.sunday}
                         </span>
                       ) : null}
                       {row.is_manual ? (
-                        <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
-                          Edited
+                        <span className="ms-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
+                          {t.logs.edited}
                         </span>
                       ) : null}
                       {row.approved_at ? (
-                        <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-[10px] font-bold uppercase text-success">
-                          Approved
+                        <span className="ms-2 rounded-full bg-success-soft px-2 py-0.5 text-[10px] font-bold uppercase text-success">
+                          {t.logs.approved}
                         </span>
                       ) : null}
                     </td>
                     <td className="px-4 py-3 tabular-nums">
-                      {row.first_in ? formatTime(row.first_in) : "—"}
+                      {row.first_in ? <Latin>{formatTime(row.first_in)}</Latin> : "—"}
                     </td>
                     <td className="px-4 py-3 tabular-nums">
-                      {row.last_out ? formatTime(row.last_out) : "—"}
+                      {row.last_out ? <Latin>{formatTime(row.last_out)}</Latin> : "—"}
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums">
-                      {formatHours(clocked)}
+                    <td className="px-4 py-3 text-end tabular-nums">
+                      <Latin>{formatHours(clocked)}</Latin>
                       {unpaid > 0 ? (
                         <span
-                          className="ml-1.5 text-[10px] font-bold uppercase text-muted-foreground"
-                          title="Past the daily overtime ceiling — recorded, not paid"
+                          className="ms-1.5 text-[10px] font-bold uppercase text-muted-foreground"
+                          title={t.logs.unpaidHint}
                         >
-                          +{formatHours(unpaid)} unpaid
+                          +
+                          <Fill
+                            template={t.logs.unpaidHours}
+                            values={{ hours: formatHours(unpaid) }}
+                          />
                         </span>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums">
-                      {formatHours(buckets.regular)}
+                    <td className="px-4 py-3 text-end tabular-nums">
+                      <Latin>{formatHours(buckets.regular)}</Latin>
                     </td>
                     <td
                       className={cn(
-                        "px-4 py-3 text-right tabular-nums",
+                        "px-4 py-3 text-end tabular-nums",
                         buckets.overtime > 0 && "font-semibold text-success",
                       )}
                     >
-                      {buckets.overtime > 0 ? formatHours(buckets.overtime) : "—"}
+                      {buckets.overtime > 0 ? <Latin>{formatHours(buckets.overtime)}</Latin> : "—"}
                     </td>
                     <td
                       className={cn(
-                        "px-4 py-3 text-right tabular-nums",
+                        "px-4 py-3 text-end tabular-nums",
                         row.is_late && "font-semibold text-danger",
                       )}
                     >
-                      {row.minutes_late ? `${row.minutes_late}m` : "—"}
+                      {row.minutes_late ? <Latin>{row.minutes_late}m</Latin> : "—"}
                     </td>
                     <td className="px-4 py-3">
                       {attended && !sunday ? (
                         <span className="rounded-full bg-success-soft px-2.5 py-1 text-[10px] font-bold uppercase text-success">
-                          1 day
+                          <Fill template={t.logs.countsDay} values={{ count: 1 }} />
                         </span>
                       ) : (
                         <span className="text-xs text-muted-foreground">
-                          {sunday ? "overtime only" : row.status}
+                          {sunday ? t.logs.overtimeOnly : statusLabel(t, row.status)}
                         </span>
                       )}
                     </td>
@@ -798,7 +877,7 @@ function PersonLog({
               {summary.rows.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    No attendance recorded between {from} and {to}.
+                    <Fill template={t.logs.noAttendanceBetween} values={{ from, to }} />
                   </td>
                 </tr>
               ) : null}
@@ -818,8 +897,8 @@ function Tile({
 }: {
   icon: typeof Clock;
   label: string;
-  value: string;
-  hint: string;
+  value: ReactNode;
+  hint: ReactNode;
 }) {
   return (
     <Card className="p-4">
@@ -827,7 +906,12 @@ function Tile({
         <Icon className="size-4" />
         <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
       </div>
-      <p className="mt-2 text-2xl font-bold tabular-nums text-foreground">{value}</p>
+      {/* `value` is always a figure — a count, a total, a formatted hour
+          figure — so it is wrapped here, once, rather than at each of the
+          eight call sites. */}
+      <p className="mt-2 text-2xl font-bold tabular-nums text-foreground">
+        <Latin>{value}</Latin>
+      </p>
       <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
     </Card>
   );

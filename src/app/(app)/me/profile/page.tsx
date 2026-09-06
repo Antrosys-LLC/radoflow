@@ -85,7 +85,9 @@ export default async function MyProfilePage() {
             label={t.profile.designation}
             value={profile?.designation ?? t.profile.notRecorded}
           />
-          <Fact label={t.profile.department} value={deptName} />
+          {/* In `common`, not `profile`: the attendance log needs the same
+              word, and one word has one home. */}
+          <Fact label={t.common.department} value={deptName} />
           <Fact label={t.profile.site} value={siteName} />
           <Fact label={t.profile.shift} value={shiftName} />
           <Fact

@@ -24,6 +24,17 @@ import type { Dictionary } from "./index";
  *   the attendance-log approval sentences, above all "will not be
  *   recalculated" (حساب دوبارہ نہیں ہوگا) and "reports to you" (ماتحت)
  *
+ * Added by the attendance log, and least sure of these:
+ *   "Earned" as a money column (بنی رقم) · "Clocked" (لگے گھنٹے) against
+ *   "Duty" (ڈیوٹی) and "Hours clocked" (لگے ہوئے گھنٹے), which are three
+ *   different figures on the same row and must stay tellable apart ·
+ *   "unpaid" for overtime past the daily ceiling (بلا معاوضہ) ·
+ *   "Counts" as the column that says whether a day was counted (شمار) ·
+ *   the four attendance states with no word already in `common`:
+ *   "holiday" (تعطیل), "off" (آرام کا دن), "partial" (ادھورا دن) and
+ *   "pending" (پینڈنگ), which must all stay tellable apart from
+ *   "on leave" (چھٹی پر) · "Contract" on a worker's badge (ٹھیکہ)
+ *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
  */
 const ur: Dictionary = {
@@ -75,6 +86,7 @@ const ur: Dictionary = {
     date: "تاریخ",
     search: "تلاش",
     searchPlaceholder: "نام، کوڈ یا شناختی کارڈ",
+    department: "شعبہ",
     everyDepartment: "ہر شعبہ",
     show: "دکھائیں",
     close: "بند کریں",
@@ -177,6 +189,63 @@ const ur: Dictionary = {
     flexibleHours: "لچکدار اوقات",
   },
   logs: {
+    title: "حاضری کا ریکارڈ",
+    subtitleAll: "ہر حاضری اور اُس سے بننے والی رقم — ایک ملازم، چنے ہوئے شعبے، یا سب۔",
+    subtitleMine: "آپ کی ہر حاضری، اور اُس سے بننے والی رقم۔",
+    liveBoard: "براہِ راست بورڈ",
+    everyone: "سب",
+    everyoneInDepartments: "نیچے چنے ہوئے شعبوں کے سب لوگ",
+    from: "سے",
+    to: "تک",
+    departmentsHint: "شعبے — کوئی نہ چنیں تو سب شعبے",
+    people: "لوگ",
+    departmentCount: "{count} شعبے",
+    departmentCountOne: "{count} شعبہ",
+    workingDays: "کام کے دن",
+    attendedNotSunday: "حاضری لگی، اتوار کے علاوہ",
+    overtimeHours: "اوور ٹائم گھنٹے",
+    overtimeCap: "کام کے دن میں زیادہ سے زیادہ چار گھنٹے",
+    lateArrivals: "دیر سے آنے",
+    pastGrace: "رعایتی وقت کے بعد",
+    hoursClocked: "لگے ہوئے گھنٹے",
+    acrossEveryDay: "دکھائے گئے ہر دن کے",
+    overtimeBeyond: "{hours} سے اوپر، دن میں زیادہ سے زیادہ چار",
+    notTrackedFlexible: "حساب نہیں — لچکدار اوقات",
+    overtime: "اوور ٹائم",
+    earned: "بنی رقم",
+    contract: "ٹھیکہ",
+    peopleCount: "{count} لوگ",
+    peopleCountOne: "{count} ملازم",
+    earnedNote:
+      "بنی رقم میں بنیادی اجرت اور اوور ٹائم شامل ہے، کٹوتی سے پہلے — ٹھیکے والے کی طے شدہ رقم ہوتی ہے۔ تنخواہ کا حساب اِنہی اعداد سے دوبارہ لگایا جاتا ہے۔",
+    contractorNote:
+      "تنخواہ ٹھیکے پر ملتی ہے۔ یہ گھنٹے صرف اِس لیے درج ہیں کہ بل جانچا جا سکے، اِن سے رقم نہیں بنتی — طے شدہ رقم پوری ادا ہوتی ہے۔",
+    notPaidFromAttendance:
+      "تنخواہ حاضری سے نہیں بنتی۔ طے شدہ تنخواہ پوری ملتی ہے، اِس لیے یہ حاضریاں صرف موجودگی کا ریکارڈ ہیں، تنخواہ کی بنیاد نہیں۔",
+    rateSentence:
+      "{perDay} روزانہ اور {perHour} فی اوور ٹائم گھنٹہ کے حساب سے، نیچے کے دنوں کی رقم کٹوتی سے پہلے {total} بنتی ہے۔",
+    flexibleNote:
+      "اِس ملازم کے لیے آنے یا جانے کا وقت مقرر نہیں، اِس لیے یہ کبھی دیر سے شمار نہیں ہوتے۔",
+    payslip: "تنخواہ کی پرچی",
+    backToEveryone: "سب کی طرف واپس",
+    clocked: "لگے گھنٹے",
+    duty: "ڈیوٹی",
+    counts: "شمار",
+    sunday: "اتوار",
+    edited: "تبدیل شدہ",
+    approved: "منظور",
+    unpaidHint: "روزانہ اوور ٹائم کی حد سے اوپر — درج ہے، ادا نہیں ہوگا",
+    unpaidHours: "{hours} بلا معاوضہ",
+    countsDay: "{count} دن",
+    overtimeOnly: "صرف اوور ٹائم",
+    noAttendanceBetween: "{from} سے {to} تک کوئی حاضری درج نہیں۔",
+    statusHoliday: "تعطیل",
+    statusOff: "آرام کا دن",
+    statusPartial: "ادھورا دن",
+    statusPending: "پینڈنگ",
+    approving: "منظور ہو رہا ہے…",
+    approveRest: "باقی منظور کریں ({count})",
+    approveRange: "{range} منظور کریں",
     pickPersonAndRange: "ملازم اور تاریخیں چنیں۔",
     endBeforeStart: "آخری تاریخ پہلی تاریخ سے پہلے نہیں ہو سکتی۔",
     nothingToApprove: "منظور کرنے کو کچھ نہیں — اِن تاریخوں میں آپ کے ماتحت کسی کی حاضری نہیں۔",
@@ -193,7 +262,6 @@ const ur: Dictionary = {
     email: "ای میل",
     designation: "عہدہ",
     noDesignation: "کوئی عہدہ نہیں",
-    department: "شعبہ",
     site: "فیکٹری",
     shift: "شفٹ",
     joinedOn: "ملازمت شروع کی",

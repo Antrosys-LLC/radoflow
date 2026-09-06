@@ -74,6 +74,9 @@ const en = {
     date: "Date",
     search: "Search",
     searchPlaceholder: "Name, code or CNIC",
+    // Moved here from `profile` by the attendance log, which is the second
+    // screen to need it. One home per word; the profile screen reads it here.
+    department: "Department",
     everyDepartment: "Every department",
     show: "Show",
     close: "Close",
@@ -188,23 +191,105 @@ const en = {
     flexibleHours: "Flexible hours",
   },
   /**
-   * What `approveAttendanceRange` puts in the toast.
+   * The attendance log — the audit trail behind a payslip, and the toasts its
+   * approval action returns.
    *
-   * A server action already holds the session, so it already knows the reader's
-   * language — it looks the sentence up itself and returns it translated,
-   * rather than handing the client an English string to sit beside Urdu
-   * labels.
-   *
-   * The count is a slot rather than something concatenated on, because Urdu
-   * puts the words in a different order. Two templates rather than one, because
-   * "1 days" is wrong in English and the one-day and many-day sentences differ
-   * in the other two languages as well.
-   *
-   * Postgres errors are deliberately absent: they are passed through untouched.
-   * They are developer-facing, and an invented Urdu sentence wrapping one would
-   * hide what actually failed.
+   * Every figure the screen shows is a time, a duration, a rupee amount or a
+   * code, so none of them are here: they are rendered from the row through
+   * `<Latin>` in every language. What is here is only the words around them.
    */
   logs: {
+    title: "Attendance log",
+    subtitleAll:
+      "Every punch and the pay it produces — one person, chosen departments, or everyone.",
+    subtitleMine: "Every punch of yours, and the pay it produces.",
+    liveBoard: "Live board",
+    // The two "everyone" options in the person filter: with departments ticked
+    // it means everyone in those, without them it means the whole factory.
+    everyone: "Everyone",
+    everyoneInDepartments: "Everyone in the departments below",
+    from: "From",
+    to: "To",
+    departmentsHint: "Departments — none ticked means every department",
+    // The four tiles above the cohort table, then the four above one person's.
+    people: "People",
+    // Two templates because "1 departments" is wrong; both carry the same slot.
+    departmentCount: "{count} departments",
+    departmentCountOne: "{count} department",
+    workingDays: "Working days",
+    attendedNotSunday: "Attended, not Sunday",
+    overtimeHours: "Overtime hours",
+    overtimeCap: "Capped at four hours a working day",
+    lateArrivals: "Late arrivals",
+    pastGrace: "Past the grace period",
+    hoursClocked: "Hours clocked",
+    acrossEveryDay: "Across every day shown",
+    // The duty hours are a slot because they are read off the person's row.
+    overtimeBeyond: "Beyond {hours}, max four a day",
+    notTrackedFlexible: "Not tracked — flexible hours",
+    // Cohort table.
+    overtime: "Overtime",
+    earned: "Earned",
+    contract: "Contract",
+    peopleCount: "{count} people",
+    peopleCountOne: "{count} person",
+    earnedNote:
+      "Earned is base pay plus overtime, before deductions — a contractor's is their agreed amount. The payroll run recalculates all of it from the same figures.",
+    // The paragraph above one person's days.
+    contractorNote:
+      "Paid as a contractor. These hours are recorded so the invoice can be checked, but they do not price anything — the agreed amount is paid flat.",
+    notPaidFromAttendance:
+      "Not paid from attendance. The contracted salary is paid in full, so these punches are a record of presence rather than the basis of the payslip.",
+    rateSentence:
+      "At {perDay} a day and {perHour} an overtime hour, the days below come to {total} before deductions.",
+    flexibleNote: "No in or out time is enforced for this person, so they are never recorded late.",
+    payslip: "Payslip",
+    backToEveryone: "Back to everyone",
+    // The day table.
+    clocked: "Clocked",
+    duty: "Duty",
+    counts: "Counts",
+    sunday: "Sunday",
+    edited: "Edited",
+    approved: "Approved",
+    unpaidHint: "Past the daily overtime ceiling — recorded, not paid",
+    unpaidHours: "{hours} unpaid",
+    // A day that counts always counts exactly one, but the numeral is a slot so
+    // it goes through `<Latin>` like every other figure on the screen.
+    countsDay: "{count} day",
+    overtimeOnly: "overtime only",
+    noAttendanceBetween: "No attendance recorded between {from} and {to}.",
+    /*
+     * The four `attendance_status` members that have no word in `common`
+     * already — `present`, `absent` and `leave` are read from `common.present`,
+     * `common.absent` and `common.onLeave` rather than repeated here.
+     */
+    statusHoliday: "Holiday",
+    statusOff: "Off",
+    statusPartial: "Partial",
+    statusPending: "Pending",
+    // The approve button. The range is one slot rather than two, so the two
+    // dates and the dash between them stay a single unbreakable Latin run.
+    approving: "Approving…",
+    approveRest: "Approve the rest ({count})",
+    approveRange: "Approve {range}",
+    /*
+     * What `approveAttendanceRange` puts in the toast.
+     *
+     * A server action already holds the session, so it already knows the
+     * reader's language — it looks the sentence up itself and returns it
+     * translated, rather than handing the client an English string to sit
+     * beside Urdu labels.
+     *
+     * The count is a slot rather than something concatenated on, because Urdu
+     * puts the words in a different order. Two templates rather than one,
+     * because "1 days" is wrong in English and the one-day and many-day
+     * sentences differ in the other two languages as well.
+     *
+     * Postgres errors are deliberately absent: they are passed through
+     * untouched. They are developer-facing, and an invented Urdu sentence
+     * wrapping one would hide what actually failed.
+     */
     pickPersonAndRange: "Pick a person and a date range.",
     endBeforeStart: "The end date cannot be before the start date.",
     nothingToApprove:
@@ -222,7 +307,6 @@ const en = {
     email: "Email",
     designation: "Designation",
     noDesignation: "No designation",
-    department: "Department",
     site: "Factory",
     shift: "Shift",
     joinedOn: "Joined on",

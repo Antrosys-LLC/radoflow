@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 
 import { approveAttendanceRange } from "./actions";
@@ -32,6 +34,7 @@ export function ApproveRange({
   approvedCount: number;
   totalCount: number;
 }) {
+  const t = useDictionary();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -39,6 +42,9 @@ export function ApproveRange({
 
   function approve() {
     startTransition(async () => {
+      // The server action already holds the session and already knows the
+      // reader's language, so `result.message` arrives pre-translated —
+      // toasted unchanged, never re-wrapped.
       const result = await approveAttendanceRange({ profileId, from, to });
       if (result.ok) toast.success(result.message);
       else toast.error(result.message);
@@ -61,13 +67,18 @@ export function ApproveRange({
       )}
     >
       <ShieldCheck className="size-3.5" />
-      {allApproved
-        ? "Approved"
-        : pending
-          ? "Approving…"
-          : approvedCount > 0
-            ? `Approve the rest (${totalCount - approvedCount})`
-            : `Approve ${from} – ${to}`}
+      {allApproved ? (
+        t.logs.approved
+      ) : pending ? (
+        t.logs.approving
+      ) : approvedCount > 0 ? (
+        <Fill template={t.logs.approveRest} values={{ count: totalCount - approvedCount }} />
+      ) : (
+        // The two dates and the dash between them are one slot, not two, so
+        // they stay a single unbreakable Latin run rather than reordering
+        // around translated words.
+        <Fill template={t.logs.approveRange} values={{ range: `${from} – ${to}` }} />
+      )}
     </button>
   );
 }

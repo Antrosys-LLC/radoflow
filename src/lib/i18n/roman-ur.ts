@@ -30,6 +30,18 @@ import type { Dictionary } from "./index";
  *   the attendance-log approval sentences, above all "will not be
  *   recalculated" (hisab dobara nahi hoga) and "reports to you" (matehat)
  *
+ * Added by the attendance log, and least sure of these:
+ *   "Earned" as a money column (Bani raqam) · "Clocked" (Lage ghante) against
+ *   "Duty" (Duty) and "Hours clocked" (Lage hue ghante), which are three
+ *   different figures on the same row and must stay tellable apart ·
+ *   "unpaid" for overtime past the daily ceiling (bila muawza) ·
+ *   "Counts" as the column that says whether a day was counted (Shumar) ·
+ *   the four attendance states with no word already in `common`:
+ *   "holiday" (Tateel), "off" (Aaram ka din), "partial" (Adhoora din) and
+ *   "pending" (Pending, kept in English because that is the word the floor
+ *   uses), which must all stay tellable apart from "on leave" (Chutti par) ·
+ *   "Contract" on a worker's badge (Theka)
+ *
  * This file reads left to right — see `directionFor` in ./index.
  *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
@@ -83,6 +95,7 @@ const roman: Dictionary = {
     date: "Tareekh",
     search: "Talash",
     searchPlaceholder: "Naam, code ya shanakhti card",
+    department: "Shoba",
     everyDepartment: "Har shoba",
     show: "Dikhayein",
     close: "Band karein",
@@ -185,6 +198,63 @@ const roman: Dictionary = {
     flexibleHours: "Lachakdar auqat",
   },
   logs: {
+    title: "Haazri ka Record",
+    subtitleAll: "Har haazri aur us se banne wali raqam — ek mulazim, chune hue shobe, ya sab.",
+    subtitleMine: "Aap ki har haazri, aur us se banne wali raqam.",
+    liveBoard: "Live board",
+    everyone: "Sab",
+    everyoneInDepartments: "Neeche chune hue shobon ke sab log",
+    from: "Se",
+    to: "Tak",
+    departmentsHint: "Shobe — koi na chunein to sab shobe",
+    people: "Log",
+    departmentCount: "{count} shobe",
+    departmentCountOne: "{count} shoba",
+    workingDays: "Kaam ke din",
+    attendedNotSunday: "Haazri lagi, itwar ke ilawa",
+    overtimeHours: "Overtime ghante",
+    overtimeCap: "Kaam ke din mein zyada se zyada chaar ghante",
+    lateArrivals: "Der se aane",
+    pastGrace: "Riayati waqt ke baad",
+    hoursClocked: "Lage hue ghante",
+    acrossEveryDay: "Dikhaye gaye har din ke",
+    overtimeBeyond: "{hours} se ooper, din mein zyada se zyada chaar",
+    notTrackedFlexible: "Hisab nahi — lachakdar auqat",
+    overtime: "Overtime",
+    earned: "Bani raqam",
+    contract: "Theka",
+    peopleCount: "{count} log",
+    peopleCountOne: "{count} mulazim",
+    earnedNote:
+      "Bani raqam mein bunyadi ujrat aur overtime shamil hai, katauti se pehle — theke wale ki tay shuda raqam hoti hai. Tankhwah ka hisab inhi adad se dobara lagaya jata hai.",
+    contractorNote:
+      "Tankhwah theke par milti hai. Yeh ghante sirf is liye darj hain ke bill jancha ja sake, in se raqam nahi banti — tay shuda raqam poori ada hoti hai.",
+    notPaidFromAttendance:
+      "Tankhwah haazri se nahi banti. Tay shuda tankhwah poori milti hai, is liye yeh haazriyan sirf mojoodgi ka record hain, tankhwah ki bunyad nahi.",
+    rateSentence:
+      "{perDay} rozana aur {perHour} fi overtime ghanta ke hisab se, neeche ke dinon ki raqam katauti se pehle {total} banti hai.",
+    flexibleNote:
+      "Is mulazim ke liye aane ya jane ka waqt muqarrar nahi, is liye yeh kabhi der se shumar nahi hote.",
+    payslip: "Tankhwah ki parchi",
+    backToEveryone: "Sab ki taraf wapas",
+    clocked: "Lage ghante",
+    duty: "Duty",
+    counts: "Shumar",
+    sunday: "Itwar",
+    edited: "Tabdeel shuda",
+    approved: "Manzoor",
+    unpaidHint: "Rozana overtime ki had se ooper — darj hai, ada nahi hoga",
+    unpaidHours: "{hours} bila muawza",
+    countsDay: "{count} din",
+    overtimeOnly: "Sirf overtime",
+    noAttendanceBetween: "{from} se {to} tak koi haazri darj nahi.",
+    statusHoliday: "Tateel",
+    statusOff: "Aaram ka din",
+    statusPartial: "Adhoora din",
+    statusPending: "Pending",
+    approving: "Manzoor ho raha hai…",
+    approveRest: "Baqi manzoor karein ({count})",
+    approveRange: "{range} manzoor karein",
     pickPersonAndRange: "Mulazim aur tareekhein chunein.",
     endBeforeStart: "Aakhri tareekh pehli tareekh se pehle nahi ho sakti.",
     nothingToApprove:
@@ -202,7 +272,6 @@ const roman: Dictionary = {
     email: "Email",
     designation: "Ohda",
     noDesignation: "Koi ohda nahi",
-    department: "Shoba",
     site: "Factory",
     shift: "Shift",
     joinedOn: "Mulazmat shuru ki",

@@ -92,7 +92,28 @@ import type { Dictionary } from "./index";
  *   a serving time that is "Off" (Band), and the machine state "disabled"
  *   (Band) in `status.device`
  *
+ * Added by the biometric terminals, and least sure of these:
+ *   the two connection modes, kept in English ("Push (ADMS)", "Pull (TCP)")
+ *   because they are the words written on the terminal's own menu, and a
+ *   Roman-Urdu reader looking at that menu wants the same word · "mode"
+ *   itself, kept as "Mode" for the same reason ·
+ *   `devices.ipAddressHint` quotes the button's own caption, so the words
+ *   inside its “…” must stay identical to `devices.testConnection`
+ *   (Rabta janchein) · "Last seen" for a terminal, rendered as last *contact*
+ *   (Aakhri rabta) rather than last sight, against `status.device.offline`
+ *   (Rabta nahi), which must stay tellable apart · a terminal that is
+ *   "Active" (Chaalu) in the add/edit form, one whose address is "Not set"
+ *   (Koi address nahi), and one that has never reported (Kabhi nahi)
+ *
+ *   `common.unassigned` was "Koi shoba nahi" — "no department" — and is now
+ *   "Muqarrar nahi", because the terminals list is the third screen to use it
+ *   and the thing missing there is a factory, not a department. That change is
+ *   visible on the dashboard and the canteen settings screen too.
+ *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
+ * Neither is anything a terminal *is*: its model, serial number, IP address,
+ * port, timezone, firmware string, the menu paths on its own screen, or the
+ * protocol names ADMS and TCP.
  */
 const roman: Dictionary = {
   nav: {
@@ -130,7 +151,9 @@ const roman: Dictionary = {
     yes: "Haan",
     no: "Nahi",
     noRole: "Koi kirdar nahi diya gaya",
-    unassigned: "Koi shoba nahi",
+    // Pehle yeh "Koi shoba nahi" tha, lekin yehi lafz factory ke liye bhi
+    // istemal hota hai — is liye ab dono par poora utarne wala lafz hai.
+    unassigned: "Muqarrar nahi",
     minutesLate: "{minutes} minute der",
     identifyMethods: "Finger print, card, chehra ya passcode",
     identifyMethodsHint: "Machinein finger print, card, chehra ya passcode qubool karti hain",
@@ -169,6 +192,15 @@ const roman: Dictionary = {
       offline: "Rabta nahi",
       unknown: "Maloom nahi",
       disabled: "Band",
+    },
+    // ADMS aur TCP protocol ke naam hain — har zaban mein wese hi rehte hain.
+    deviceMode: {
+      push: "Push (ADMS)",
+      pull: "Pull (TCP)",
+    },
+    devicePurpose: {
+      attendance: "Haazri",
+      canteen: "Canteen",
     },
     employment: {
       active: "Mulazmat jari",
@@ -388,6 +420,86 @@ const roman: Dictionary = {
     windowInUse:
       "Is waqt mein pehle hi khana diya ja chuka hai — ise hazf karne ke bajaye band kar dein.",
     servingRemoved: "Khane ka waqt hata diya gaya.",
+  },
+  devices: {
+    title: "Biometric machinein",
+    subtitle: "Factory floor par lagi {model} machinein",
+    addTerminal: "Nayi machine shamil karein",
+    noneYet: "Abhi koi machine darj nahi",
+    noneYetHint:
+      "Apni {model} shamil karein aur use is server ki taraf lagayein — haazriyan aana shuru ho jayen gi.",
+    serial: "Serial",
+    mode: "Mode",
+    address: "Address",
+    lastSeen: "Aakhri rabta",
+    neverSeen: "Kabhi nahi",
+    lastPunchReceived: "Aakhri haazri {time} ko mili",
+    timezone: "Time zone",
+    notSet: "Koi address nahi",
+    allTerminals: "Sari machinein",
+    detailSubtitle: "{model} · serial {serial} · aakhri rabta {seen}",
+    editSettings: "Settings tabdeel karein",
+    setupTitle: "Machine ki setting",
+    setupCloudServer:
+      "Machine par: {menu}. {serverMode} ko {adms} par rakhein, phir jahan yeh machine bhejti hai us ka address aur port likhein — hosted set up mein relay ka mustaqil IP, ya agar server isi factory ke network par hai to seedha server ka. {path} machine khud laga leti hai.",
+    setupDigitsOnly:
+      "Zyada tar {adms} firmware us khane mein sirf hindse qubool karte hain, is liye domain nahi likhi ja sakti — aur upar wala address khud machine ka {ip} nahi hai, yeh ghalti aam hai aur pakar mein nahi aati. {ethernet} ke neeche {gateway} bhi muqarrar karein, warna machine maqami network se bahar nahi ja sakti.",
+    recentPunches: "Haaliya haazriyan",
+    recentPunchesHint: "Nayi pehle, Pakistan ke waqt ke mutabiq",
+    noPunches: "Abhi koi haazri nahi aayi",
+    noPunchesHint:
+      "Machine jaise hi bheje gi, haazriyan chand second mein yahan nazar aa jayen gi.",
+    unlinkedTerminalId: "Machine ka ID {id} kisi mulazim se nahi jura",
+    testConnection: "Rabta janchein",
+    contactingTerminal: "Machine se rabta ho raha hai…",
+    syncNow: "Abhi haazri utarein",
+    readingLog: "Haazri ka record parha ja raha hai…",
+    addIpFirst: "Pehle machine ka IP address darj karein",
+    pushControlsNote:
+      "Yeh machine push mode mein hai, is liye khud bhejti hai. Yeh button us ka mehfooz record mang kar utarne ke liye hain, aur in ke liye server ka machine tak network par pahunchna zaroori hai.",
+    addTerminalTitle: "Nayi {brand} machine shamil karein",
+    editTerminal: "Machine mein tabdeeli",
+    dialogHint:
+      "Push mode behtar hai: machine khud is server ko bhejti hai, is liye factory ke network ke andar pahunchne ki zaroorat nahi rehti.",
+    terminalName: "Machine ka naam",
+    terminalNameHint: "Misal ke tor par: Dyeing — main gate",
+    terminalNamePlaceholder: "Dyeing — main gate",
+    chooseFactory: "Factory chunein",
+    serialNumber: "Serial number",
+    model: "Model",
+    connectionMode: "Rabte ka mode",
+    modePushOption: "Push — machine khud hamein bhejti hai (behtar)",
+    modePullOption: "Pull — hum TCP par machine se rabta karte hain",
+    records: "Yeh machine kya darj karti hai",
+    recordsHint: "Canteen ka scan khana hai, haazri nahi — khane ke paise kisi ko nahi milte.",
+    purposeAttendanceOption: "Haazri — aamad aur rawangi",
+    purposeCanteenOption: "Canteen — har waqt mein fi aadmi ek khana",
+    ipAddress: "IP address",
+    // Yeh jumla button ke apne alfaz dohrata hai, is liye waavain ke andar
+    // bilkul wohi alfaz rehne chahiye jo `devices.testConnection` mein hain.
+    ipAddressHint: "Pull mode aur “Rabta janchein” ke liye zaroori hai",
+    port: "Port",
+    commKeyHint: "{menu}. Agar muqarrar nahi to khali chor dein.",
+    activeLabel: "Chaalu — is machine se haazriyan qubool karein",
+    saveTerminal: "Machine mehfooz karein",
+    nameFactorySerialRequired: "Naam, factory aur serial number zaroori hain.",
+    portRange: "Port 1 se 65535 ke darmiyan poora adad hona chahiye.",
+    duplicateSerial: "Serial {serial} wali machine pehle se mojood hai.",
+    terminalAdded: "Machine shamil ho gayi.",
+    terminalUpdated: "Machine ki tafseel tabdeel ho gayi.",
+    notFound: "Machine nahi mili.",
+    setIpBeforeTesting: "Janchne se pehle machine ka IP address darj karein.",
+    connected: "Rabta ho gaya. Firmware {firmware}, machine ki ghari {clock}.",
+    firmwareUnknown: "maloom nahi",
+    clockUnreadable: "parhi nahi ja saki",
+    pushCannotBeReached:
+      "Yeh machine push mode mein hai, is liye yahan se us tak nahi pahuncha ja sakta — yeh mutawaqqa hai aur is ka matlab yeh nahi ke machine band hai. Is ki haalat un haazriyon se banti hai jo yeh khud bhejti hai.",
+    noIpAddress: "Is machine ka koi IP address nahi. Push mode wali machinein khud bhejti hain.",
+    noSerialRecorded: "Is machine ka serial number darj nahi.",
+    syncRead: "{read} record parhe gaye: {accepted} naye, {duplicates} pehle se mehfooz.",
+    syncUnmapped: "{count} enrolment ID abhi kisi mulazim se nahi juri.",
+    pushCannotBePolled:
+      "Yeh machine push mode mein hai aur yahan se is ka record nahi manga ja sakta. Yeh khud bhejti hai — kuch utarne ki zaroorat nahi.",
   },
   profile: {
     title: "Meri profile",

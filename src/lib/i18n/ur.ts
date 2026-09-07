@@ -83,7 +83,32 @@ import type { Dictionary } from "./index";
  *   a serving time that is "Off" (بند), and the machine state "disabled"
  *   (بند) in `status.device`
  *
+ * Added by the biometric terminals, and least sure of these:
+ *   the two connection modes, which are transliterated rather than translated
+ *   — "push" (پش) and above all "pull" (پُل), which is spelt like the word for
+ *   a bridge and may read wrong to somebody who does not already know the
+ *   English term. They sit in `status.deviceMode` next to the protocol names
+ *   ADMS and TCP, which stay Latin · "mode" itself (موڈ) ·
+ *   `devices.ipAddressHint` quotes the button's own caption, so the words
+ *   inside its ”…“ must stay identical to `devices.testConnection`
+ *   (رابطہ جانچیں) · "Last seen" for a terminal, rendered as last *contact*
+ *   (آخری رابطہ) rather than last sight, against `status.device.offline`
+ *   (رابطہ نہیں), which must stay tellable apart · the three machine words
+ *   this screen adds around the existing ones: a terminal that is "Active"
+ *   (چالو) in the add/edit form, one whose address is "Not set"
+ *   (کوئی ایڈریس نہیں), and one that has never reported (کبھی نہیں) ·
+ *   "firmware" (فرم ویئر) and "enrolment id" (انرولمنٹ آئی ڈی), both
+ *   transliterated because the floor's electrician uses the English words
+ *
+ *   `common.unassigned` was "کوئی شعبہ نہیں" — "no department" — and is now
+ *   "مقرر نہیں", because the terminals list is the third screen to use it and
+ *   the thing missing there is a factory, not a department. That change is
+ *   visible on the dashboard and the canteen settings screen too.
+ *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
+ * Neither is anything a terminal *is*: its model, serial number, IP address,
+ * port, timezone, firmware string, the menu paths on its own screen, or the
+ * protocol names ADMS and TCP.
  */
 const ur: Dictionary = {
   nav: {
@@ -121,7 +146,9 @@ const ur: Dictionary = {
     yes: "ہاں",
     no: "نہیں",
     noRole: "کوئی کردار نہیں دیا گیا",
-    unassigned: "کوئی شعبہ نہیں",
+    // پہلے یہ ”کوئی شعبہ نہیں“ تھا، لیکن یہی لفظ فیکٹری کے لیے بھی استعمال
+    // ہوتا ہے — اِس لیے اب دونوں پر پورا اترنے والا لفظ رکھا گیا ہے۔
+    unassigned: "مقرر نہیں",
     minutesLate: "{minutes} منٹ دیر",
     identifyMethods: "فنگر پرنٹ، کارڈ، چہرہ یا پاس کوڈ",
     identifyMethodsHint: "مشینیں فنگر پرنٹ، کارڈ، چہرہ یا پاس کوڈ قبول کرتی ہیں",
@@ -159,6 +186,15 @@ const ur: Dictionary = {
       offline: "رابطہ نہیں",
       unknown: "معلوم نہیں",
       disabled: "بند",
+    },
+    // ADMS اور TCP پروٹوکول کے نام ہیں — ہر زبان میں انگریزی حروف میں رہیں گے۔
+    deviceMode: {
+      push: "پش (ADMS)",
+      pull: "پُل (TCP)",
+    },
+    devicePurpose: {
+      attendance: "حاضری",
+      canteen: "کینٹین",
     },
     employment: {
       active: "ملازمت جاری",
@@ -375,6 +411,85 @@ const ur: Dictionary = {
     servingAdded: "کھانے کا وقت شامل ہو گیا۔",
     windowInUse: "اِس وقت میں پہلے ہی کھانا دیا جا چکا ہے — اِسے حذف کرنے کے بجائے بند کر دیں۔",
     servingRemoved: "کھانے کا وقت ہٹا دیا گیا۔",
+  },
+  devices: {
+    title: "بایومیٹرک مشینیں",
+    subtitle: "فیکٹری فلور پر لگی {model} مشینیں",
+    addTerminal: "نئی مشین شامل کریں",
+    noneYet: "ابھی کوئی مشین درج نہیں",
+    noneYetHint:
+      "اپنی {model} شامل کریں اور اُسے اِس سرور کی طرف لگائیں — حاضریاں آنا شروع ہو جائیں گی۔",
+    serial: "سیریل",
+    mode: "موڈ",
+    address: "ایڈریس",
+    lastSeen: "آخری رابطہ",
+    neverSeen: "کبھی نہیں",
+    lastPunchReceived: "آخری حاضری {time} کو ملی",
+    timezone: "ٹائم زون",
+    notSet: "کوئی ایڈریس نہیں",
+    allTerminals: "ساری مشینیں",
+    detailSubtitle: "{model} · سیریل {serial} · آخری رابطہ {seen}",
+    editSettings: "ترتیبات تبدیل کریں",
+    setupTitle: "مشین کی سیٹنگ",
+    setupCloudServer:
+      "مشین پر: {menu}۔ {serverMode} کو {adms} پر رکھیں، پھر جہاں یہ مشین بھیجتی ہے اُس کا ایڈریس اور پورٹ لکھیں — ہوسٹڈ سیٹ اپ میں ریلے کا مستقل آئی پی، یا اگر سرور اِسی فیکٹری کے نیٹ ورک پر ہے تو سیدھا سرور کا۔ {path} مشین خود لگا لیتی ہے۔",
+    setupDigitsOnly:
+      "زیادہ تر {adms} فرم ویئر اُس خانے میں صرف ہندسے قبول کرتے ہیں، اِس لیے ڈومین نہیں لکھی جا سکتی — اور اوپر والا ایڈریس خود مشین کا {ip} نہیں ہے، یہ غلطی عام ہے اور پکڑ میں نہیں آتی۔ {ethernet} کے نیچے {gateway} بھی مقرر کریں، ورنہ مشین مقامی نیٹ ورک سے باہر نہیں جا سکتی۔",
+    recentPunches: "حالیہ حاضریاں",
+    recentPunchesHint: "نئی پہلے، پاکستان کے وقت کے مطابق",
+    noPunches: "ابھی کوئی حاضری نہیں آئی",
+    noPunchesHint: "مشین جیسے ہی بھیجے گی، حاضریاں چند سیکنڈ میں یہاں نظر آ جائیں گی۔",
+    unlinkedTerminalId: "مشین کا آئی ڈی {id} کسی ملازم سے نہیں جڑا",
+    testConnection: "رابطہ جانچیں",
+    contactingTerminal: "مشین سے رابطہ ہو رہا ہے…",
+    syncNow: "ابھی حاضری اتاریں",
+    readingLog: "حاضری کا ریکارڈ پڑھا جا رہا ہے…",
+    addIpFirst: "پہلے مشین کا آئی پی ایڈریس درج کریں",
+    pushControlsNote:
+      "یہ مشین پش موڈ میں ہے، اِس لیے خود بھیجتی ہے۔ یہ بٹن اُس کا محفوظ ریکارڈ مانگ کر اتارنے کے لیے ہیں، اور اِن کے لیے سرور کا مشین تک نیٹ ورک پر پہنچنا ضروری ہے۔",
+    addTerminalTitle: "نئی {brand} مشین شامل کریں",
+    editTerminal: "مشین میں تبدیلی",
+    dialogHint:
+      "پش موڈ بہتر ہے: مشین خود اِس سرور کو بھیجتی ہے، اِس لیے فیکٹری کے نیٹ ورک کے اندر پہنچنے کی ضرورت نہیں رہتی۔",
+    terminalName: "مشین کا نام",
+    terminalNameHint: "مثلاً ڈائینگ — مین گیٹ",
+    terminalNamePlaceholder: "ڈائینگ — مین گیٹ",
+    chooseFactory: "فیکٹری چنیں",
+    serialNumber: "سیریل نمبر",
+    model: "ماڈل",
+    connectionMode: "رابطے کا موڈ",
+    modePushOption: "پش — مشین خود ہمیں بھیجتی ہے (بہتر)",
+    modePullOption: "پُل — ہم TCP پر مشین سے رابطہ کرتے ہیں",
+    records: "یہ مشین کیا درج کرتی ہے",
+    recordsHint: "کینٹین کا اسکین کھانا ہے، حاضری نہیں — کھانے کے پیسے کسی کو نہیں ملتے۔",
+    purposeAttendanceOption: "حاضری — آمد اور روانگی",
+    purposeCanteenOption: "کینٹین — ہر وقت میں فی آدمی ایک کھانا",
+    ipAddress: "آئی پی ایڈریس",
+    // یہ جملہ بٹن کے اپنے الفاظ دہراتا ہے، اِس لیے واوین کے اندر بالکل وہی
+    // الفاظ رہنے چاہئیں جو `devices.testConnection` میں ہیں۔
+    ipAddressHint: "پُل موڈ اور ”رابطہ جانچیں“ کے لیے ضروری ہے",
+    port: "پورٹ",
+    commKeyHint: "{menu}۔ اگر مقرر نہیں تو خالی چھوڑ دیں۔",
+    activeLabel: "چالو — اِس مشین سے حاضریاں قبول کریں",
+    saveTerminal: "مشین محفوظ کریں",
+    nameFactorySerialRequired: "نام، فیکٹری اور سیریل نمبر ضروری ہیں۔",
+    portRange: "پورٹ 1 سے 65535 کے درمیان پورا عدد ہونا چاہیے۔",
+    duplicateSerial: "سیریل {serial} والی مشین پہلے سے موجود ہے۔",
+    terminalAdded: "مشین شامل ہو گئی۔",
+    terminalUpdated: "مشین کی تفصیل تبدیل ہو گئی۔",
+    notFound: "مشین نہیں ملی۔",
+    setIpBeforeTesting: "جانچنے سے پہلے مشین کا آئی پی ایڈریس درج کریں۔",
+    connected: "رابطہ ہو گیا۔ فرم ویئر {firmware}، مشین کی گھڑی {clock}۔",
+    firmwareUnknown: "معلوم نہیں",
+    clockUnreadable: "پڑھی نہیں جا سکی",
+    pushCannotBeReached:
+      "یہ مشین پش موڈ میں ہے، اِس لیے یہاں سے اُس تک نہیں پہنچا جا سکتا — یہ متوقع ہے اور اِس کا مطلب یہ نہیں کہ مشین بند ہے۔ اِس کی حالت اُن حاضریوں سے بنتی ہے جو یہ خود بھیجتی ہے۔",
+    noIpAddress: "اِس مشین کا کوئی آئی پی ایڈریس نہیں۔ پش موڈ والی مشینیں خود بھیجتی ہیں۔",
+    noSerialRecorded: "اِس مشین کا سیریل نمبر درج نہیں۔",
+    syncRead: "{read} ریکارڈ پڑھے گئے: {accepted} نئے، {duplicates} پہلے سے محفوظ۔",
+    syncUnmapped: "{count} انرولمنٹ آئی ڈی ابھی کسی ملازم سے نہیں جڑیں۔",
+    pushCannotBePolled:
+      "یہ مشین پش موڈ میں ہے اور یہاں سے اِس کا ریکارڈ نہیں مانگا جا سکتا۔ یہ خود بھیجتی ہے — کچھ اتارنے کی ضرورت نہیں۔",
   },
   profile: {
     title: "میری پروفائل",

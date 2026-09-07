@@ -57,6 +57,11 @@ const en = {
     yes: "Yes",
     no: "No",
     noRole: "No role assigned",
+    // Stands in for whatever a row failed to point at — a department on the
+    // dashboard, a factory on the canteen settings screen. English says
+    // nothing about which, and the translations must not either: they said
+    // "no department" until the terminals list became the third screen to
+    // show one, where it would have labelled a missing *factory*.
     unassigned: "Unassigned",
     minutesLate: "{minutes} min late",
     // The header badge on every screen. The terminal's model number meant
@@ -135,6 +140,28 @@ const en = {
       offline: "Offline",
       unknown: "Unknown",
       disabled: "Disabled",
+    },
+    /*
+     * `device_mode` and `device_purpose`, the other two enums on a terminal's
+     * row. They are here rather than in `devices` for the same reason
+     * `device_status` is: they are the enum members' own labels, shown as a
+     * field value and a badge. The *sentences* the add/edit dialog offers when
+     * one is being chosen — "Push — terminal uploads to us" — are instructions
+     * rather than labels, and those live in `devices` with the rest of that
+     * form.
+     *
+     * ADMS and TCP are protocol names and stay Latin in every language, the
+     * same way the model name does. They are part of the label rather than a
+     * slot because there is nothing to reorder around: the whole value is one
+     * short run.
+     */
+    deviceMode: {
+      push: "Push (ADMS)",
+      pull: "Pull (TCP)",
+    },
+    devicePurpose: {
+      attendance: "Attendance",
+      canteen: "Canteen",
     },
     employment: {
       active: "Active",
@@ -492,6 +519,151 @@ const en = {
     windowInUse:
       "Meals have already been served in this window — switch it off instead of deleting it.",
     servingRemoved: "Serving time removed.",
+  },
+  /**
+   * The biometric terminals — the list, one terminal's page, the controls on
+   * it and the add/edit dialog behind them.
+   *
+   * Almost everything a terminal *is* stays Latin in every language: the model
+   * name, the serial number, the IP address and port, the timezone, the
+   * firmware string, the paths and menu entries on the device's own screen,
+   * and the protocol names ADMS and TCP. Those are wrapped, never keyed — a
+   * serial that reads `K50-DYE-0001` here and `0001-DYE-K50` on a
+   * right-to-left page is a screen lying about the row. What is here is the
+   * words around them.
+   *
+   * `status.device`, `status.deviceMode` and `status.devicePurpose` hold the
+   * three enums a terminal's row carries; this group holds no enum labels.
+   */
+  devices: {
+    // The list.
+    title: "Biometric terminals",
+    // `{model}` is a hardware model name, so it is a slot rather than words in
+    // the sentence: it stays Latin, and Urdu puts it in a different place.
+    subtitle: "{model} devices on the factory floor",
+    addTerminal: "Add terminal",
+    noneYet: "No terminals registered yet",
+    noneYetHint: "Add your {model} and point it at this server to start receiving punches.",
+    // A terminal whose `site_id` matches no factory reads `common.unassigned`,
+    // which is where that word already lives. Its two translations said "no
+    // department" until this screen, and have been made referent-neutral
+    // rather than duplicated here.
+    // The four figures on a card, and the two extra on a terminal's own page.
+    // `common.status` is the word "Status"; the value it shows is the enum, in
+    // `status.device`.
+    serial: "Serial",
+    mode: "Mode",
+    address: "Address",
+    lastSeen: "Last seen",
+    // Shown instead of a relative time when a terminal has never reported.
+    neverSeen: "Never",
+    lastPunchReceived: "Last punch received {time}",
+    timezone: "Timezone",
+    notSet: "Not set",
+    // One terminal's page.
+    allTerminals: "All terminals",
+    detailSubtitle: "{model} · serial {serial} · last seen {seen}",
+    editSettings: "Edit settings",
+    /*
+     * The push-mode setup notes. Every slot is a label printed on the
+     * terminal's own screen or a protocol name — `Menu → Comm. → Cloud Server
+     * Setting`, `Server Mode`, `ADMS`, `/iclock/cdata`, `192.168.x.x`,
+     * `Gateway`, `Ethernet`. They are slots rather than words in the sentence
+     * because they must stay Latin and must stay exactly what the installer
+     * will read off the device, in whatever order the translation wants the
+     * sentence.
+     */
+    setupTitle: "Terminal setup",
+    setupCloudServer:
+      "On the terminal: {menu}. Set {serverMode} to {adms}, then enter the address and port of whatever this terminal pushes to — the relay's static IP in a hosted setup, or this server directly if it shares the factory network. The firmware appends {path} itself.",
+    setupDigitsOnly:
+      "Most {adms} builds accept digits only in that field, so a domain cannot be entered — and the address above is not the terminal's own {ip}, which is a common and silent mistake. Set {gateway} under {ethernet} too; without it the terminal never leaves the local network.",
+    recentPunches: "Recent punches",
+    recentPunchesHint: "Newest first, shown in Pakistan Standard Time",
+    noPunches: "No punches received yet",
+    noPunchesHint: "Once the terminal uploads, check-ins appear here within seconds.",
+    // A punch whose enrolment id matches nobody — the id is the terminal's
+    // own number for a finger, so it is a slot.
+    unlinkedTerminalId: "Unlinked terminal ID {id}",
+    // The two buttons, their loading toasts, and the reason they are disabled.
+    testConnection: "Test connection",
+    contactingTerminal: "Contacting terminal…",
+    syncNow: "Sync attendance now",
+    readingLog: "Reading attendance log…",
+    addIpFirst: "Add the terminal's IP address first",
+    pushControlsNote:
+      "This terminal is in push mode, so it uploads on its own. These controls are for pulling the stored log on demand and need the server to reach the device over the network.",
+    // The add/edit dialog. `{brand}` is a manufacturer's name.
+    addTerminalTitle: "Add {brand} terminal",
+    editTerminal: "Edit terminal",
+    dialogHint:
+      "Push mode is recommended: the terminal uploads to this server, so nothing has to reach into the factory network.",
+    terminalName: "Terminal name",
+    terminalNameHint: "e.g. Dyeing — main gate",
+    terminalNamePlaceholder: "Dyeing — main gate",
+    chooseFactory: "Choose a factory",
+    serialNumber: "Serial number",
+    model: "Model",
+    connectionMode: "Connection mode",
+    // The two mode choices as instructions, which is why they are not the
+    // `status.deviceMode` labels: this text tells the office which to pick.
+    modePushOption: "Push — terminal uploads to us (recommended)",
+    modePullOption: "Pull — we connect to the terminal over TCP",
+    records: "What this terminal records",
+    recordsHint: "A canteen scan is a meal, never a clock-in — nobody is paid for eating.",
+    purposeAttendanceOption: "Attendance — clock in and out",
+    purposeCanteenOption: "Canteen — one meal per person per serving",
+    ipAddress: "IP address",
+    // Quotes the button's own caption, so this and `testConnection` must stay
+    // word-for-word the same in every language.
+    ipAddressHint: "Needed for pull mode and Test connection",
+    port: "Port",
+    // `COMM KEY` itself is the label printed on the terminal, so it is not
+    // keyed at all — it is rendered Latin. This is only the hint under it,
+    // whose `{menu}` is the path on the device's own screen.
+    commKeyHint: "{menu}. Leave blank if unset.",
+    activeLabel: "Active — accept punches from this terminal",
+    saveTerminal: "Save terminal",
+    /*
+     * What `saveDevice`, `testConnection` and `syncDevice` put in the toast —
+     * the most messages of any action in the wave.
+     *
+     * The action holds the session, so it knows the reader's language and
+     * looks each sentence up itself rather than handing the client English to
+     * sit beside Urdu labels. Postgres errors and the errors the terminal
+     * itself reports are deliberately absent: they are passed through
+     * untouched, being developer-facing, and an invented Urdu wrapper around
+     * one would hide what actually failed.
+     *
+     * Three of these carry a value that is not a bare number — a serial, a
+     * firmware string and a device clock — and a toast is a plain string with
+     * no JSX to render `<Latin>` through. Those go through `isolate()` before
+     * they are substituted, or the bidi algorithm is free to reorder them on
+     * display and the toast names a serial that is not the one stored. The
+     * counts in `syncRead` and `syncUnmapped` are bare integers and do not.
+     */
+    nameFactorySerialRequired: "Name, factory and serial number are required.",
+    portRange: "Port must be a whole number between 1 and 65535.",
+    duplicateSerial: "A terminal with serial {serial} already exists.",
+    terminalAdded: "Terminal added.",
+    terminalUpdated: "Terminal updated.",
+    notFound: "Terminal not found.",
+    setIpBeforeTesting: "Set the terminal's IP address before testing.",
+    connected: "Connected. Firmware {firmware}, device clock {clock}.",
+    // The two fallbacks inside that sentence, for a terminal that answers
+    // without naming its firmware or with a clock that will not parse. They
+    // are words in the reader's language, so they are *not* isolated — only
+    // the values that came off the device are.
+    firmwareUnknown: "unknown",
+    clockUnreadable: "unreadable",
+    pushCannotBeReached:
+      "This terminal is in push mode, so it cannot be reached from here — that is expected and does not mean it is down. Its status comes from the punches it uploads.",
+    noIpAddress: "This terminal has no IP address. Devices in push mode upload on their own.",
+    noSerialRecorded: "This terminal has no serial number recorded.",
+    syncRead: "Read {read} record(s): {accepted} new, {duplicates} already stored.",
+    syncUnmapped: "{count} enrolment id(s) are not linked to an employee yet.",
+    pushCannotBePolled:
+      "This terminal is in push mode and cannot be polled from here. It uploads on its own — nothing needs to be pulled.",
   },
   profile: {
     title: "My profile",

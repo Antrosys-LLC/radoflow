@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { Fingerprint, Plus, Wifi, WifiOff } from "lucide-react";
 
+import { Fill } from "@/components/fill";
+import { Latin } from "@/components/latin";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
+import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime, timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -15,12 +19,21 @@ export const metadata: Metadata = {
   description: "ZKTeco K50 terminal health, enrolment mapping and attendance sync.",
 };
 
+/**
+ * The model these terminals are. A hardware name, so it is a value dropped
+ * into the translated sentences through `<Fill>` rather than words written
+ * into them — it stays Latin in every language, like the serial numbers and
+ * addresses beside it.
+ */
+const MODEL = "ZKTeco K50";
+
 // Device health is live state; a cached page would show a stale heartbeat.
 export const dynamic = "force-dynamic";
 
 export default async function DevicesPage() {
   const session = await requireAnyPermission(["devices.view", "devices.manage"]);
   const canManage = session.permissions.has("devices.manage");
+  const t = dictionaryFor(session.profile.language);
 
   const supabase = await createClient();
 
@@ -41,8 +54,8 @@ export default async function DevicesPage() {
       <Card className="p-4 sm:p-6">
         <SectionTitle
           icon={Fingerprint}
-          title="Biometric terminals"
-          subtitle="ZKTeco K50 devices on the factory floor"
+          title={t.devices.title}
+          subtitle={<Fill template={t.devices.subtitle} values={{ model: MODEL }} />}
           action={
             canManage ? (
               <DeviceDialog
@@ -50,7 +63,7 @@ export default async function DevicesPage() {
                 trigger={
                   <span className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all duration-300 hover:-translate-y-0.5">
                     <Plus className="size-4" />
-                    Add terminal
+                    {t.devices.addTerminal}
                   </span>
                 }
               />
@@ -60,15 +73,16 @@ export default async function DevicesPage() {
 
         {!devices || devices.length === 0 ? (
           <div className="rounded-2xl bg-secondary p-8 text-center">
-            <p className="text-sm font-semibold text-foreground">No terminals registered yet</p>
+            <p className="text-sm font-semibold text-foreground">{t.devices.noneYet}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Add your ZKTeco K50 and point it at this server to start receiving punches.
+              <Fill template={t.devices.noneYetHint} values={{ model: MODEL }} />
             </p>
           </div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2">
             {devices.map((device) => {
               const online = device.status === "online";
+              const factory = siteName.get(device.site_id);
               return (
                 <Link
                   key={device.id}
@@ -89,18 +103,23 @@ export default async function DevicesPage() {
                       </span>
                       <div>
                         <p className="flex items-center gap-2 text-sm font-bold text-foreground">
-                          {device.name}
+                          {/* A terminal's name is a name: wrapped, never translated. */}
+                          <Latin>{device.name}</Latin>
                           {/* Worth calling out on the card: a terminal pointed at
                               the canteen records meals, and its scans will never
                               appear in the attendance register. */}
                           {device.purpose === "canteen" ? (
                             <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
-                              Canteen
+                              {t.status.devicePurpose.canteen}
                             </span>
                           ) : null}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {siteName.get(device.site_id) ?? "Unassigned"} · {device.model}
+                          {/* The factory's name and the model are both Latin;
+                              the stand-in for a missing factory is a word, so
+                              it is not. */}
+                          {factory ? <Latin>{factory}</Latin> : t.common.unassigned} ·{" "}
+                          <Latin>{device.model}</Latin>
                         </p>
                       </div>
                     </div>
@@ -114,30 +133,50 @@ export default async function DevicesPage() {
                             : "bg-warning-soft text-warning",
                       )}
                     >
-                      {device.status}
+                      {t.status.device[device.status]}
                     </span>
                   </div>
 
                   <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                    <Detail label="Serial" value={device.serial_number ?? "—"} />
                     <Detail
-                      label="Mode"
-                      value={device.mode === "push" ? "Push (ADMS)" : "Pull (TCP)"}
+                      label={t.devices.serial}
+                      value={<Latin>{device.serial_number ?? "—"}</Latin>}
+                    />
+                    <Detail label={t.devices.mode} value={t.status.deviceMode[device.mode]} />
+                    <Detail
+                      label={t.devices.address}
+                      value={
+                        <Latin>
+                          {device.ip_address ? `${device.ip_address}:${device.port}` : "—"}
+                        </Latin>
+                      }
                     />
                     <Detail
-                      label="Address"
-                      value={device.ip_address ? `${device.ip_address}:${device.port}` : "—"}
+                      label={t.devices.lastSeen}
+                      value={
+                        device.last_seen_at ? (
+                          <Latin>{timeAgo(device.last_seen_at)}</Latin>
+                        ) : (
+                          t.devices.neverSeen
+                        )
+                      }
                     />
-                    <Detail label="Last seen" value={timeAgo(device.last_seen_at)} />
                   </dl>
 
                   {device.last_error ? (
+                    // Whatever the terminal or the network said, passed through
+                    // untouched and wrapped: it is a Latin technical string, not
+                    // a sentence this app wrote, and translating it would hide
+                    // what actually failed.
                     <p className="mt-3 truncate rounded-xl bg-danger-soft px-3 py-2 text-xs font-medium text-danger">
-                      {device.last_error}
+                      <Latin>{device.last_error}</Latin>
                     </p>
                   ) : device.last_seen_at ? (
                     <p className="mt-3 text-xs text-muted-foreground">
-                      Last punch received {formatDateTime(device.last_seen_at)}
+                      <Fill
+                        template={t.devices.lastPunchReceived}
+                        values={{ time: formatDateTime(device.last_seen_at) }}
+                      />
                     </p>
                   ) : null}
                 </Link>
@@ -150,7 +189,7 @@ export default async function DevicesPage() {
   );
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
+function Detail({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
       <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">

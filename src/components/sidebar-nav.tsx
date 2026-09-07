@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { useDictionary } from "@/components/language-provider";
 import { NavIcon } from "@/components/nav-icons";
 import { cn } from "@/lib/utils";
 import type { NavSection } from "@/lib/navigation";
@@ -15,13 +16,14 @@ function isActive(pathname: string, href: string): boolean {
 
 export function SidebarNav({ sections }: { sections: NavSection[] }) {
   const pathname = usePathname();
+  const t = useDictionary();
 
   return (
     <nav className="flex flex-col gap-5">
       {sections.map((section) => (
-        <div key={section.title}>
+        <div key={section.titleKey}>
           <p className="px-4 pb-2 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-            {section.title}
+            {t.nav[section.titleKey]}
           </p>
           <div className="flex flex-col gap-1">
             {section.items.map((item) => {
@@ -39,7 +41,7 @@ export function SidebarNav({ sections }: { sections: NavSection[] }) {
                   )}
                 >
                   <NavIcon name={item.icon} className="size-5 shrink-0" />
-                  {item.label}
+                  {t.nav[item.labelKey]}
                 </Link>
               );
             })}
@@ -58,10 +60,11 @@ export function SidebarNav({ sections }: { sections: NavSection[] }) {
  */
 export function MobileNav({ sections }: { sections: NavSection[] }) {
   const pathname = usePathname();
+  const t = useDictionary();
   const items = sections.flatMap((s) => s.items).slice(0, 5);
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-card/95 px-2 py-2 backdrop-blur lg:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 px-2 py-2 backdrop-blur lg:hidden">
       <div className="flex items-stretch justify-around gap-1">
         {items.map((item) => {
           const active = isActive(pathname, item.href);
@@ -76,7 +79,7 @@ export function MobileNav({ sections }: { sections: NavSection[] }) {
               )}
             >
               <NavIcon name={item.icon} className="size-6 shrink-0" />
-              <span className="w-full truncate text-center">{item.label}</span>
+              <span className="w-full truncate text-center">{t.nav[item.labelKey]}</span>
             </Link>
           );
         })}

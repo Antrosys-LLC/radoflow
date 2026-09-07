@@ -60,15 +60,23 @@ export default async function CanteenPage() {
 
     // When the same person was already served, the counter's real question is
     // "when did they eat?" — showing that time is what settles an argument at
-    // the counter without anyone needing to read an explanation.
+    // the counter without anyone needing to read an explanation. The rule is
+    // a rolling 24 hours regardless of window or date, so the lookup has to
+    // match that: the earlier meal can be in a different window (dinner then
+    // breakfast) or have no window at all (a 03:00 scan), and it is always
+    // the most recent claim inside the shadow, not one tied to today's date.
     let earlierAt: string | null = null;
-    if (fresh.outcome === "duplicate" && fresh.profile_id && fresh.meal_window_id) {
+    if (fresh.outcome === "duplicate" && fresh.profile_id) {
       const { data: claim } = await supabase
         .from("meal_claims")
         .select("claimed_at")
         .eq("profile_id", fresh.profile_id)
-        .eq("meal_window_id", fresh.meal_window_id)
-        .eq("served_on", fresh.served_on ?? today)
+        .gt(
+          "claimed_at",
+          new Date(Date.parse(fresh.scanned_at) - 24 * 60 * 60 * 1000).toISOString(),
+        )
+        .order("claimed_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
       earlierAt = claim?.claimed_at ?? null;
     }

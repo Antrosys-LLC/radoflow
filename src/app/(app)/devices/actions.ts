@@ -5,10 +5,22 @@ import { revalidatePath } from "next/cache";
 import { requirePermission } from "@/lib/auth/session";
 import { ingestPunches, recordsToPunches } from "@/lib/devices/ingest";
 import { withDevice, ZktecoError } from "@/lib/devices/zkteco/client";
+import { dictionaryFor, isolate } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { PAKISTAN_TIMEZONE } from "@/lib/time";
 
+/**
+ * `message` comes back already translated. The permission check hands back the
+ * whole session, so the action knows the reader's language without a second
+ * load and without the caller telling it — the only way an Urdu screen avoids
+ * toasting an English sentence at somebody.
+ *
+ * Two kinds of message are the exception and are passed through untouched: a
+ * Postgres error, and whatever the terminal or the network said. Both are
+ * developer-facing, and an invented Urdu wrapper around one would hide what
+ * actually failed.
+ */
 export interface ActionResult {
   ok: boolean;
   message: string;
@@ -18,9 +30,29 @@ function fieldText(form: FormData, key: string): string {
   return String(form.get(key) ?? "").trim();
 }
 
+/**
+ * A dictionary sentence with its `{placeholders}` filled in — the plain-string
+ * sibling of `<Fill>`, for the toasts these actions return.
+ *
+ * Substituted with a replacer function rather than a replacement string on
+ * purpose: firmware strings and error text come off the hardware, and a `$&`
+ * or `$1` in one of them would be read as a replacement pattern by
+ * `String.replace` and silently corrupt the message.
+ *
+ * It does **not** isolate on the caller's behalf. Whether a value needs
+ * `isolate()` depends on what the value is — a bare integer is safe as it
+ * stands, a serial or a clock time is not — and hiding that decision in here
+ * would make it invisible at the two call sites where getting it wrong shows
+ * the reader a serial that is not the one stored.
+ */
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (whole, key: string) => values[key] ?? whole);
+}
+
 /** Adds a terminal. Writes go through the user's client so RLS still applies. */
 export async function saveDevice(_prev: ActionResult, form: FormData): Promise<ActionResult> {
-  await requirePermission("devices.manage");
+  const session = await requirePermission("devices.manage");
+  const t = dictionaryFor(session.profile.language);
 
   const id = fieldText(form, "id");
   const name = fieldText(form, "name");
@@ -28,13 +60,13 @@ export async function saveDevice(_prev: ActionResult, form: FormData): Promise<A
   const serial = fieldText(form, "serial_number");
 
   if (!name || !siteId || !serial) {
-    return { ok: false, message: "Name, factory and serial number are required." };
+    return { ok: false, message: t.devices.nameFactorySerialRequired };
   }
 
   const ip = fieldText(form, "ip_address");
   const portValue = Number(fieldText(form, "port") || 4370);
   if (!Number.isInteger(portValue) || portValue < 1 || portValue > 65535) {
-    return { ok: false, message: "Port must be a whole number between 1 and 65535." };
+    return { ok: false, message: t.devices.portRange };
   }
 
   const payload = {
@@ -61,13 +93,24 @@ export async function saveDevice(_prev: ActionResult, form: FormData): Promise<A
   if (error) {
     // 23505 is a unique violation — almost always a duplicated serial number.
     if (error.code === "23505") {
-      return { ok: false, message: `A terminal with serial ${serial} already exists.` };
+      /*
+       * The serial is a Latin run with no strong direction of its own, sitting
+       * between two runs of Urdu in a plain string with no JSX to render
+       * `<Latin>` through. `isolate()` is the equivalent for that case:
+       * without it the bidi algorithm is free to reorder `K50-DYE-0001` on
+       * display, and the toast would refuse a serial that is not the one the
+       * office just typed.
+       */
+      return {
+        ok: false,
+        message: fill(t.devices.duplicateSerial, { serial: isolate(serial) }),
+      };
     }
     return { ok: false, message: error.message };
   }
 
   revalidatePath("/devices");
-  return { ok: true, message: id ? "Terminal updated." : "Terminal added." };
+  return { ok: true, message: id ? t.devices.terminalUpdated : t.devices.terminalAdded };
 }
 
 /**
@@ -78,7 +121,8 @@ export async function saveDevice(_prev: ActionResult, form: FormData): Promise<A
  * delivering punches perfectly well.
  */
 export async function testConnection(deviceId: string): Promise<ActionResult> {
-  await requirePermission("devices.manage");
+  const session = await requirePermission("devices.manage");
+  const t = dictionaryFor(session.profile.language);
 
   const admin = createServiceClient();
   const { data: device } = await admin
@@ -87,9 +131,9 @@ export async function testConnection(deviceId: string): Promise<ActionResult> {
     .eq("id", deviceId)
     .single();
 
-  if (!device) return { ok: false, message: "Terminal not found." };
+  if (!device) return { ok: false, message: t.devices.notFound };
   if (!device.ip_address) {
-    return { ok: false, message: "Set the terminal's IP address before testing." };
+    return { ok: false, message: t.devices.setIpBeforeTesting };
   }
 
   try {
@@ -109,11 +153,26 @@ export async function testConnection(deviceId: string): Promise<ActionResult> {
       .eq("id", deviceId);
 
     revalidatePath("/devices");
+    /*
+     * Two values off the hardware inside one sentence — a firmware string and
+     * the terminal's own clock — so both are isolated before they go in. This
+     * is the message the wave exists for: unisolated, `Ver 6.60 Jun 25 2020`
+     * and `14/08/2026, 07:58` sitting between two runs of Urdu can be
+     * reordered on display, and an engineer would read a firmware version and
+     * a time the terminal never reported.
+     *
+     * The two fallbacks are not isolated, and must not be: when the terminal
+     * answers without naming its firmware, or with a clock that will not
+     * parse, what goes in the slot is a word in the reader's own language.
+     * Isolating that would pin an Urdu phrase left-to-right inside a
+     * right-to-left sentence.
+     */
     return {
       ok: true,
-      message: `Connected. Firmware ${info.firmware ?? "unknown"}, device clock ${
-        info.time?.toLocaleString() ?? "unreadable"
-      }.`,
+      message: fill(t.devices.connected, {
+        firmware: info.firmware ? isolate(info.firmware) : t.devices.firmwareUnknown,
+        clock: info.time ? isolate(info.time.toLocaleString()) : t.devices.clockUnreadable,
+      }),
     };
   } catch (error) {
     const message = error instanceof ZktecoError ? error.message : String(error);
@@ -127,13 +186,7 @@ export async function testConnection(deviceId: string): Promise<ActionResult> {
      * whoever pressed the button and nothing is written.
      */
     if (device.mode === "push") {
-      return {
-        ok: false,
-        message:
-          "This terminal is in push mode, so it cannot be reached from here — " +
-          "that is expected and does not mean it is down. Its status comes from " +
-          "the punches it uploads.",
-      };
+      return { ok: false, message: t.devices.pushCannotBeReached };
     }
 
     await admin
@@ -152,7 +205,8 @@ export async function testConnection(deviceId: string): Promise<ActionResult> {
  * and the terminal keeps no backup, so it stays a separate explicit action.
  */
 export async function syncDevice(deviceId: string): Promise<ActionResult> {
-  await requirePermission("devices.manage");
+  const session = await requirePermission("devices.manage");
+  const t = dictionaryFor(session.profile.language);
 
   const admin = createServiceClient();
   const { data: device } = await admin
@@ -161,15 +215,12 @@ export async function syncDevice(deviceId: string): Promise<ActionResult> {
     .eq("id", deviceId)
     .single();
 
-  if (!device) return { ok: false, message: "Terminal not found." };
+  if (!device) return { ok: false, message: t.devices.notFound };
   if (!device.ip_address) {
-    return {
-      ok: false,
-      message: "This terminal has no IP address. Devices in push mode upload on their own.",
-    };
+    return { ok: false, message: t.devices.noIpAddress };
   }
   if (!device.serial_number) {
-    return { ok: false, message: "This terminal has no serial number recorded." };
+    return { ok: false, message: t.devices.noSerialRecorded };
   }
 
   try {
@@ -188,28 +239,30 @@ export async function syncDevice(deviceId: string): Promise<ActionResult> {
     revalidatePath("/devices");
     revalidatePath("/attendance");
 
+    /*
+     * Every value in these two sentences is a bare integer — an unambiguous
+     * European-number run with nothing neutral in it for the surrounding
+     * paragraph to reorder — so none of them is isolated. The serial and the
+     * firmware string above are; a count is not.
+     */
+    const read = fill(t.devices.syncRead, {
+      read: String(records.length),
+      accepted: String(result.accepted),
+      duplicates: String(result.duplicates),
+    });
+
     const unmapped = result.unmapped.length
-      ? ` ${result.unmapped.length} enrolment id(s) are not linked to an employee yet.`
+      ? ` ${fill(t.devices.syncUnmapped, { count: String(result.unmapped.length) })}`
       : "";
 
-    return {
-      ok: true,
-      message:
-        `Read ${records.length} record(s): ${result.accepted} new, ` +
-        `${result.duplicates} already stored.${unmapped}`,
-    };
+    return { ok: true, message: `${read}${unmapped}` };
   } catch (error) {
     const message = error instanceof ZktecoError ? error.message : String(error);
 
     // Same reasoning as testConnection: a push-mode terminal is unreachable by
     // design, and saying so must not overwrite a status its uploads earned.
     if (device.mode === "push") {
-      return {
-        ok: false,
-        message:
-          "This terminal is in push mode and cannot be polled from here. " +
-          "It uploads on its own — nothing needs to be pulled.",
-      };
+      return { ok: false, message: t.devices.pushCannotBePolled };
     }
 
     await admin
@@ -219,55 +272,4 @@ export async function syncDevice(deviceId: string): Promise<ActionResult> {
     revalidatePath("/devices");
     return { ok: false, message };
   }
-}
-
-/** Links a terminal enrolment number to an employee. */
-export async function linkEnrollment(_prev: ActionResult, form: FormData): Promise<ActionResult> {
-  await requirePermission("devices.manage");
-
-  const deviceId = fieldText(form, "device_id");
-  const deviceUserId = fieldText(form, "device_user_id");
-  const profileId = fieldText(form, "profile_id");
-
-  if (!deviceId || !deviceUserId || !profileId) {
-    return { ok: false, message: "Choose an employee and enter their terminal ID." };
-  }
-
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("device_enrollments")
-    .upsert(
-      { device_id: deviceId, device_user_id: deviceUserId, profile_id: profileId },
-      { onConflict: "device_id,device_user_id" },
-    );
-
-  if (error) return { ok: false, message: error.message };
-
-  // Punches already stored under this enrolment id have no owner; attribute
-  // them now so the mapping is retroactive rather than only forward-looking.
-  const admin = createServiceClient();
-  await admin
-    .from("punches")
-    .update({ profile_id: profileId })
-    .eq("device_id", deviceId)
-    .eq("device_user_id", deviceUserId)
-    .is("profile_id", null);
-
-  revalidatePath(`/devices/${deviceId}`);
-  return { ok: true, message: "Employee linked. Existing punches were attributed." };
-}
-
-export async function unlinkEnrollment(
-  deviceId: string,
-  enrollmentId: string,
-): Promise<ActionResult> {
-  await requirePermission("devices.manage");
-
-  const supabase = await createClient();
-  const { error } = await supabase.from("device_enrollments").delete().eq("id", enrollmentId);
-
-  if (error) return { ok: false, message: error.message };
-
-  revalidatePath(`/devices/${deviceId}`);
-  return { ok: true, message: "Employee unlinked." };
 }

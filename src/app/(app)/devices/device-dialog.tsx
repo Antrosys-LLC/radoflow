@@ -5,6 +5,11 @@ import { useFormStatus } from "react-dom";
 import { Save, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
+import { Latin } from "@/components/latin";
+import { cn } from "@/lib/utils";
+
 import { saveDevice, type ActionResult } from "./actions";
 
 const INITIAL: ActionResult = { ok: false, message: "" };
@@ -36,6 +41,7 @@ export function DeviceDialog({
   trigger: ReactNode;
   device?: DeviceFormValues;
 }) {
+  const t = useDictionary();
   const [open, setOpen] = useState(false);
   const [state, formAction] = useActionState(saveDevice, INITIAL);
 
@@ -64,17 +70,20 @@ export function DeviceDialog({
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-lg font-bold tracking-tight text-foreground">
-                  {device?.id ? "Edit terminal" : "Add ZKTeco terminal"}
+                  {device?.id ? (
+                    t.devices.editTerminal
+                  ) : (
+                    // The manufacturer is a name, so it is a slot rather than
+                    // words in the heading.
+                    <Fill template={t.devices.addTerminalTitle} values={{ brand: BRAND }} />
+                  )}
                 </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Push mode is recommended: the terminal uploads to this server, so nothing has to
-                  reach into the factory network.
-                </p>
+                <p className="mt-1 text-sm text-muted-foreground">{t.devices.dialogHint}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                aria-label="Close"
+                aria-label={t.common.close}
                 className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground transition-all hover:text-foreground"
               >
                 <X className="size-4" />
@@ -84,17 +93,17 @@ export function DeviceDialog({
             <form action={formAction} className="mt-5 space-y-4">
               {device?.id ? <input type="hidden" name="id" value={device.id} /> : null}
 
-              <Field label="Terminal name" hint="e.g. Dyeing — main gate">
+              <Field label={t.devices.terminalName} hint={t.devices.terminalNameHint}>
                 <input
                   name="name"
                   required
                   defaultValue={device?.name ?? ""}
                   className={INPUT}
-                  placeholder="Dyeing — main gate"
+                  placeholder={t.devices.terminalNamePlaceholder}
                 />
               </Field>
 
-              <Field label="Factory">
+              <Field label={t.common.site}>
                 <select
                   name="site_id"
                   required
@@ -102,7 +111,7 @@ export function DeviceDialog({
                   className={INPUT}
                 >
                   <option value="" disabled>
-                    Choose a factory
+                    {t.devices.chooseFactory}
                   </option>
                   {sites.map((site) => (
                     <option key={site.id} value={site.id}>
@@ -113,72 +122,86 @@ export function DeviceDialog({
               </Field>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Serial number" hint="Menu → System Info">
+                {/* The hint is a path on the terminal's own screen — read off
+                    the device in English whatever the reader's language, so it
+                    is wrapped rather than keyed. */}
+                <Field label={t.devices.serialNumber} hint={<Latin>Menu → System Info</Latin>}>
                   <input
                     name="serial_number"
                     required
                     defaultValue={device?.serial_number ?? ""}
-                    className={INPUT}
+                    className={LATIN_INPUT}
                     placeholder="K50-DYE-0001"
                   />
                 </Field>
-                <Field label="Model">
+                <Field label={t.devices.model}>
                   <input
                     name="model"
-                    defaultValue={device?.model ?? "ZKTeco K50"}
-                    className={INPUT}
+                    defaultValue={device?.model ?? DEFAULT_MODEL}
+                    className={LATIN_INPUT}
                   />
                 </Field>
               </div>
 
-              <Field label="Connection mode">
+              <Field label={t.devices.connectionMode}>
                 <select name="mode" defaultValue={device?.mode ?? "push"} className={INPUT}>
-                  <option value="push">Push — terminal uploads to us (recommended)</option>
-                  <option value="pull">Pull — we connect to the terminal over TCP</option>
+                  {/* Instructions rather than the enum's labels — the labels
+                      are `status.deviceMode`, and they are what the card and
+                      the terminal's own page show. */}
+                  <option value="push">{t.devices.modePushOption}</option>
+                  <option value="pull">{t.devices.modePullOption}</option>
                 </select>
               </Field>
 
-              <Field
-                label="What this terminal records"
-                hint="A canteen scan is a meal, never a clock-in — nobody is paid for eating."
-              >
+              <Field label={t.devices.records} hint={t.devices.recordsHint}>
                 <select
                   name="purpose"
                   defaultValue={device?.purpose ?? "attendance"}
                   className={INPUT}
                 >
-                  <option value="attendance">Attendance — clock in and out</option>
-                  <option value="canteen">Canteen — one meal per person per serving</option>
+                  <option value="attendance">{t.devices.purposeAttendanceOption}</option>
+                  <option value="canteen">{t.devices.purposeCanteenOption}</option>
                 </select>
               </Field>
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="sm:col-span-2">
-                  <Field label="IP address" hint="Needed for pull mode and Test connection">
+                  <Field label={t.devices.ipAddress} hint={t.devices.ipAddressHint}>
                     <input
                       name="ip_address"
                       // Postgres `inet` surfaces as unknown in the generated types.
                       defaultValue={device?.ip_address ? String(device.ip_address) : ""}
-                      className={INPUT}
+                      className={LATIN_INPUT}
                       placeholder="192.168.1.201"
                     />
                   </Field>
                 </div>
-                <Field label="Port">
+                <Field label={t.devices.port}>
                   <input
                     name="port"
                     type="number"
                     defaultValue={device?.port ?? 4370}
-                    className={INPUT}
+                    className={LATIN_INPUT}
                   />
                 </Field>
               </div>
 
-              <Field label="COMM KEY" hint="Menu → Comm → Security. Leave blank if unset.">
+              {/* `COMM KEY` is printed on the terminal's own menu, so the label
+                  itself is not translated — only the sentence under it, whose
+                  slot is another on-device path. */}
+              <Field
+                label={<Latin>COMM KEY</Latin>}
+                hint={
+                  <Fill
+                    template={t.devices.commKeyHint}
+                    values={{ menu: "Menu → Comm → Security" }}
+                  />
+                }
+              >
                 <input
                   name="comm_key"
                   defaultValue={device?.comm_key ?? ""}
-                  className={INPUT}
+                  className={LATIN_INPUT}
                   placeholder="0"
                 />
               </Field>
@@ -191,7 +214,7 @@ export function DeviceDialog({
                   className="size-5 accent-[var(--primary)]"
                 />
                 <span className="text-sm font-semibold text-foreground">
-                  Active — accept punches from this terminal
+                  {t.devices.activeLabel}
                 </span>
               </label>
 
@@ -204,10 +227,33 @@ export function DeviceDialog({
   );
 }
 
+/** The manufacturer and the model it sells — names, Latin in every language. */
+const BRAND = "ZKTeco";
+const DEFAULT_MODEL = "ZKTeco K50";
+
 const INPUT =
   "w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/30";
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+/**
+ * The five fields that hold nothing but hardware identity — a serial number, a
+ * model name, an IP address, a port and a comm key. They are set in the Latin
+ * face for the same reason `<Latin>` exists, which a form control cannot be
+ * wrapped in. The terminal name is deliberately not here: it is free text the
+ * office types, and it may well be typed in Urdu.
+ */
+const LATIN_INPUT = cn(INPUT, "font-latin");
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  // ReactNode rather than string: a label can be a name printed on the
+  // terminal and a hint can carry one, and both have to stay Latin.
+  label: ReactNode;
+  hint?: ReactNode;
+  children: ReactNode;
+}) {
   return (
     <div>
       <label className="block text-sm font-semibold text-foreground">{label}</label>
@@ -222,6 +268,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 function SubmitButton() {
+  const t = useDictionary();
   const { pending } = useFormStatus();
   return (
     <button
@@ -230,7 +277,7 @@ function SubmitButton() {
       className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3.5 text-sm font-bold text-primary-foreground shadow-[0_12px_30px_rgb(239_86_25/0.28)] transition-all hover:-translate-y-0.5 disabled:opacity-60"
     >
       <Save className="size-4" />
-      {pending ? "Saving…" : "Save terminal"}
+      {pending ? t.common.saving : t.devices.saveTerminal}
     </button>
   );
 }

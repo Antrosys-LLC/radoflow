@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { Latin } from "@/components/latin";
 import { PAKISTAN_LOCALE, PAKISTAN_TIMEZONE } from "@/lib/time";
 
 /**
@@ -23,28 +24,32 @@ export function LiveClock() {
   }, []);
 
   return (
-    <div className="hidden rounded-2xl bg-secondary px-4 py-2 text-right md:block">
+    <div className="hidden rounded-2xl bg-secondary px-4 py-2 text-end md:block">
       <p className="text-sm font-semibold tabular-nums text-foreground">
-        {now
-          ? new Intl.DateTimeFormat(PAKISTAN_LOCALE, {
-              timeZone: PAKISTAN_TIMEZONE,
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-              hour12: true,
-            }).format(now)
-          : "--:--:--"}
+        <Latin>
+          {now
+            ? new Intl.DateTimeFormat(PAKISTAN_LOCALE, {
+                timeZone: PAKISTAN_TIMEZONE,
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                hour12: true,
+              }).format(now)
+            : "--:--:--"}
+        </Latin>
       </p>
       <p className="text-[11px] text-muted-foreground">
-        {now
-          ? new Intl.DateTimeFormat(PAKISTAN_LOCALE, {
-              timeZone: PAKISTAN_TIMEZONE,
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-            }).format(now)
-          : " "}{" "}
-        PKT
+        <Latin>
+          {now
+            ? new Intl.DateTimeFormat(PAKISTAN_LOCALE, {
+                timeZone: PAKISTAN_TIMEZONE,
+                weekday: "short",
+                day: "numeric",
+                month: "short",
+              }).format(now)
+            : " "}{" "}
+          PKT
+        </Latin>
       </p>
     </div>
   );

@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import { Latin } from "@/components/latin";
 import { cn } from "@/lib/utils";
 import type { AttendanceStatus } from "@/lib/payroll/types";
 import { CheckCircle2, Clock3, XCircle } from "lucide-react";
@@ -24,8 +25,13 @@ export function SectionTitle({
   action,
 }: {
   icon: LucideIcon;
-  title: string;
-  subtitle?: string;
+  /*
+   * ReactNode rather than string: a heading or a subtitle often carries a
+   * count, a date or a money figure, and those have to be wrapped in `<Latin>`
+   * so a right-to-left page cannot reorder them on display.
+   */
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
   action?: React.ReactNode;
 }) {
   return (
@@ -53,7 +59,8 @@ export function StatPill({
 }: {
   icon: LucideIcon;
   label: string;
-  value: string;
+  /** The figure itself, so callers can wrap it in `<Latin>`. */
+  value: React.ReactNode;
   hint?: string;
   tone?: "neutral" | "primary" | "success" | "warning" | "danger";
 }) {
@@ -145,8 +152,8 @@ export function BarMeter({
   right,
 }: {
   value: number;
-  label: string;
-  right?: string;
+  label: React.ReactNode;
+  right?: React.ReactNode;
 }) {
   return (
     <div>
@@ -194,6 +201,10 @@ export function Avatar({ name, className }: { name: string; className?: string }
     .map((p) => p[0])
     .slice(0, 2)
     .join("");
+  /*
+   * The initials come off a person's name, so they stay Latin whatever the
+   * interface language — the same rule as the name they were taken from.
+   */
   return (
     <span
       className={cn(
@@ -201,7 +212,7 @@ export function Avatar({ name, className }: { name: string; className?: string }
         className,
       )}
     >
-      {init}
+      <Latin>{init}</Latin>
     </span>
   );
 }

@@ -14,10 +14,13 @@ import {
 
 import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refresh";
 import { DailyHours, VizRoot } from "@/components/charts";
+import { Fill } from "@/components/fill";
+import { Latin } from "@/components/latin";
 import { BarMeter, Card, SectionTitle, StatPill } from "@/components/ui-kit";
 import { dailyHourTotals } from "@/lib/attendance/daily-hours";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
 import { requireSession } from "@/lib/auth/session";
+import { dictionaryFor } from "@/lib/i18n";
 import { selectInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatHours, formatPKR, formatTime, todayInPakistan } from "@/lib/time";
@@ -39,6 +42,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function DashboardPage() {
   const session = await requireSession();
+  const t = dictionaryFor(session.profile.language);
   const supabase = await createClient();
   const can = (p: string) => session.permissions.has(p);
 
@@ -155,7 +159,9 @@ export default async function DashboardPage() {
     DEFAULT_PAY_RULE,
   );
 
-  const roleLabel = session.roles.map((r) => r.name).join(" · ") || "No role";
+  // Role names are data the office typed and render as stored; only the
+  // "nobody has given you one" case is interface text.
+  const roleLabel = session.roles.map((r) => r.name).join(" · ") || t.common.noRole;
   const firstName = session.profile.fullName.split(" ")[0] ?? session.profile.fullName;
 
   return (
@@ -165,15 +171,13 @@ export default async function DashboardPage() {
 
       <div className="rounded-3xl bg-charcoal p-7 text-charcoal-foreground shadow-[0_18px_40px_rgb(0_0_0/0.12)]">
         <p className="text-xs font-semibold uppercase tracking-widest text-primary">
-          {roleLabel} · {formatDate(today)}
+          {roleLabel} · <Latin>{formatDate(today)}</Latin>
         </p>
         <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
-          Good day, {firstName}
+          <Fill template={t.dashboard.greeting} values={{ name: firstName }} />
         </h1>
         <p className="mt-2 max-w-xl text-sm opacity-70">
-          {seesFloor
-            ? "Everything happening on the floor today — attendance, shifts and payroll — in one glance."
-            : "Your attendance, leave and payslips, all in one place."}
+          {seesFloor ? t.dashboard.introFloor : t.dashboard.introSelf}
         </p>
       </div>
 
@@ -181,21 +185,41 @@ export default async function DashboardPage() {
       <Card>
         <SectionTitle
           icon={CircleDot}
-          title="You today"
+          title={t.dashboard.youToday}
           subtitle={
             session.profile.requiresAttendance
-              ? "From the biometric terminal"
-              : "Your role does not require clocking in"
+              ? t.dashboard.fromTerminal
+              : t.dashboard.noClockInNeeded
           }
         />
         {session.profile.requiresAttendance ? (
           <div className="grid gap-3 sm:grid-cols-4">
-            <Fact label="Checked in" value={me?.first_in ? formatTime(me.first_in) : "Not yet"} />
-            <Fact label="Checked out" value={me?.last_out ? formatTime(me.last_out) : "—"} />
-            <Fact label="Hours today" value={formatHours(me?.regular_hours ?? 0)} />
             <Fact
-              label="Punctuality"
-              value={me?.is_late ? `${me.minutes_late} min late` : me?.first_in ? "On time" : "—"}
+              label={t.dashboard.checkedIn}
+              value={me?.first_in ? <Latin>{formatTime(me.first_in)}</Latin> : t.dashboard.notYet}
+            />
+            <Fact
+              label={t.dashboard.checkedOut}
+              value={me?.last_out ? <Latin>{formatTime(me.last_out)}</Latin> : "—"}
+            />
+            <Fact
+              label={t.dashboard.hoursToday}
+              value={<Latin>{formatHours(me?.regular_hours ?? 0)}</Latin>}
+            />
+            <Fact
+              label={t.dashboard.punctuality}
+              value={
+                me?.is_late ? (
+                  <Fill
+                    template={t.common.minutesLate}
+                    values={{ minutes: me.minutes_late ?? 0 }}
+                  />
+                ) : me?.first_in ? (
+                  t.dashboard.onTime
+                ) : (
+                  "—"
+                )
+              }
               {...(me?.is_late
                 ? { tone: "warning" as const }
                 : me?.first_in
@@ -205,7 +229,7 @@ export default async function DashboardPage() {
           </div>
         ) : (
           <p className="rounded-2xl bg-secondary px-4 py-3 text-sm text-muted-foreground">
-            You are on a monthly salary and are not tracked by the terminals.
+            {t.dashboard.monthlySalaryNote}
           </p>
         )}
       </Card>
@@ -214,30 +238,30 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatPill
             icon={UserCheck}
-            label="Working now"
-            value={String(working.length)}
-            hint="Clocked in, not yet out"
+            label={t.dashboard.workingNow}
+            value={<Latin>{working.length}</Latin>}
+            hint={t.dashboard.clockedInNotOut}
             tone="success"
           />
           <StatPill
             icon={TriangleAlert}
-            label="Not checked in"
-            value={String(missing.length)}
-            hint="Shift started without them"
+            label={t.dashboard.notCheckedIn}
+            value={<Latin>{missing.length}</Latin>}
+            hint={t.dashboard.shiftStartedWithout}
             tone={missing.length > 0 ? "danger" : "neutral"}
           />
           <StatPill
             icon={Clock}
-            label="Late today"
-            value={String(lateToday.length)}
-            hint="After the grace period"
+            label={t.dashboard.lateToday}
+            value={<Latin>{lateToday.length}</Latin>}
+            hint={t.dashboard.afterGrace}
             tone={lateToday.length > 0 ? "warning" : "neutral"}
           />
           <StatPill
             icon={Users}
-            label="Tracked staff"
-            value={String(live.length)}
-            hint="Requiring attendance"
+            label={t.dashboard.trackedStaff}
+            value={<Latin>{live.length}</Latin>}
+            hint={t.dashboard.requiringAttendance}
             tone="primary"
           />
         </div>
@@ -246,12 +270,8 @@ export default async function DashboardPage() {
       <VizRoot>
         <DailyHours
           data={monthHours}
-          title={canSeeEveryone ? "Hours worked this month" : "Your hours this month"}
-          subtitle={
-            canSeeEveryone
-              ? "Every day this month across the factory. Green is duty, orange is overtime."
-              : "Your hours each day this month. Green is duty, orange is overtime."
-          }
+          title={canSeeEveryone ? t.dashboard.hoursThisMonthAll : t.dashboard.hoursThisMonthMine}
+          subtitle={canSeeEveryone ? t.dashboard.hoursChartHintAll : t.dashboard.hoursChartHintMine}
           dutyColor="var(--success)"
         />
       </VizRoot>
@@ -261,29 +281,30 @@ export default async function DashboardPage() {
           <Card className="xl:col-span-2">
             <SectionTitle
               icon={Users}
-              title="Attendance by department"
-              subtitle="Present against expected headcount, right now"
+              title={t.dashboard.byDepartment}
+              subtitle={t.dashboard.byDepartmentHint}
               action={
                 <Link
                   href="/attendance"
                   className="inline-flex items-center gap-2 rounded-xl bg-secondary px-4 py-2 text-sm font-semibold text-foreground transition-all duration-300 hover:bg-primary-soft hover:text-primary"
                 >
-                  Floor board
-                  <ArrowRight className="size-4" />
+                  {t.dashboard.floorBoard}
+                  {/* "Onward" is a direction, so the arrow turns round with the page. */}
+                  <ArrowRight className="size-4 rtl-flip" />
                 </Link>
               }
             ></SectionTitle>
 
             {byDepartment.size === 0 ? (
-              <Empty text="Nobody is set to require attendance yet." />
+              <Empty text={t.dashboard.nobodyTracked} />
             ) : (
               <div className="grid gap-5 sm:grid-cols-2">
                 {[...byDepartment.entries()].map(([id, stats]) => (
                   <BarMeter
                     key={id}
-                    label={deptName.get(id) ?? "Unassigned"}
+                    label={deptName.get(id) ?? t.common.unassigned}
                     value={stats.total > 0 ? (stats.present / stats.total) * 100 : 0}
-                    right={`${stats.present}/${stats.total}`}
+                    right={<Latin>{`${stats.present}/${stats.total}`}</Latin>}
                   />
                 ))}
               </div>
@@ -291,13 +312,31 @@ export default async function DashboardPage() {
 
             {missing.length > 0 ? (
               <div className="mt-5 rounded-2xl bg-danger-soft p-4">
-                <p className="text-sm font-bold text-danger">{missing.length} not checked in</p>
+                <p className="text-sm font-bold text-danger">
+                  <Fill
+                    template={t.dashboard.notCheckedInCount}
+                    values={{ count: missing.length }}
+                  />
+                </p>
                 <p className="mt-1 text-xs text-foreground">
-                  {missing
-                    .slice(0, 6)
-                    .map((p) => p.full_name)
-                    .join(", ")}
-                  {missing.length > 6 ? ` and ${missing.length - 6} more` : ""}
+                  {/*
+                   * Joined in the markup rather than with `Array.join`, because
+                   * each name has to be isolated on its own — a run of names
+                   * concatenated into one string can be reordered wholesale in
+                   * a right-to-left paragraph.
+                   */}
+                  {missing.slice(0, 6).map((person, index) => (
+                    <span key={person.profile_id ?? index}>
+                      {index > 0 ? ", " : null}
+                      <Latin>{person.full_name}</Latin>
+                    </span>
+                  ))}
+                  {missing.length > 6 ? (
+                    <>
+                      {" "}
+                      <Fill template={t.dashboard.andMore} values={{ count: missing.length - 6 }} />
+                    </>
+                  ) : null}
                 </p>
               </div>
             ) : null}
@@ -307,38 +346,64 @@ export default async function DashboardPage() {
         <div className="space-y-5">
           {seesPayroll ? (
             <Card>
-              <SectionTitle icon={Wallet} title="Latest pay run" subtitle="Most recent period" />
+              <SectionTitle
+                icon={Wallet}
+                title={t.dashboard.latestPayRun}
+                subtitle={t.dashboard.mostRecentPeriod}
+              />
               {period ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-foreground">{period.label}</span>
-                    <span className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                      {period.status}
+                    {/*
+                     * No `uppercase`: this used to render the raw enum member,
+                     * and the transform was what made `review` presentable. The
+                     * dictionary already writes it as "In review".
+                     */}
+                    <span className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold tracking-wide text-muted-foreground">
+                      {t.status.payroll[period.status]}
                     </span>
                   </div>
-                  <Fact label="Gross" value={formatPKR(Number(period.total_gross))} />
+                  <Fact
+                    label={t.dashboard.gross}
+                    value={<Latin>{formatPKR(Number(period.total_gross))}</Latin>}
+                  />
                   <div className="rounded-2xl bg-primary-soft p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-primary">
-                      Net payable
+                      {t.dashboard.netPayable}
                     </p>
                     <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">
-                      {formatPKR(Number(period.total_net))}
+                      <Latin>{formatPKR(Number(period.total_net))}</Latin>
                     </p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      {period.headcount} employee{period.headcount === 1 ? "" : "s"} · to{" "}
-                      {formatDate(period.period_end)}
+                      {/*
+                       * Picked on the count rather than suffixed with an "s":
+                       * Urdu does not make a plural by adding a letter to the
+                       * end of the word.
+                       */}
+                      <Fill
+                        template={
+                          period.headcount === 1
+                            ? t.dashboard.payRunSummaryOne
+                            : t.dashboard.payRunSummary
+                        }
+                        values={{
+                          count: period.headcount,
+                          date: formatDate(period.period_end),
+                        }}
+                      />
                     </p>
                   </div>
                   <Link
                     href="/payroll"
                     className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5"
                   >
-                    Open payroll
-                    <ArrowRight className="size-4" />
+                    {t.dashboard.openPayroll}
+                    <ArrowRight className="size-4 rtl-flip" />
                   </Link>
                 </div>
               ) : (
-                <Empty text="No pay period has been created yet." />
+                <Empty text={t.dashboard.noPayPeriod} />
               )}
             </Card>
           ) : null}
@@ -347,8 +412,13 @@ export default async function DashboardPage() {
             <Card>
               <SectionTitle
                 icon={Fingerprint}
-                title="Terminals"
-                subtitle={`${onlineDevices.length} of ${devices.length} online`}
+                title={t.dashboard.terminals}
+                subtitle={
+                  <Fill
+                    template={t.dashboard.terminalsOnline}
+                    values={{ online: onlineDevices.length, total: devices.length }}
+                  />
+                }
               />
               <div className="space-y-2">
                 {devices.map((device) => (
@@ -360,19 +430,20 @@ export default async function DashboardPage() {
                     <span className="min-w-0 truncate text-sm font-semibold text-foreground">
                       {device.name}
                     </span>
+                    {/* `uppercase` dropped for the same reason as the pay-run badge. */}
                     <span
                       className={cn(
-                        "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase",
+                        "shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold",
                         device.status === "online"
                           ? "bg-success-soft text-success"
                           : "bg-danger-soft text-danger",
                       )}
                     >
-                      {device.status}
+                      {t.status.device[device.status]}
                     </span>
                   </Link>
                 ))}
-                {devices.length === 0 ? <Empty text="No terminals registered." /> : null}
+                {devices.length === 0 ? <Empty text={t.dashboard.noTerminals} /> : null}
               </div>
             </Card>
           ) : null}
@@ -381,15 +452,15 @@ export default async function DashboardPage() {
             <Card>
               <SectionTitle
                 icon={BadgeCheck}
-                title="Your records"
-                subtitle="Everything available to you"
+                title={t.dashboard.yourRecords}
+                subtitle={t.dashboard.everythingAvailable}
               />
               <Link
                 href="/me/profile"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition-all hover:-translate-y-0.5"
               >
-                Open my profile
-                <ArrowRight className="size-4" />
+                {t.dashboard.openMyProfile}
+                <ArrowRight className="size-4 rtl-flip" />
               </Link>
             </Card>
           ) : null}
@@ -405,7 +476,7 @@ function Fact({
   tone,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   tone?: "success" | "warning";
 }) {
   return (

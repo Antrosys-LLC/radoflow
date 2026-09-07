@@ -10,9 +10,10 @@
  * Everything here is pure: given the meal windows, a wall-clock reading and
  * whether this person has already been served, it returns the outcome. No
  * database, no clock of its own. The actual "you may not eat twice" guarantee
- * is a unique index in the schema, not this function — this only decides what
- * to *show* the counter staff, and the constraint is what makes it true even
- * if two scanners fire at the same instant.
+ * is a trigger in the schema — one meal per person per rolling 24 hours, not
+ * per window per day — not this function; this only decides what to *show*
+ * the counter staff, and the trigger is what makes it true even if two
+ * scanners fire at the same instant.
  */
 
 /** One serving period at one site, e.g. lunch 12:00–15:00. */
@@ -26,9 +27,9 @@ export interface MealWindow {
 }
 
 export type MealScanOutcome =
-  /** Fed. The first scan of this window today. */
+  /** Fed. Nobody within this profile's rolling 24 hours has a claim yet. */
   | "served"
-  /** Already ate this meal today — the case tokens could never catch. */
+  /** Already ate within the last 24 hours — the case tokens could never catch. */
   | "duplicate"
   /** The finger matched nobody enrolled on this terminal. */
   | "unknown_person"
@@ -124,8 +125,8 @@ export interface MealScanInput {
   localDate: string;
   localTime: string;
   /**
-   * Whether this person already has a claim for the resolved window and date.
-   * The caller looks this up; the unique index is what actually enforces it.
+   * Whether this person was served within the last 24 hours. The caller looks
+   * this up; the trigger on meal_claims is what actually enforces it.
    */
   alreadyClaimed: boolean;
 }
@@ -133,18 +134,29 @@ export interface MealScanInput {
 export function decideMealScan(input: MealScanInput): MealScanDecision {
   const resolved = resolveMealWindow(input.windows, input.localDate, input.localTime);
 
-  // Checked before identity: if the counter is shut, whose finger it was does
-  // not matter, and saying "closed" is more use to the person at the counter
-  // than "unknown worker".
-  if (!resolved) return { outcome: "outside_window", window: null, servedOn: null };
-
+  /*
+   * Identity is now the only thing that can refuse a scan outright. A window
+   * no longer decides whether someone may eat — it labels which sitting the
+   * meal belonged to, and a scan no window covers is still a meal. Whether
+   * they have eaten recently is settled by the database, which is the only
+   * place that sees two terminals at once.
+   */
   if (!input.profileId) {
-    return { outcome: "unknown_person", window: resolved.window, servedOn: resolved.servedOn };
+    return {
+      outcome: "unknown_person",
+      window: resolved?.window ?? null,
+      servedOn: resolved?.servedOn ?? null,
+    };
   }
 
   return {
     outcome: input.alreadyClaimed ? "duplicate" : "served",
-    window: resolved.window,
-    servedOn: resolved.servedOn,
+    window: resolved?.window ?? null,
+    /*
+     * With no window to credit it to, the meal counts against the local date.
+     * A window that crosses midnight still wins, which is why this is a
+     * fallback and not a replacement — see resolveMealWindow.
+     */
+    servedOn: resolved?.servedOn ?? input.localDate,
   };
 }

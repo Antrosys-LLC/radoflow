@@ -58,7 +58,7 @@ export default async function LiveFeedPage() {
         href="/devices"
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="size-4" />
+        <ArrowLeft className="size-4 rtl-flip" />
         Biometric Devices
       </Link>
 
@@ -110,7 +110,8 @@ export default async function LiveFeedPage() {
                     )}
                   >
                     {isIn ? <LogIn className="size-4" /> : <LogOut className="size-4" />}
-                    {formatTime(punch.punched_at)}
+                    <span className="tabular-nums">{formatTime(punch.punched_at)}</span>
+                    <span className="font-extrabold">{isIn ? "IN" : "OUT"}</span>
                   </span>
                 </div>
               );

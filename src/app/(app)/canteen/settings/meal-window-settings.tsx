@@ -7,6 +7,9 @@ import Link from "next/link";
 import { AlertTriangle, Clock, Fingerprint, Moon, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
+import { Latin } from "@/components/latin";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { cn } from "@/lib/utils";
 
@@ -20,12 +23,26 @@ import { deleteMealWindow, saveMealWindow, type MealWindowResult } from "./actio
  * change one thing. What this shows is the consequence — whether any
  * terminal is actually pointed at the canteen, which is the single most
  * common reason the counter screen would sit dark all lunchtime.
+ *
+ * Every serving time, factory and terminal name on this screen comes out of a
+ * row, so all of them are wrapped rather than translated. The times are the
+ * point: `12:00 – 15:00` reordered on a right-to-left page would tell the
+ * office the counter opens at three and closes at noon.
  */
 
 const INITIAL: MealWindowResult = { ok: false, message: "" };
 
 const INPUT =
   "mt-1 w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm text-foreground outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/30";
+
+/**
+ * The three fields that hold nothing but digits — two clock times and a sort
+ * position. They are stated left-to-right and set in the Latin face for the
+ * same reason `<Latin>` exists, which a form control cannot be wrapped in.
+ * The name field is deliberately not here: it is free text the office types,
+ * and it may well be typed in Urdu.
+ */
+const NUMERIC_INPUT = cn(INPUT, "font-latin");
 
 export interface MealWindowRow {
   id: string;
@@ -60,11 +77,12 @@ export function MealWindowSettings({
   windows: MealWindowRow[];
   terminals: TerminalRow[];
 }) {
+  const t = useDictionary();
   const [editing, setEditing] = useState<MealWindowRow | null>(null);
   const [adding, setAdding] = useState(false);
 
   const siteName = new Map(sites.map((s) => [s.id, s.name]));
-  const canteenTerminals = terminals.filter((t) => t.purpose === "canteen");
+  const canteenTerminals = terminals.filter((terminal) => terminal.purpose === "canteen");
   const activeWindows = windows.filter((w) => w.isActive);
 
   return (
@@ -76,22 +94,21 @@ export function MealWindowSettings({
         <div className="flex items-start gap-3 rounded-3xl bg-warning-soft px-5 py-4">
           <AlertTriangle className="mt-0.5 size-5 shrink-0 text-warning" />
           <div className="text-sm text-foreground">
-            <p className="font-bold">The canteen counter will not do anything yet</p>
+            <p className="font-bold">{t.canteenSettings.counterInactive}</p>
             <ul className="mt-1 space-y-0.5 text-muted-foreground">
               {canteenTerminals.length === 0 ? (
                 <li>
-                  No terminal is set to Canteen — set one on the{" "}
+                  {/* The sentence and the link are two strings rather than one
+                      with markup buried in it: a translation has to be free to
+                      put the link at either end, and a `<Fill>` slot renders
+                      through `<Latin>`, which is wrong for translated words. */}
+                  {t.canteenSettings.noCanteenTerminal}{" "}
                   <Link href="/devices" className="font-semibold text-primary underline">
-                    Devices
-                  </Link>{" "}
-                  screen. Until then its scans are recorded as attendance.
+                    {t.canteenSettings.setOneOnDevices}
+                  </Link>
                 </li>
               ) : null}
-              {activeWindows.length === 0 ? (
-                <li>
-                  No serving time is switched on, so every scan reads &ldquo;counter closed&rdquo;.
-                </li>
-              ) : null}
+              {activeWindows.length === 0 ? <li>{t.canteenSettings.noServingSwitchedOn}</li> : null}
             </ul>
           </div>
         </div>
@@ -100,8 +117,12 @@ export function MealWindowSettings({
       <Card className="p-4 sm:p-6">
         <SectionTitle
           icon={Clock}
-          title={`Serving times · ${windows.length}`}
-          subtitle="When the counter is open. One meal per person per serving."
+          title={
+            <>
+              {t.canteenSettings.servingTimes} · <Latin>{windows.length}</Latin>
+            </>
+          }
+          subtitle={t.canteenSettings.servingTimesHint}
           action={
             <button
               type="button"
@@ -109,17 +130,17 @@ export function MealWindowSettings({
               className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5"
             >
               <Plus className="size-4" />
-              Add serving
+              {t.canteenSettings.addServing}
             </button>
           }
         />
 
         {windows.length === 0 ? (
           <div className="rounded-2xl bg-secondary p-8 text-center">
-            <p className="text-sm font-semibold text-foreground">No serving times yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add one — lunch, or dinner for the night shift.
+            <p className="text-sm font-semibold text-foreground">
+              {t.canteenSettings.noServingsYet}
             </p>
+            <p className="mt-1 text-sm text-muted-foreground">{t.canteenSettings.noServingsHint}</p>
           </div>
         ) : (
           <div className="grid gap-2 sm:grid-cols-2">
@@ -127,7 +148,7 @@ export function MealWindowSettings({
               <WindowCard
                 key={row.id}
                 row={row}
-                siteName={siteName.get(row.siteId) ?? "Unassigned"}
+                siteName={siteName.get(row.siteId) ?? t.common.unassigned}
                 onEdit={() => setEditing(row)}
               />
             ))}
@@ -138,13 +159,13 @@ export function MealWindowSettings({
       <Card className="p-4 sm:p-6">
         <SectionTitle
           icon={Fingerprint}
-          title="Canteen terminals"
-          subtitle="Set on the Devices screen — shown here so a missing one is obvious"
+          title={t.canteenSettings.terminals}
+          subtitle={t.canteenSettings.terminalsHint}
         />
 
         {canteenTerminals.length === 0 ? (
           <p className="rounded-2xl bg-secondary px-4 py-6 text-center text-sm text-muted-foreground">
-            No terminal is scanning for meals.
+            {t.canteenSettings.noTerminalScanning}
           </p>
         ) : (
           <div className="space-y-2">
@@ -155,14 +176,18 @@ export function MealWindowSettings({
               >
                 <Fingerprint className="size-4 shrink-0 text-primary" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-foreground">{terminal.name}</p>
+                  {/* A terminal's name and its factory's are names, so they are
+                      wrapped in every language, never translated. */}
+                  <p className="truncate text-sm font-bold text-foreground">
+                    <Latin>{terminal.name}</Latin>
+                  </p>
                   <p className="text-xs text-muted-foreground">
-                    {siteName.get(terminal.siteId) ?? "Unassigned"}
+                    <Latin>{siteName.get(terminal.siteId) ?? t.common.unassigned}</Latin>
                   </p>
                 </div>
                 {!terminal.isActive ? (
                   <span className="rounded-full bg-danger-soft px-2.5 py-1 text-[10px] font-bold uppercase text-danger">
-                    Inactive
+                    {t.canteenSettings.inactive}
                   </span>
                 ) : null}
               </div>
@@ -188,30 +213,40 @@ function WindowCard({
   siteName: string;
   onEdit: () => void;
 }) {
+  const t = useDictionary();
   const overnight = crossesMidnight(row);
 
   return (
     <div className={cn("rounded-2xl bg-secondary p-4", !row.isActive && "opacity-60")}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-bold text-foreground">{row.name}</p>
-          <p className="text-xs text-muted-foreground">{siteName}</p>
+          <p className="truncate text-sm font-bold text-foreground">
+            <Latin>{row.name}</Latin>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            <Latin>{siteName}</Latin>
+          </p>
         </div>
         {!row.isActive ? (
           <span className="shrink-0 rounded-full bg-card px-2.5 py-1 text-[10px] font-bold uppercase text-muted-foreground">
-            Off
+            {t.canteenSettings.off}
           </span>
         ) : null}
       </div>
 
+      {/* The two times and the dash between them are one run, not two wrapped
+          separately — split, a right-to-left page could show the closing time
+          first and the office would read the window backwards. */}
       <p className="mt-3 text-2xl font-bold tabular-nums text-foreground">
-        {row.startsAt} – {row.endsAt}
+        <Latin>
+          {row.startsAt} – {row.endsAt}
+        </Latin>
       </p>
 
       {overnight ? (
         <p className="mt-1 flex items-center gap-1.5 text-[11px] font-semibold text-primary">
           <Moon className="size-3" />
-          Runs past midnight — counted against the day it opens
+          {t.canteenSettings.runsPastMidnight}
         </p>
       ) : null}
 
@@ -220,7 +255,7 @@ function WindowCard({
         onClick={onEdit}
         className="mt-3 rounded-xl bg-card px-3 py-2 text-xs font-semibold text-foreground transition-all hover:text-primary"
       >
-        Edit
+        {t.canteenSettings.edit}
       </button>
     </div>
   );
@@ -235,6 +270,7 @@ function WindowDialog({
   row?: MealWindowRow;
   onClose: () => void;
 }) {
+  const t = useDictionary();
   const [state, formAction] = useActionState(saveMealWindow, INITIAL);
   const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -243,6 +279,8 @@ function WindowDialog({
   useEffect(() => {
     if (!state.message) return;
     if (state.ok) {
+      // The action already holds the session, so `state.message` arrives
+      // translated — toasted unchanged, never re-wrapped here.
       toast.success(state.message);
       onClose();
       router.refresh();
@@ -258,17 +296,23 @@ function WindowDialog({
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-bold tracking-tight text-foreground">
-              {row ? `Edit ${row.name}` : "Add a serving"}
+              {row ? (
+                <Fill template={t.canteenSettings.editServing} values={{ name: row.name }} />
+              ) : (
+                t.canteenSettings.addServingTitle
+              )}
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              A serving that runs past midnight is fine — end it at 02:00 and the night shift&apos;s
-              meal still counts as one.
+              {/* The example end time is a slot, so it goes through `<Latin>`
+                  like every other time in the app rather than being digits
+                  set loose in a right-to-left sentence. */}
+              <Fill template={t.canteenSettings.overnightHint} values={{ time: "02:00" }} />
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t.common.close}
             className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground"
           >
             <X className="size-4" />
@@ -281,20 +325,20 @@ function WindowDialog({
 
           <div>
             <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-              Name
+              {t.canteenSettings.servingName}
             </label>
             <input
               name="name"
               required
               defaultValue={row?.name ?? ""}
-              placeholder="Lunch"
+              placeholder={t.canteenSettings.namePlaceholder}
               className={INPUT}
             />
           </div>
 
           <div>
             <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-              Factory
+              {t.common.site}
             </label>
             <select
               name="site_id"
@@ -303,7 +347,13 @@ function WindowDialog({
               className={INPUT}
             >
               {sites.map((s) => (
-                <option key={s.id} value={s.id}>
+                /*
+                 * `dir` and the class rather than `<Latin>`: an <option> may
+                 * only contain text, so the <bdi> element cannot go inside
+                 * one. A factory's name is a name — not translated, and not to
+                 * be reordered or set in Nastaliq either.
+                 */
+                <option key={s.id} value={s.id} dir="ltr" className="font-latin">
                   {s.name}
                 </option>
               ))}
@@ -313,39 +363,42 @@ function WindowDialog({
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                Opens
+                {t.canteenSettings.opens}
               </label>
               <input
                 name="starts_at"
                 type="time"
                 required
+                dir="ltr"
                 defaultValue={row?.startsAt ?? "12:00"}
-                className={INPUT}
+                className={NUMERIC_INPUT}
               />
             </div>
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                Closes
+                {t.canteenSettings.closes}
               </label>
               <input
                 name="ends_at"
                 type="time"
                 required
+                dir="ltr"
                 defaultValue={row?.endsAt ?? "15:00"}
-                className={INPUT}
+                className={NUMERIC_INPUT}
               />
             </div>
           </div>
 
           <div>
             <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-              Order on screen
+              {t.canteenSettings.orderOnScreen}
             </label>
             <input
               name="sort_order"
               type="number"
+              dir="ltr"
               defaultValue={row?.sortOrder ?? 100}
-              className={INPUT}
+              className={NUMERIC_INPUT}
             />
           </div>
 
@@ -357,7 +410,7 @@ function WindowDialog({
               className="size-5 accent-[var(--primary)]"
             />
             <span className="text-sm font-semibold text-foreground">
-              Open — the counter accepts scans in this window
+              {t.canteenSettings.openLabel}
             </span>
           </label>
 
@@ -369,8 +422,7 @@ function WindowDialog({
             {confirmingDelete ? (
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Remove {row.name}? Servings already recorded against it keep this window, so it
-                  can only be removed if nobody has eaten in it.
+                  <Fill template={t.canteenSettings.removeConfirm} values={{ name: row.name }} />
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -391,14 +443,14 @@ function WindowDialog({
                     }
                     className="flex-1 rounded-2xl bg-danger px-4 py-3 text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-50"
                   >
-                    Remove
+                    {t.canteenSettings.remove}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmingDelete(false)}
                     className="flex-1 rounded-2xl bg-secondary px-4 py-3 text-sm font-bold text-foreground"
                   >
-                    Cancel
+                    {t.common.cancel}
                   </button>
                 </div>
               </div>
@@ -409,7 +461,7 @@ function WindowDialog({
                 className="inline-flex items-center gap-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-danger"
               >
                 <Trash2 className="size-3.5" />
-                Remove this serving
+                {t.canteenSettings.removeServing}
               </button>
             )}
           </div>
@@ -420,6 +472,7 @@ function WindowDialog({
 }
 
 function SaveButton() {
+  const t = useDictionary();
   const { pending } = useFormStatus();
   return (
     <button
@@ -428,7 +481,7 @@ function SaveButton() {
       className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3.5 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5 disabled:opacity-60"
     >
       <Save className="size-4" />
-      {pending ? "Saving…" : "Save serving time"}
+      {pending ? t.common.saving : t.canteenSettings.saveServingTime}
     </button>
   );
 }

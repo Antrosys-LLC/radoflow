@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 
+import { resolveLanguage, type LanguageCode } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -21,6 +22,8 @@ export interface SessionProfile {
   departmentId: string | null;
   payClass: "monthly" | "hourly";
   requiresAttendance: boolean;
+  /** Interface language. Always one of the three; never whatever was stored. */
+  language: LanguageCode;
 }
 
 export interface SessionRole {
@@ -75,6 +78,7 @@ interface BootstrapPayload {
     department_id: string | null;
     pay_class: "monthly" | "hourly";
     requires_attendance: boolean;
+    language: string | null;
     roles_changed_at: string | null;
   } | null;
   roles: { key: string; name: string; is_superuser: boolean; rank: number }[];
@@ -182,6 +186,7 @@ const loadSession = cache(async (): Promise<Session | typeof ACCESS_CHANGED | nu
       departmentId: row.department_id,
       payClass: row.pay_class,
       requiresAttendance: row.requires_attendance,
+      language: resolveLanguage(row.language),
     },
     roles,
     permissions: new Set(payload.permissions ?? []),

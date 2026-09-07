@@ -4,8 +4,17 @@ import { revalidatePath } from "next/cache";
 
 import { requirePermission } from "@/lib/auth/session";
 import { minutesOfDay } from "@/lib/canteen/meals";
+import { dictionaryFor, isolate } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 
+/**
+ * `message` comes back already translated. The permission check hands back the
+ * whole session, so the action knows the reader's language without a second
+ * load and without the caller telling it — the only way an Urdu screen avoids
+ * toasting an English sentence at somebody. Postgres errors are the exception
+ * and are passed through untouched: they are developer-facing, and an invented
+ * Urdu wrapper around one would hide what actually failed.
+ */
 export interface MealWindowResult {
   ok: boolean;
   message: string;
@@ -28,7 +37,8 @@ export async function saveMealWindow(
   _prev: MealWindowResult,
   form: FormData,
 ): Promise<MealWindowResult> {
-  await requirePermission("canteen.manage");
+  const session = await requirePermission("canteen.manage");
+  const t = dictionaryFor(session.profile.language);
 
   const id = text(form, "id");
   const siteId = text(form, "site_id");
@@ -36,18 +46,17 @@ export async function saveMealWindow(
   const startsAt = text(form, "starts_at");
   const endsAt = text(form, "ends_at");
 
-  if (!siteId || !name) return { ok: false, message: "Choose a factory and give it a name." };
+  if (!siteId || !name) {
+    return { ok: false, message: t.canteenSettings.chooseFactoryAndName };
+  }
 
   const start = minutesOfDay(startsAt);
   const end = minutesOfDay(endsAt);
   if (start === null || end === null) {
-    return { ok: false, message: "Enter both times as HH:MM." };
+    return { ok: false, message: t.canteenSettings.enterTimes };
   }
   if (start === end) {
-    return {
-      ok: false,
-      message: "Start and end cannot be the same — that window would never open.",
-    };
+    return { ok: false, message: t.canteenSettings.sameStartEnd };
   }
 
   // Derived from the name so the code and the label always agree, the same
@@ -77,14 +86,27 @@ export async function saveMealWindow(
 
   if (error) {
     if (error.code === "23505") {
-      return { ok: false, message: `A serving named "${name}" already exists at this factory.` };
+      /*
+       * The name is whatever the office typed — quoted, and sitting between
+       * two runs of Urdu in a plain string with no JSX to render `<Latin>`
+       * through. `isolate()` is the equivalent for that case: without it the
+       * bidi algorithm is free to reorder the quoted run on display, and the
+       * toast would name a serving that is not the one being refused.
+       */
+      return {
+        ok: false,
+        message: t.canteenSettings.duplicateName.replace("{name}", isolate(name)),
+      };
     }
     return { ok: false, message: error.message };
   }
 
   revalidatePath("/canteen/settings");
   revalidatePath("/canteen");
-  return { ok: true, message: id ? "Serving time updated." : "Serving time added." };
+  return {
+    ok: true,
+    message: id ? t.canteenSettings.servingUpdated : t.canteenSettings.servingAdded,
+  };
 }
 
 /**
@@ -96,23 +118,20 @@ export async function saveMealWindow(
  * says so rather than surfacing a foreign-key error.
  */
 export async function deleteMealWindow(windowId: string): Promise<MealWindowResult> {
-  await requirePermission("canteen.manage");
+  const session = await requirePermission("canteen.manage");
+  const t = dictionaryFor(session.profile.language);
 
   const supabase = await createClient();
   const { error } = await supabase.from("meal_windows").delete().eq("id", windowId);
 
   if (error) {
     if (error.code === "23503") {
-      return {
-        ok: false,
-        message:
-          "Meals have already been served in this window — switch it off instead of deleting it.",
-      };
+      return { ok: false, message: t.canteenSettings.windowInUse };
     }
     return { ok: false, message: error.message };
   }
 
   revalidatePath("/canteen/settings");
   revalidatePath("/canteen");
-  return { ok: true, message: "Serving time removed." };
+  return { ok: true, message: t.canteenSettings.servingRemoved };
 }

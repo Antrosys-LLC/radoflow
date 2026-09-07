@@ -4,8 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Mic, Send, Square, Volume2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
+import { Latin } from "@/components/latin";
 import { cn } from "@/lib/utils";
 import { DEFAULT_EFFORT, EFFORT_LEVELS, type EffortLevel } from "@/lib/assistant/models";
+import { LANGUAGE_LABELS, type LanguageCode } from "@/lib/i18n";
 
 /**
  * The "Ask" conversation — shared by the full /assistant page and the
@@ -20,15 +24,20 @@ import { DEFAULT_EFFORT, EFFORT_LEVELS, type EffortLevel } from "@/lib/assistant
  * because a misheard word here has no way to be proof-read afterwards.
  */
 
-export type Language = "ur" | "roman-ur" | "en";
+/**
+ * The language the assistant *answers* in — chosen here, one question at a
+ * time, and deliberately not the language the interface is written in.
+ *
+ * They share the three codes (`@/lib/i18n`) because they are the same three
+ * languages, and nothing else: a person asking for one answer in Urdu keeps
+ * the app in whatever they set on their profile, and changing their profile
+ * language does not change the language they are being answered in. The
+ * interface strings on this screen come from `useDictionary()`; everything
+ * keyed by this type is an utterance in the conversation.
+ */
+type AnswerLanguage = LanguageCode;
 
-const LANGUAGE_LABEL: Record<Language, string> = {
-  ur: "اردو",
-  "roman-ur": "Roman Urdu",
-  en: "English",
-};
-
-const SPEECH_LANG: Record<Language, string> = {
+const SPEECH_LANG: Record<AnswerLanguage, string> = {
   ur: "ur-PK",
   "roman-ur": "ur-PK",
   en: "en-US",
@@ -63,36 +72,22 @@ const PRESETS: Preset[] = [
   },
 ];
 
-function presetText(preset: Preset, language: Language): string {
+function presetText(preset: Preset, language: AnswerLanguage): string {
   if (language === "ur") return preset.ur;
   if (language === "roman-ur") return preset.romanUr;
   return preset.en;
 }
 
-const GREETING: Record<Language, (name: string) => string> = {
+/**
+ * The empty thread's opening line. An utterance rather than chrome — it invites
+ * a question, in the language the question is expected in — so it is keyed by
+ * the answer language beside the presets, not held in the dictionary.
+ */
+const GREETING: Record<AnswerLanguage, (name: string) => string> = {
   ur: (name) => `السلام علیکم ${name}، کیا پوچھنا چاہتے ہیں؟`,
   "roman-ur": (name) => `Assalam-o-Alaikum ${name}, kya poochna chahte hain?`,
   en: (name) => `Hi ${name}, what would you like to know?`,
 };
-
-const COPY = {
-  common: { ur: "عام سوالات", "roman-ur": "Aam sawalat", en: "Common questions" },
-  thinking: { ur: "سوچ رہا ہوں…", "roman-ur": "Sochh raha hoon…", en: "Thinking…" },
-  listen: { ur: "سنیں", "roman-ur": "Suno", en: "Listen" },
-  placeholder: {
-    ur: "یہاں سوال لکھیں…",
-    "roman-ur": "Sawal likhein…",
-    en: "Type your question…",
-  },
-  heard: {
-    ur: "کیا آپ نے یہ پوچھا؟",
-    "roman-ur": "Kya aap ne yeh poocha?",
-    en: "Did you ask this?",
-  },
-  nothingHeard: { ur: "(کچھ نہیں سنا)", "roman-ur": "(kuch nahi suna)", en: "(nothing heard)" },
-  retry: { ur: "دوبارہ", "roman-ur": "Dobara", en: "Try again" },
-  send: { ur: "بھیجیں", "roman-ur": "Bhejein", en: "Send" },
-} as const;
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -124,8 +119,12 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-/** Reads the saved language once, at mount — avoids a render just to apply it. */
-function initialLanguage(): Language {
+/**
+ * Reads the saved answer language once, at mount — avoids a render just to
+ * apply it. Stored in the browser rather than on the profile, because it is a
+ * per-question choice and not a setting about the person.
+ */
+function initialAnswerLanguage(): AnswerLanguage {
   if (typeof window === "undefined") return "en";
   try {
     const saved = window.localStorage.getItem("radoflow-assistant-language");
@@ -144,7 +143,8 @@ export function AssistantConversation({
   /** The floating widget: tighter spacing, presets only while the thread is empty. */
   compact?: boolean;
 }) {
-  const [language, setLanguage] = useState<Language>(initialLanguage);
+  const t = useDictionary();
+  const [answerLanguage, setAnswerLanguage] = useState<AnswerLanguage>(initialAnswerLanguage);
   const [effort, setEffort] = useState<EffortLevel>(DEFAULT_EFFORT);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -161,11 +161,11 @@ export function AssistantConversation({
 
   useEffect(() => {
     try {
-      window.localStorage.setItem("radoflow-assistant-language", language);
+      window.localStorage.setItem("radoflow-assistant-language", answerLanguage);
     } catch {
       // Convenience only — nothing breaks if this can't be saved.
     }
-  }, [language]);
+  }, [answerLanguage]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -176,7 +176,7 @@ export function AssistantConversation({
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = SPEECH_LANG[language];
+      utterance.lang = SPEECH_LANG[answerLanguage];
       window.speechSynthesis.speak(utterance);
     } catch {
       // Not every device has a matching voice installed — fail silently;
@@ -200,7 +200,7 @@ export function AssistantConversation({
       const response = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: trimmed, language, history, effort }),
+        body: JSON.stringify({ question: trimmed, language: answerLanguage, history, effort }),
       });
       const body = (await response.json().catch(() => null)) as {
         answer?: string;
@@ -209,7 +209,7 @@ export function AssistantConversation({
       } | null;
 
       if (!response.ok || !body?.answer) {
-        toast.error(body?.error ?? "Could not get an answer just now.");
+        toast.error(body?.error ?? t.ask.noAnswer);
         setMessages((prev) => prev.slice(0, -1));
         return;
       }
@@ -226,7 +226,7 @@ export function AssistantConversation({
       ]);
       speak(body.answer);
     } catch {
-      toast.error("Could not reach the assistant. Check your connection.");
+      toast.error(t.ask.unreachable);
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setLoading(false);
@@ -239,7 +239,7 @@ export function AssistantConversation({
     if (!Ctor) return;
 
     const recognition = new Ctor();
-    recognition.lang = SPEECH_LANG[language];
+    recognition.lang = SPEECH_LANG[answerLanguage];
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
@@ -251,7 +251,7 @@ export function AssistantConversation({
       setPendingTranscript(transcript);
     };
     recognition.onerror = () => {
-      toast.error("Didn't catch that — try again, or type your question.");
+      toast.error(t.ask.notCaught);
       setListening(false);
     };
     recognition.onend = () => setListening(false);
@@ -266,7 +266,7 @@ export function AssistantConversation({
     setListening(false);
   }
 
-  const isRtl = language === "ur";
+  const answerIsRtl = answerLanguage === "ur";
   // In the widget the presets are a starting nudge, not a permanent panel —
   // once a conversation is underway the small space is better spent on it.
   const showPresets = !compact || messages.length === 0;
@@ -276,59 +276,77 @@ export function AssistantConversation({
 
   return (
     <div className={compact ? "flex min-h-0 flex-1 flex-col" : "space-y-5"}>
-      <div className={cn("flex gap-2", compact && "shrink-0")}>
-        {(Object.keys(LANGUAGE_LABEL) as Language[]).map((lang) => (
-          <button
-            key={lang}
-            type="button"
-            onClick={() => setLanguage(lang)}
-            className={cn(
-              "flex-1 rounded-2xl font-bold transition-all",
-              compact ? "px-2 py-1.5 text-xs" : "px-3 py-2.5 text-sm",
-              language === lang
-                ? "bg-primary text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)]"
-                : "bg-secondary text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {LANGUAGE_LABEL[lang]}
-          </button>
-        ))}
+      {/* Which language the *answer* comes back in. Labelled, because an
+          unlabelled row of language names in an app that also has a language
+          setting reads as that setting — and it is not one. Each name stays in
+          its own script, so this row looks the same whatever the interface
+          language is. */}
+      <div className={compact ? "shrink-0" : ""}>
+        <p className="mb-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          {t.ask.answerLanguage}
+        </p>
+        <div className="flex gap-2">
+          {(Object.keys(LANGUAGE_LABELS) as AnswerLanguage[]).map((lang) => (
+            <button
+              key={lang}
+              type="button"
+              onClick={() => setAnswerLanguage(lang)}
+              className={cn(
+                "flex-1 rounded-2xl font-bold transition-all",
+                compact ? "px-2 py-1.5 text-xs" : "px-3 py-2.5 text-sm",
+                answerLanguage === lang
+                  ? "bg-primary text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)]"
+                  : "bg-secondary text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {LANGUAGE_LABELS[lang]}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className={cn("flex gap-1.5", compact ? "mt-1.5" : "mt-2")}>
-        {EFFORT_LEVELS.map((level) => (
-          <button
-            key={level.value}
-            type="button"
-            onClick={() => setEffort(level.value)}
-            title={
-              compact ? (level.hint ? `${level.label} — ${level.hint}` : level.label) : level.hint
-            }
-            className={cn(
-              "flex-1 rounded-2xl font-bold transition-all",
-              compact ? "px-2 py-1.5 text-[0.65rem]" : "px-3 py-2 text-xs",
-              effort === level.value
-                ? "bg-primary text-primary-foreground"
-                : "bg-secondary text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {compact ? level.short : level.label}
-          </button>
-        ))}
+        {EFFORT_LEVELS.map((level) => {
+          // The ladder carries the order and the allowlist; the words are in
+          // the dictionary, keyed by the same five values.
+          const words = t.ask.effort[level.value];
+
+          return (
+            <button
+              key={level.value}
+              type="button"
+              onClick={() => setEffort(level.value)}
+              title={compact ? `${words.label} — ${words.hint}` : words.hint}
+              className={cn(
+                "flex-1 rounded-2xl font-bold transition-all",
+                compact ? "px-2 py-1.5 text-[0.65rem]" : "px-3 py-2 text-xs",
+                effort === level.value
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {compact ? words.short : words.label}
+            </button>
+          );
+        })}
       </div>
       {sessionCostPkr > 0 ? (
         <p className={cn("mt-1 text-muted-foreground", compact ? "text-[0.65rem]" : "text-xs")}>
-          This session: Rs {sessionCostPkr.toLocaleString("en-PK")}
+          {/* The currency and the figure are one Latin run — "Rs" is written
+              beside the digits the way the attendance log and the pay rates
+              screen write money, and the sentence around it reorders without
+              splitting it. */}
+          <Fill
+            template={t.ask.sessionCost}
+            values={{ amount: `Rs ${sessionCostPkr.toLocaleString("en-PK")}` }}
+          />
         </p>
       ) : null}
 
       {showPresets ? (
         <div className={compact ? "mt-3 shrink-0" : ""}>
-          <p
-            dir={isRtl ? "rtl" : "ltr"}
-            className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground"
-          >
-            {COPY.common[language]}
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            {t.ask.commonQuestions}
           </p>
           <div className={cn("grid gap-2", !compact && "sm:grid-cols-2")}>
             {PRESETS.map((preset) => (
@@ -336,14 +354,14 @@ export function AssistantConversation({
                 key={preset.en}
                 type="button"
                 disabled={loading}
-                onClick={() => ask(presetText(preset, language))}
-                dir={isRtl ? "rtl" : "ltr"}
+                onClick={() => ask(presetText(preset, answerLanguage))}
+                dir={answerIsRtl ? "rtl" : "ltr"}
                 className={cn(
-                  "rounded-2xl bg-secondary text-left font-semibold text-foreground transition-all hover:bg-primary-soft hover:text-primary disabled:opacity-50",
+                  "rounded-2xl bg-secondary text-start font-semibold text-foreground transition-all hover:bg-primary-soft hover:text-primary disabled:opacity-50",
                   compact ? "px-3 py-2.5 text-xs" : "px-4 py-3.5 text-sm",
                 )}
               >
-                {presetText(preset, language)}
+                {presetText(preset, answerLanguage)}
               </button>
             ))}
           </div>
@@ -354,23 +372,23 @@ export function AssistantConversation({
         ref={scrollRef}
         className={cn(
           "space-y-3 overflow-y-auto",
-          compact ? "mt-3 min-h-0 flex-1 pr-1" : "max-h-[50vh] min-h-[12rem] pr-1",
+          compact ? "mt-3 min-h-0 flex-1 pe-1" : "max-h-[50vh] min-h-[12rem] pe-1",
         )}
       >
         {messages.length === 0 ? (
           compact ? null : (
             <p
-              dir={isRtl ? "rtl" : "ltr"}
+              dir={answerIsRtl ? "rtl" : "ltr"}
               className="rounded-2xl bg-secondary px-4 py-6 text-center text-sm text-muted-foreground"
             >
-              {GREETING[language](firstName)}
+              {GREETING[answerLanguage](firstName)}
             </p>
           )
         ) : (
           messages.map((message, i) => (
             <div
               key={i}
-              dir={isRtl ? "rtl" : "ltr"}
+              dir={answerIsRtl ? "rtl" : "ltr"}
               className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}
             >
               <div
@@ -389,18 +407,18 @@ export function AssistantConversation({
                       compact ? "text-[0.65rem]" : "text-xs",
                     )}
                   >
-                    Rs {message.costPkr.toLocaleString("en-PK")}
+                    <Latin>Rs {message.costPkr.toLocaleString("en-PK")}</Latin>
                   </p>
                 ) : null}
                 {message.role === "assistant" ? (
                   <button
                     type="button"
                     onClick={() => speak(message.text)}
-                    aria-label="Read aloud"
+                    aria-label={t.ask.readAloud}
                     className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
                   >
                     <Volume2 className="size-3.5" />
-                    {COPY.listen[language]}
+                    {t.ask.listen}
                   </button>
                 ) : null}
               </div>
@@ -411,7 +429,7 @@ export function AssistantConversation({
           <div className="flex justify-start">
             <div className="flex items-center gap-2 rounded-2xl bg-secondary px-4 py-3 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
-              {COPY.thinking[language]}
+              {t.ask.thinking}
             </div>
           </div>
         ) : null}
@@ -427,8 +445,8 @@ export function AssistantConversation({
         <input
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          dir={isRtl ? "rtl" : "ltr"}
-          placeholder={COPY.placeholder[language]}
+          dir={answerIsRtl ? "rtl" : "ltr"}
+          placeholder={t.ask.placeholder}
           className={cn(
             "min-w-0 flex-1 rounded-2xl border border-input bg-background text-sm outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/30",
             compact ? "px-3 py-2.5" : "px-4 py-3",
@@ -439,7 +457,7 @@ export function AssistantConversation({
           <button
             type="button"
             onClick={listening ? stopListening : startListening}
-            aria-label={listening ? "Stop listening" : "Ask by voice"}
+            aria-label={listening ? t.ask.stopListening : t.ask.askByVoice}
             className={cn(
               "flex shrink-0 items-center justify-center rounded-2xl transition-all",
               compact ? "size-10" : "size-12",
@@ -459,7 +477,7 @@ export function AssistantConversation({
         <button
           type="submit"
           disabled={loading || !input.trim()}
-          aria-label="Send"
+          aria-label={t.ask.send}
           className={cn(
             "flex shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground transition-all hover:-translate-y-0.5 disabled:opacity-50",
             compact ? "size-10" : "size-12",
@@ -473,13 +491,13 @@ export function AssistantConversation({
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-charcoal/40 p-3 backdrop-blur-sm sm:items-center">
           <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-[0_18px_40px_rgb(0_0_0/0.18)]">
             <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-              {COPY.heard[language]}
+              {t.ask.heard}
             </p>
             <p
-              dir={isRtl ? "rtl" : "ltr"}
+              dir={answerIsRtl ? "rtl" : "ltr"}
               className="mt-3 rounded-2xl bg-secondary px-4 py-4 text-lg font-semibold text-foreground"
             >
-              {pendingTranscript || COPY.nothingHeard[language]}
+              {pendingTranscript || t.ask.nothingHeard}
             </p>
             <div className="mt-4 flex gap-3">
               <button
@@ -487,7 +505,7 @@ export function AssistantConversation({
                 onClick={() => setPendingTranscript(null)}
                 className="flex-1 rounded-2xl bg-secondary px-4 py-3 text-sm font-bold text-foreground transition-all hover:text-primary"
               >
-                {COPY.retry[language]}
+                {t.ask.retry}
               </button>
               <button
                 type="button"
@@ -499,7 +517,7 @@ export function AssistantConversation({
                 }}
                 className="flex-1 rounded-2xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5 disabled:opacity-50"
               >
-                {COPY.send[language]}
+                {t.ask.send}
               </button>
             </div>
           </div>

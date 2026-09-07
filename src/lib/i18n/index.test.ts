@@ -171,6 +171,35 @@ describe("the dictionaries agree", () => {
     }
   });
 
+  /*
+   * The Ask effort dial. Five buttons at ~56px each on a 360px phone, where
+   * three of the five full English labels measured 64-66px and overflowed —
+   * `short` is the fix, and this is the constraint that layout depends on.
+   * Without it the next added level, or the next translation, silently brings
+   * the overflow back.
+   *
+   * The Latin dictionaries are held to the four characters that were actually
+   * measured. Urdu is allowed six: its letters join, so a six-letter word sets
+   * narrower than six Latin capitals, and four would leave no word that means
+   * "maximum".
+   */
+  it.each([
+    ["en", en, 4],
+    ["roman-ur", roman, 4],
+    ["ur", ur, 6],
+  ])(
+    "gives every effort level in %s a short form that fits the compact dial",
+    (_name, dictionary, limit) => {
+      const levels = Object.values((dictionary as typeof en).ask.effort);
+      expect(levels).toHaveLength(5);
+      for (const level of levels) {
+        expect(level.short.length, `"${level.short}" is longer than ${limit}`).toBeLessThanOrEqual(
+          limit as number,
+        );
+      }
+    },
+  );
+
   it("every translation keeps the same {placeholders} as English", () => {
     // A translator can drop a token while reordering a sentence around it —
     // Urdu puts the words in a different order, so the token that carried

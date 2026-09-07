@@ -110,6 +110,22 @@ import type { Dictionary } from "./index";
  *   and the thing missing there is a factory, not a department. That change is
  *   visible on the dashboard and the canteen settings screen too.
  *
+ * Added by the live floor and Ask, and least sure of these:
+ *   "Answer in" (Jawab kis zaban mein) — a new label, added because a row of
+ *   language names in an app that also has a language setting reads as that
+ *   setting, and it is not one ·
+ *   the five effort levels, which are a dial nobody on the floor has a word
+ *   for: "Fast" (Tez), "Balanced" (Mutawazin), "Thorough" (Mukammal),
+ *   "Deeper" (Gehra) and "Maximum" (Sab se zyada), which must read as one
+ *   ladder from quickest to most careful ·
+ *   their short forms — Tez, Wast, Pura, Deep, Max — which are what the
+ *   floating widget shows on a phone and are constrained to four characters,
+ *   which is why the last two stay English ·
+ *   "Thinking…" (Sochh raha hoon…), where a machine speaks in the first
+ *   person · "(nothing heard)" (kuch nahi suna), shown after a failed voice
+ *   attempt, and "Didn't catch that" (Baat samajh nahi aayi), which must
+ *   sound like the machine's failure rather than the speaker's
+ *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
  * Neither is anything a terminal *is*: its model, serial number, IP address,
  * port, timezone, firmware string, the menu paths on its own screen, or the
@@ -500,6 +516,51 @@ const roman: Dictionary = {
     syncUnmapped: "{count} enrolment ID abhi kisi mulazim se nahi juri.",
     pushCannotBePolled:
       "Yeh machine push mode mein hai aur yahan se is ka record nahi manga ja sakta. Yeh khud bhejti hai — kuch utarne ki zaroorat nahi.",
+  },
+  liveFloor: {
+    title: "Floor, Live",
+    subtitle: "Aakhri {count} aamad o rawangi, har {seconds} second baad taza",
+    nothingYet: "Floor par abhi kuch nahi",
+    nothingYetHint: "Machine se aate hi scan yahan chand second mein dikhein ge.",
+    unlinkedTerminalId: "Ghair munsalik machine number {id}",
+    terminalFallback: "Machine",
+  },
+  ask: {
+    subtitle: "Haazri, chutti aur tankhwah — sadi zaban mein jawab",
+    widgetSubtitle: "Haazri, chutti aur tankhwah",
+    panelLabel: "Assistant se poochhein",
+    openLabel: "Sawal poochhein",
+    answerLanguage: "Jawab kis zaban mein",
+    commonQuestions: "Aam sawalat",
+    thinking: "Sochh raha hoon…",
+    listen: "Suno",
+    readAloud: "Parh kar sunayein",
+    placeholder: "Sawal likhein…",
+    askByVoice: "Bol kar poochhein",
+    stopListening: "Sunna band karein",
+    heard: "Kya aap ne yeh poocha?",
+    nothingHeard: "(kuch nahi suna)",
+    retry: "Dobara",
+    send: "Bhejein",
+    sessionCost: "Is nishist ka kharch: {amount}",
+    noAnswer: "Abhi jawab nahi mil saka.",
+    unreachable: "Assistant tak rabta nahi ho saka. Apna internet dekhein.",
+    notCaught: "Baat samajh nahi aayi — dobara bolein, ya sawal likh dein.",
+    notSignedIn: "Aap sign in nahi hain.",
+    notAllowed: "Aap ko assistant istemal karne ki ijazat nahi.",
+    badRequest: "Darkhwast durust nahi thi.",
+    emptyQuestion: "Pehle sawal likhein.",
+    questionTooLong: "Yeh sawal bohat lamba hai.",
+    notConfigured: "Assistant abhi tarteeb nahi diya gaya.",
+    couldNotAnswer: "Assistant is ka jawab nahi de saka.",
+    noAnswerText: "Main is ka jawab nahi nikal saka.",
+    effort: {
+      low: { label: "Tez", short: "Tez", hint: "Jaldi jawab" },
+      medium: { label: "Mutawazin", short: "Wast", hint: "Dono ke beech" },
+      high: { label: "Mukammal", short: "Pura", hint: "Tay shuda" },
+      xhigh: { label: "Gehra", short: "Deep", hint: "Mushkil sawalon ke liye" },
+      max: { label: "Sab se zyada", short: "Max", hint: "Sab se sust aur mehnga" },
+    },
   },
   profile: {
     title: "Meri profile",

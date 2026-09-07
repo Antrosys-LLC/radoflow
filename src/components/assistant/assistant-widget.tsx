@@ -3,12 +3,16 @@
 import { useEffect, useState } from "react";
 import { MessageCircleQuestion, X } from "lucide-react";
 
+import { useDictionary } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 
 import { AssistantConversation } from "./assistant-conversation";
 
 /**
- * The floating "Ask" button, bottom-right on every signed-in screen.
+ * The floating "Ask" button, in the bottom trailing corner of every signed-in
+ * screen — right in English and Roman Urdu, left in Urdu, because it is
+ * anchored with `end-` rather than `right-` and follows the reading direction
+ * the way the sidebar and the navigation do.
  *
  * The whole point of this assistant is that someone who cannot navigate the
  * app — or read the menu labels — can still get an answer. Living only at
@@ -27,6 +31,7 @@ export function AssistantWidget({
   /** The Antrosys strip is fixed along the bottom on desktop when shown. */
   hasRibbon: boolean;
 }) {
+  const t = useDictionary();
   const [open, setOpen] = useState(false);
 
   // Escape closes the panel — expected of anything overlaying the page, and
@@ -48,12 +53,12 @@ export function AssistantWidget({
       {open ? (
         <div
           className={cn(
-            "fixed right-3 z-50 flex w-[calc(100vw-1.5rem)] max-w-[26rem] flex-col rounded-3xl border border-border bg-card p-4 shadow-[0_18px_40px_rgb(0_0_0/0.18)] sm:right-5",
+            "fixed end-3 z-50 flex w-[calc(100vw-1.5rem)] max-w-[26rem] flex-col rounded-3xl border border-border bg-card p-4 shadow-[0_18px_40px_rgb(0_0_0/0.18)] sm:end-5",
             "max-h-[min(34rem,calc(100vh-11rem))]",
             bottomOffset,
           )}
           role="dialog"
-          aria-label="Ask the assistant"
+          aria-label={t.ask.panelLabel}
         >
           <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -61,14 +66,14 @@ export function AssistantWidget({
                 <MessageCircleQuestion className="size-4" />
               </span>
               <div className="leading-tight">
-                <p className="text-sm font-bold text-foreground">Ask</p>
-                <p className="text-[11px] text-muted-foreground">Attendance, leave and payroll</p>
+                <p className="text-sm font-bold text-foreground">{t.nav.ask}</p>
+                <p className="text-[11px] text-muted-foreground">{t.ask.widgetSubtitle}</p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              aria-label="Close"
+              aria-label={t.common.close}
               className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground transition-colors hover:text-foreground"
             >
               <X className="size-4" />
@@ -85,10 +90,10 @@ export function AssistantWidget({
         <button
           type="button"
           onClick={() => setOpen(true)}
-          aria-label="Ask a question"
+          aria-label={t.ask.openLabel}
           aria-expanded={false}
           className={cn(
-            "fixed right-3 z-50 flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.35)] transition-all hover:-translate-y-0.5 sm:right-5",
+            "fixed end-3 z-50 flex size-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.35)] transition-all hover:-translate-y-0.5 sm:end-5",
             bottomOffset,
           )}
         >

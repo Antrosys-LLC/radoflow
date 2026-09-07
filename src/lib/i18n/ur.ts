@@ -105,6 +105,22 @@ import type { Dictionary } from "./index";
  *   the thing missing there is a factory, not a department. That change is
  *   visible on the dashboard and the canteen settings screen too.
  *
+ * Added by the live floor and Ask, and least sure of these:
+ *   "Answer in" (جواب کس زبان میں) — a new label, added because a row of
+ *   language names in an app that also has a language setting reads as that
+ *   setting, and it is not one. If this does not say plainly "the assistant
+ *   will reply in this language", it has failed ·
+ *   the five effort levels, which are a dial nobody on the floor has a word
+ *   for: "Fast" (تیز), "Balanced" (متوازن), "Thorough" (مکمل), "Deeper"
+ *   (گہرا) and "Maximum" (سب سے زیادہ), which must read as one ladder from
+ *   quickest to most careful and must stay tellable apart ·
+ *   their short forms — تیز, وسط, پورا, گہرا, زیادہ — which are what the
+ *   floating widget shows on a phone and are constrained to six characters ·
+ *   "Thinking…" (سوچ رہا ہوں…), where a machine speaks in the first person ·
+ *   "(nothing heard)" (کچھ نہیں سنا), shown after a failed voice attempt, and
+ *   "Didn't catch that" (بات سمجھ نہیں آئی), which must sound like the
+ *   machine's failure rather than the speaker's
+ *
  * Names, employee codes, CNICs and money are NOT translated anywhere.
  * Neither is anything a terminal *is*: its model, serial number, IP address,
  * port, timezone, firmware string, the menu paths on its own screen, or the
@@ -490,6 +506,51 @@ const ur: Dictionary = {
     syncUnmapped: "{count} انرولمنٹ آئی ڈی ابھی کسی ملازم سے نہیں جڑیں۔",
     pushCannotBePolled:
       "یہ مشین پش موڈ میں ہے اور یہاں سے اِس کا ریکارڈ نہیں مانگا جا سکتا۔ یہ خود بھیجتی ہے — کچھ اتارنے کی ضرورت نہیں۔",
+  },
+  liveFloor: {
+    title: "فلور، براہِ راست",
+    subtitle: "آخری {count} آمد و روانگی، ہر {seconds} سیکنڈ بعد تازہ",
+    nothingYet: "فلور پر ابھی کچھ نہیں",
+    nothingYetHint: "مشین سے آتے ہی اسکین یہاں چند سیکنڈ میں دکھائی دیں گے۔",
+    unlinkedTerminalId: "غیر منسلک مشین نمبر {id}",
+    terminalFallback: "مشین",
+  },
+  ask: {
+    subtitle: "حاضری، چھٹی اور تنخواہ — سادہ زبان میں جواب",
+    widgetSubtitle: "حاضری، چھٹی اور تنخواہ",
+    panelLabel: "اسسٹنٹ سے پوچھیں",
+    openLabel: "سوال پوچھیں",
+    answerLanguage: "جواب کس زبان میں",
+    commonQuestions: "عام سوالات",
+    thinking: "سوچ رہا ہوں…",
+    listen: "سنیں",
+    readAloud: "پڑھ کر سنائیں",
+    placeholder: "یہاں سوال لکھیں…",
+    askByVoice: "بول کر پوچھیں",
+    stopListening: "سننا بند کریں",
+    heard: "کیا آپ نے یہ پوچھا؟",
+    nothingHeard: "(کچھ نہیں سنا)",
+    retry: "دوبارہ",
+    send: "بھیجیں",
+    sessionCost: "اس نشست کا خرچ: {amount}",
+    noAnswer: "ابھی جواب نہیں مل سکا۔",
+    unreachable: "اسسٹنٹ تک رابطہ نہیں ہو سکا۔ اپنا انٹرنیٹ دیکھیں۔",
+    notCaught: "بات سمجھ نہیں آئی — دوبارہ بولیں، یا سوال لکھ دیں۔",
+    notSignedIn: "آپ سائن اِن نہیں ہیں۔",
+    notAllowed: "آپ کو اسسٹنٹ استعمال کرنے کی اجازت نہیں۔",
+    badRequest: "درخواست درست نہیں تھی۔",
+    emptyQuestion: "پہلے سوال لکھیں۔",
+    questionTooLong: "یہ سوال بہت لمبا ہے۔",
+    notConfigured: "اسسٹنٹ ابھی ترتیب نہیں دیا گیا۔",
+    couldNotAnswer: "اسسٹنٹ اس کا جواب نہیں دے سکا۔",
+    noAnswerText: "میں اس کا جواب نہیں نکال سکا۔",
+    effort: {
+      low: { label: "تیز", short: "تیز", hint: "جلدی جواب" },
+      medium: { label: "متوازن", short: "وسط", hint: "دونوں کے بیچ" },
+      high: { label: "مکمل", short: "پورا", hint: "طے شدہ" },
+      xhigh: { label: "گہرا", short: "گہرا", hint: "مشکل سوالوں کے لیے" },
+      max: { label: "سب سے زیادہ", short: "زیادہ", hint: "سب سے سست اور مہنگا" },
+    },
   },
   profile: {
     title: "میری پروفائل",

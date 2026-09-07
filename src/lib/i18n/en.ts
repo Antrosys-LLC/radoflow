@@ -665,6 +665,114 @@ const en = {
     pushCannotBePolled:
       "This terminal is in push mode and cannot be polled from here. It uploads on its own — nothing needs to be pulled.",
   },
+  /**
+   * The live floor — the punch feed, as the terminals upload them.
+   *
+   * Almost everything on this screen is a value rather than a word: a name, an
+   * employee code, a terminal name, a date and a time. Those are wrapped, not
+   * keyed. What is here is the thin label around them. The IN and OUT badges
+   * are `common.checkedIn` and `common.checkedOut`, where the register and the
+   * attendance log already read them, and the link back to the terminals list
+   * is `nav.devices`, which is the name that screen already has.
+   */
+  liveFloor: {
+    title: "Live floor",
+    // `{count}` is a row count and `{seconds}` a number of seconds. Both stay
+    // Latin, and Urdu puts them elsewhere in the sentence.
+    subtitle: "The last {count} check-ins and check-outs, refreshing every {seconds} seconds",
+    nothingYet: "Nothing on the floor yet",
+    nothingYetHint: "Scans appear here within seconds of a terminal uploading them.",
+    // A punch whose enrolment id is not linked to anybody yet. `{id}` is the
+    // number the terminal sent, so it stays Latin.
+    unlinkedTerminalId: "Unlinked terminal ID {id}",
+    // Stands in for a terminal's name when a punch points at a device row this
+    // screen did not load.
+    terminalFallback: "Terminal",
+  },
+  /**
+   * Ask — the assistant's own screen, and the floating widget that carries the
+   * same conversation on to every other screen.
+   *
+   * **Two languages meet here and they are not the same language.** This group
+   * is the *interface* language: the headings, the input's placeholder, the
+   * effort dial, the cost readout, the voice confirmation. It follows the
+   * reader's profile setting, like every other screen.
+   *
+   * The three buttons at the top of the conversation choose the language the
+   * assistant *answers* in, one question at a time. They are named in their own
+   * scripts by `LANGUAGE_LABELS`, and the utterances that belong to that
+   * language — the preset questions and the greeting that invites one — live in
+   * `assistant-conversation.tsx` beside them, not here. Nothing in this group
+   * drives that selector, and it drives nothing here: a person asking for one
+   * answer in Urdu must not have their whole app flip.
+   */
+  ask: {
+    // The screen's heading is `nav.ask` — the name the sidebar already gives
+    // it. Only the line under it is this screen's own.
+    subtitle: "Attendance, leave and payroll — answered in plain language",
+    // The same line in the floating widget, where there is room for less.
+    widgetSubtitle: "Attendance, leave and payroll",
+    // Labels for assistive technology on the widget's panel and its button.
+    panelLabel: "Ask the assistant",
+    openLabel: "Ask a question",
+    // Above the answer-language buttons. Added when this screen was
+    // translated: without it the row reads as an app-language switch, which is
+    // the one thing it is not.
+    answerLanguage: "Answer in",
+    commonQuestions: "Common questions",
+    thinking: "Thinking…",
+    listen: "Listen",
+    readAloud: "Read aloud",
+    placeholder: "Type your question…",
+    askByVoice: "Ask by voice",
+    stopListening: "Stop listening",
+    // The voice confirmation. Nothing spoken is sent until it is read back,
+    // because a misheard word cannot be proof-read afterwards.
+    heard: "Did you ask this?",
+    nothingHeard: "(nothing heard)",
+    retry: "Try again",
+    send: "Send",
+    // `{amount}` arrives already carrying "Rs" and its digits, the way the
+    // attendance log and the pay rates screen write money — the currency and
+    // the figure are one Latin run and are not split by a translation.
+    sessionCost: "This session: {amount}",
+    // The three failures a reader can act on. All three are toasts.
+    noAnswer: "Could not get an answer just now.",
+    unreachable: "Could not reach the assistant. Check your connection.",
+    notCaught: "Didn't catch that — try again, or type your question.",
+    /*
+     * The effort dial, keyed by the ladder's own values so the component can
+     * look each one up directly. `src/lib/assistant/models.ts` holds the order
+     * and the allowlist; the words are here, once, in each language.
+     *
+     * `short` is what the compact widget renders in place of `label`: five
+     * buttons at ~56px on a 360px phone, where three of the five full English
+     * labels overflow. `src/lib/i18n/index.test.ts` pins how long a `short`
+     * may be.
+     */
+    // The API route's own refusals, which reach the reader as a toast. The
+    // `error.message` a misconfigured key or a failed model call carries is
+    // passed through in English instead: it is developer-facing, and an
+    // invented sentence around one would hide what actually failed.
+    notSignedIn: "Not signed in.",
+    notAllowed: "Not allowed to use the assistant.",
+    badRequest: "Invalid request body.",
+    emptyQuestion: "Ask a question first.",
+    questionTooLong: "That question is too long.",
+    notConfigured: "Assistant is not configured.",
+    couldNotAnswer: "The assistant could not answer that.",
+    // Stands in when the model returns nothing at all. This one is an *answer*
+    // — it is shown in the thread where an answer would be — so the route
+    // reads it in the answer language, not the interface language.
+    noAnswerText: "I couldn't work out an answer to that.",
+    effort: {
+      low: { label: "Fast", short: "Fast", hint: "A quick answer" },
+      medium: { label: "Balanced", short: "Mid", hint: "Between the two" },
+      high: { label: "Thorough", short: "Full", hint: "Default" },
+      xhigh: { label: "Deeper", short: "Deep", hint: "For hard questions" },
+      max: { label: "Maximum", short: "Max", hint: "Slowest and dearest" },
+    },
+  },
   profile: {
     title: "My profile",
     subtitle: "Your record as the office holds it",

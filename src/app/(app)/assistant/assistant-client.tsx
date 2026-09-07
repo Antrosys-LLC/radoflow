@@ -3,6 +3,7 @@
 import { MessageCircleQuestion } from "lucide-react";
 
 import { AssistantConversation } from "@/components/assistant/assistant-conversation";
+import { useDictionary } from "@/components/language-provider";
 import { Card, SectionTitle } from "@/components/ui-kit";
 
 /**
@@ -14,14 +15,12 @@ import { Card, SectionTitle } from "@/components/ui-kit";
  * AssistantConversation so the two surfaces cannot drift apart.
  */
 export function AssistantClient({ firstName }: { firstName: string }) {
+  const t = useDictionary();
+
   return (
     <div className="pb-6">
       <Card className="p-4 sm:p-6">
-        <SectionTitle
-          icon={MessageCircleQuestion}
-          title="Ask"
-          subtitle="Attendance, leave and payroll — answered in plain language"
-        />
+        <SectionTitle icon={MessageCircleQuestion} title={t.nav.ask} subtitle={t.ask.subtitle} />
         <AssistantConversation firstName={firstName} />
       </Card>
     </div>

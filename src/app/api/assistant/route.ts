@@ -5,6 +5,7 @@ import { ASK_MODEL, costInPkr, resolveEffort, type UsageTotals } from "@/lib/ass
 import { buildAssistantTools } from "@/lib/assistant/tools";
 import { getSession } from "@/lib/auth/session";
 import { requireAnthropicEnv } from "@/lib/env";
+import { dictionaryFor, resolveLanguage } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -78,17 +79,29 @@ function readHistory(value: unknown): Anthropic.Beta.BetaMessageParam[] {
 
 export async function POST(request: NextRequest) {
   const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  /*
+   * Two languages are in play and they are not the same one. Everything this
+   * route *says about itself* — a refusal, a failure — is interface text and
+   * is read in the caller's own profile language, like the screen around the
+   * toast it lands in. The one exception is the stand-in for an empty answer
+   * further down, which is read in the language the answer was asked for.
+   *
+   * Nobody signed in has a profile to read, so that case is English.
+   */
+  if (!session) {
+    return NextResponse.json({ error: dictionaryFor("en").ask.notSignedIn }, { status: 401 });
+  }
+  const t = dictionaryFor(session.profile.language);
 
   if (!session.isSuperuser && !session.permissions.has("assistant.ask")) {
-    return NextResponse.json({ error: "Not allowed to use the assistant." }, { status: 403 });
+    return NextResponse.json({ error: t.ask.notAllowed }, { status: 403 });
   }
 
   let body: { question?: unknown; language?: unknown; history?: unknown; effort?: unknown };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    return NextResponse.json({ error: t.ask.badRequest }, { status: 400 });
   }
 
   const question = typeof body.question === "string" ? body.question.trim() : "";
@@ -96,10 +109,10 @@ export async function POST(request: NextRequest) {
   const effort = resolveEffort(body.effort);
 
   if (!question) {
-    return NextResponse.json({ error: "Ask a question first." }, { status: 400 });
+    return NextResponse.json({ error: t.ask.emptyQuestion }, { status: 400 });
   }
   if (question.length > MAX_QUESTION_LENGTH) {
-    return NextResponse.json({ error: "That question is too long." }, { status: 400 });
+    return NextResponse.json({ error: t.ask.questionTooLong }, { status: 400 });
   }
 
   const history = readHistory(body.history);
@@ -109,7 +122,7 @@ export async function POST(request: NextRequest) {
     apiKey = requireAnthropicEnv();
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Assistant is not configured." },
+      { error: error instanceof Error ? error.message : t.ask.notConfigured },
       { status: 503 },
     );
   }
@@ -180,12 +193,14 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
-      answer: text || "I couldn't work out an answer to that.",
+      // An answer, not a message about this route — so it is read in the
+      // language the answer was asked for, not the reader's interface language.
+      answer: text || dictionaryFor(resolveLanguage(language)).ask.noAnswerText,
       costPkr: costInPkr(totals),
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "The assistant could not answer that." },
+      { error: error instanceof Error ? error.message : t.ask.couldNotAnswer },
       { status: 502 },
     );
   }

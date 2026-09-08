@@ -78,6 +78,14 @@ export interface ItemRow {
   reviewNote: string | null;
   /** When this person was actually handed their cash. Null means not yet. */
   paidAt: string | null;
+  /**
+   * What actually left the cash box, and how far that was from `net`. Null
+   * until paid — zero would mean "paid exactly right", which is a different
+   * statement from "not paid yet".
+   */
+  paidAmount: number | null;
+  paidDifference: number | null;
+  paidNote: string | null;
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -465,7 +473,11 @@ function Total({
 function CashPaymentTally({ items }: { items: ItemRow[] }) {
   const t = useDictionary();
   const paid = items.filter((item) => item.paidAt !== null);
-  const paidAmount = paid.reduce((total, item) => total + item.net, 0);
+  // What actually left the cash box, not what was owed — those are the same
+  // figure only when every line was paid to the rupee.
+  const paidAmount = paid.reduce((total, item) => total + (item.paidAmount ?? item.net), 0);
+  const differing = paid.filter((item) => (item.paidDifference ?? 0) !== 0);
+  const differenceNet = differing.reduce((total, item) => total + (item.paidDifference ?? 0), 0);
   const totalAmount = items.reduce((total, item) => total + item.net, 0);
   const allPaid = paid.length === items.length;
 
@@ -498,6 +510,18 @@ function CashPaymentTally({ items }: { items: ItemRow[] }) {
           </span>
         ) : null}
       </p>
+
+      {differing.length > 0 ? (
+        <p className="ms-auto shrink-0 text-xs font-bold text-warning">
+          <Fill
+            template={t.payroll.differencesTotal}
+            values={{
+              count: differing.length,
+              amount: `${differenceNet > 0 ? "+" : ""}${formatPKR(differenceNet)}`,
+            }}
+          />
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -516,9 +540,11 @@ function PaidCell({
 }) {
   const t = useDictionary();
 
+  const difference = item.paidDifference ?? 0;
+
   if (item.paidAt) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span
           title={formatDateTime(item.paidAt)}
           className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-bold text-success"
@@ -526,6 +552,23 @@ function PaidCell({
           <Check className="size-3" />
           <Latin>{formatDate(item.paidAt)}</Latin>
         </span>
+
+        {/* A line paid short or over says so on the row. Nobody re-reads a
+            payslip they have already handed out. */}
+        {difference !== 0 ? (
+          <span
+            title={item.paidNote ?? undefined}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold",
+              difference < 0 ? "bg-danger-soft text-danger" : "bg-warning-soft text-warning",
+            )}
+          >
+            <Fill
+              template={difference < 0 ? t.payroll.shortBy : t.payroll.overBy}
+              values={{ amount: formatPKR(Math.abs(difference)) }}
+            />
+          </span>
+        ) : null}
         {canPay ? (
           <button
             type="button"
@@ -544,18 +587,109 @@ function PaidCell({
     return <span className="text-xs text-muted-foreground">{t.payroll.notYet}</span>;
   }
 
+  return <PayOutButton item={item} pending={pending} act={act} />;
+}
+
+/**
+ * Handing over the cash for one line.
+ *
+ * One tap when the calculated figure is what was handed over — which is most
+ * of the time, and making that case type a number would get the number typed
+ * carelessly. The amount and a reason appear only when the cashier says the
+ * figure was different, so what is recorded is what actually happened rather
+ * than what the run expected.
+ */
+function PayOutButton({
+  item,
+  pending,
+  act,
+}: {
+  item: ItemRow;
+  pending: boolean;
+  act: (fn: () => Promise<PayrollResultMessage>, loading: string) => void;
+}) {
+  const t = useDictionary();
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState(String(item.net));
+  const [note, setNote] = useState("");
+
+  const typed = Number(amount);
+  const difference = Number.isFinite(typed) ? typed - item.net : 0;
+
+  function record() {
+    setOpen(false);
+    act(
+      () => markItemPaid(item.id, Number.isFinite(typed) ? typed : item.net, note),
+      fill(t.payroll.markingPaid, { name: item.full_name }),
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-xl bg-success px-3 py-1.5 text-xs font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-50"
+      >
+        <Banknote className="size-3.5" />
+        {t.payroll.markPaid}
+      </button>
+    );
+  }
+
   return (
-    <button
-      type="button"
-      disabled={pending}
-      onClick={() =>
-        act(() => markItemPaid(item.id), fill(t.payroll.markingPaid, { name: item.full_name }))
-      }
-      className="inline-flex items-center gap-1.5 rounded-xl bg-success px-3 py-1.5 text-xs font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-50"
-    >
-      <Banknote className="size-3.5" />
-      {t.payroll.markPaid}
-    </button>
+    <div className="min-w-[13rem] space-y-1.5">
+      <label className="block">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+          {t.payroll.amountPaid}
+        </span>
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={amount}
+          dir="ltr"
+          autoFocus
+          onChange={(event) => setAmount(event.target.value)}
+          className="mt-0.5 w-full rounded-xl border border-input bg-background px-2.5 py-1.5 font-latin text-xs outline-none focus:border-primary"
+        />
+      </label>
+
+      {/* The reason is asked for only when there is a difference to explain —
+          and then it is the whole point of the record. */}
+      {difference !== 0 ? (
+        <input
+          type="text"
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder={t.payroll.paidReasonPlaceholder}
+          aria-label={t.payroll.paidReason}
+          className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary"
+        />
+      ) : (
+        <p className="text-[10px] text-muted-foreground">{t.payroll.amountPaidHint}</p>
+      )}
+
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={record}
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-success px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+        >
+          <Banknote className="size-3.5" />
+          {t.payroll.confirmPay}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-xl px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
+        >
+          {t.common.cancel}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -720,6 +854,33 @@ function PayslipSheet({ item, onClose }: { item: ItemRow; onClose: () => void })
                 />
               </p>
             </div>
+          </div>
+        ) : null}
+
+        {item.paidAmount !== null && (item.paidDifference ?? 0) !== 0 ? (
+          <div
+            className={cn(
+              "mt-4 rounded-2xl px-4 py-3 text-sm",
+              (item.paidDifference ?? 0) < 0
+                ? "bg-danger-soft text-danger"
+                : "bg-warning-soft text-warning",
+            )}
+          >
+            <p className="font-bold">
+              <Fill
+                template={(item.paidDifference ?? 0) < 0 ? t.payroll.shortBy : t.payroll.overBy}
+                values={{ amount: formatPKR(Math.abs(item.paidDifference ?? 0)) }}
+              />
+            </p>
+            <p className="mt-0.5 text-foreground">
+              <Latin>{`${formatPKR(item.paidAmount)} / ${formatPKR(item.net)}`}</Latin>
+              {item.paidNote ? (
+                <>
+                  {" — "}
+                  <Latin>{item.paidNote}</Latin>
+                </>
+              ) : null}
+            </p>
           </div>
         ) : null}
 

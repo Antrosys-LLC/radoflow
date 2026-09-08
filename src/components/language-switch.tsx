@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check, Languages } from "lucide-react";
 import { toast } from "sonner";
 
-import { setLanguage } from "@/app/(app)/me/profile/actions";
+import { setLanguage } from "@/app/(app)/me/settings/actions";
 import { useDictionary, useLanguage } from "@/components/language-provider";
 import { dictionaryFor, LANGUAGE_LABELS, type LanguageCode } from "@/lib/i18n";
 import { cn } from "@/lib/utils";

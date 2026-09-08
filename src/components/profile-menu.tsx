@@ -83,13 +83,13 @@ export function ProfileMenu({ session }: { session: Session }) {
           </div>
 
           <Link
-            href="/me/profile"
+            href="/me/settings"
             onClick={() => setOpen(false)}
             role="menuitem"
             className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-secondary"
           >
             <UserCircle className="size-4" />
-            {t.nav.myProfile}
+            {t.nav.settings}
           </Link>
 
           <form action={signOut}>

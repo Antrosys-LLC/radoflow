@@ -168,7 +168,7 @@ const GOVERNANCE_MODULES: readonly NavItem[] = [
  * their own payslip to read.
  */
 const SELF_MODULES: readonly NavItem[] = [
-  { href: "/me/profile", labelKey: "myProfile", icon: "profile", requires: [] },
+  { href: "/me/settings", labelKey: "settings", icon: "settings", requires: [] },
 ];
 
 function visible(items: readonly NavItem[], session: Session | null): NavItem[] {
@@ -200,5 +200,5 @@ export function landingPathFor(session: Session | null): string {
   if (session.permissions.has("attendance.view.all")) return "/attendance";
   if (session.permissions.has("attendance.view")) return "/attendance";
   if (session.permissions.has("payroll.view")) return "/payroll";
-  return "/me/profile";
+  return "/me/settings";
 }

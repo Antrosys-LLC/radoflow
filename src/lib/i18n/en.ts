@@ -37,7 +37,7 @@ const en = {
     payroll: "Payroll",
     users: "User Accounts",
     roles: "Roles & Access",
-    myProfile: "My Profile",
+    settings: "Settings",
     signOut: "Sign out",
   },
   common: {
@@ -1059,6 +1059,18 @@ const en = {
     undo: "Undo",
     undoing: "Undoing…",
     notYet: "Not yet",
+    // What actually left the cash box, against what was worked out. A cash
+    // payroll does not always hand over the calculated figure to the rupee,
+    // and the difference used to live in somebody's head.
+    amountPaid: "Amount paid",
+    amountPaidHint: "Leave it as it is if you handed over the full amount",
+    paidReason: "Why the difference",
+    paidReasonPlaceholder: "No change available",
+    confirmPay: "Record payment",
+    shortBy: "{amount} short",
+    overBy: "{amount} over",
+    paidExactly: "Paid in full",
+    differencesTotal: "{count} lines differ from the calculated amount · {amount} net",
     markPaid: "Mark paid",
     markingPaid: "Marking {name} paid…",
     newPeriodTitle: "New pay period",
@@ -1398,6 +1410,13 @@ const en = {
     notRecorded: "Not recorded",
     managedByAdmin:
       "These details are managed by your administrator. Contact them to make a change.",
+    // Nothing on this screen is editable by the person reading it — the
+    // office owns the record — so it says plainly who to reach instead of
+    // leaving somebody hunting for a button that does not exist.
+    contactTitle: "Need something changed here?",
+    contactBody: "Everything on this screen except the language is kept by the office. To have any of it corrected, call or email — do not wait for it to appear on a payslip.",
+    contactCall: "Call {number}",
+    contactEmail: "Email {address}",
     language: "Language",
     languageHint: "Changes every screen. Names and numbers stay as they are.",
     languageSaved: "Language changed.",

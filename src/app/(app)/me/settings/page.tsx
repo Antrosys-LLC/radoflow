@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { BadgeCheck } from "lucide-react";
+import { BadgeCheck, Mail, Phone } from "lucide-react";
 
+import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
 import { Avatar, Card } from "@/components/ui-kit";
 import { requireSession } from "@/lib/auth/session";
@@ -11,13 +12,21 @@ import { formatDate, formatPKR } from "@/lib/time";
 import { LanguageToggle } from "./language-toggle";
 
 export const metadata: Metadata = {
-  title: { absolute: "My Profile | Rado Dyeing and Textile" },
-  description: "Your personal details and employment record.",
+  title: { absolute: "Settings | Rado Dyeing and Textile" },
+  description: "Your record, your interface language, and who to call to have any of it changed.",
 };
+
+/**
+ * Who to reach when something on this screen is wrong. Antrosys maintains the
+ * system, so these are theirs rather than the factory office's — the office is
+ * usually the one asking.
+ */
+const SUPPORT_PHONE = "0328 8123733";
+const SUPPORT_EMAIL = "umar@antrosys.com";
 
 export const dynamic = "force-dynamic";
 
-export default async function MyProfilePage() {
+export default async function SettingsPage() {
   const session = await requireSession();
   const t = dictionaryFor(session.profile.language);
   const supabase = await createClient();
@@ -123,6 +132,37 @@ export default async function MyProfilePage() {
        * that record instead of inside it, where a Save button would live.
        */}
       <LanguageToggle />
+
+      {/*
+       * Where to go when something here is wrong.
+       *
+       * Every fact above is owned by the office, and the page says so — but
+       * "managed by an administrator" is not an instruction, and a wrong CNIC
+       * or a wrong salary is not something to sit on. Both routes are spelled
+       * out, and both are wrapped: a phone number reordered by the
+       * bidirectional algorithm is a number that does not ring.
+       */}
+      <Card className="p-4 sm:p-6">
+        <h2 className="text-sm font-bold text-foreground">{t.profile.contactTitle}</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{t.profile.contactBody}</p>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <a
+            href={`tel:${SUPPORT_PHONE.replace(/\s/g, "")}`}
+            className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-all hover:-translate-y-0.5"
+          >
+            <Phone className="size-4" aria-hidden />
+            <Fill template={t.profile.contactCall} values={{ number: SUPPORT_PHONE }} />
+          </a>
+          <a
+            href={`mailto:${SUPPORT_EMAIL}`}
+            className="inline-flex items-center gap-2 rounded-2xl bg-secondary px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:text-primary"
+          >
+            <Mail className="size-4" aria-hidden />
+            <Fill template={t.profile.contactEmail} values={{ address: SUPPORT_EMAIL }} />
+          </a>
+        </div>
+      </Card>
     </div>
   );
 }

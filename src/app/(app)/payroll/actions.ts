@@ -292,12 +292,49 @@ export async function markPeriodPaid(periodId: string): Promise<PayrollResultMes
  * reach everyone, and the office needs to know who still hasn't been paid
  * while that is still in progress — not only once the run is fully settled.
  */
-export async function markItemPaid(itemId: string): Promise<PayrollResultMessage> {
+/**
+ * Records that one person has actually been handed their cash.
+ *
+ * `amount` is what left the cash box, which is not always the calculated
+ * figure to the rupee: a note is not available, an advance is settled at the
+ * window, a supervisor rounds up. Until now that difference lived in somebody
+ * head and the next month's argument had nothing to check against. Passing
+ * nothing means the calculated figure was paid exactly, which is the common
+ * case and stays one tap.
+ *
+ * The difference itself is not stored — the column is generated from
+ * `paid_amount - net`, so the two can never drift apart.
+ */
+export async function markItemPaid(
+  itemId: string,
+  amount?: number | null,
+  note?: string | null,
+): Promise<PayrollResultMessage> {
   const session = await requirePermission("payroll.pay");
 
   const supabase = await createClient();
   const guardError = await requirePayableItem(supabase, itemId);
   if (guardError) return { ok: false, message: guardError };
+
+  if (amount != null && (!Number.isFinite(amount) || amount < 0)) {
+    return { ok: false, message: "The amount paid cannot be negative." };
+  }
+
+  /*
+   * With no amount given, the calculated net is recorded as what was paid
+   * rather than left null. A row saying "paid" with no figure beside it is the
+   * state this change exists to remove: every paid line should be able to
+   * answer "how much", and for the ordinary case the answer is the net.
+   */
+  let paidAmount = amount ?? null;
+  if (paidAmount === null) {
+    const { data: item } = await supabase
+      .from("payroll_items")
+      .select("net")
+      .eq("id", itemId)
+      .maybeSingle();
+    paidAmount = item ? Number(item.net) : null;
+  }
 
   /*
    * `.select()` so the affected rows come back and can be counted.
@@ -310,14 +347,37 @@ export async function markItemPaid(itemId: string): Promise<PayrollResultMessage
    */
   const { data, error } = await supabase
     .from("payroll_items")
-    .update({ paid_at: new Date().toISOString(), paid_by: session.userId })
+    .update({
+      paid_at: new Date().toISOString(),
+      paid_by: session.userId,
+      paid_amount: paidAmount,
+      paid_note: note?.trim() || null,
+    })
     .eq("id", itemId)
-    .select("id");
+    .select("id, net, paid_amount, paid_difference");
 
   if (error) return { ok: false, message: error.message };
   if (!data || data.length === 0) return { ok: false, message: NOT_WRITTEN };
 
   revalidatePath("/payroll");
+
+  /*
+   * A difference is said out loud rather than left to be noticed. Somebody
+   * handing out cash all afternoon will not re-read a row they have already
+   * moved past, and a short payment nobody mentioned is exactly the thing that
+   * turns into a dispute a month later.
+   */
+  const difference = Number(data[0]?.paid_difference ?? 0);
+  if (difference !== 0) {
+    const short = difference < 0;
+    return {
+      ok: true,
+      message: `Marked as paid. That is ${formatPKR(Math.abs(difference))} ${
+        short ? "short of" : "over"
+      } the calculated amount, and the difference is recorded on the payslip.`,
+    };
+  }
+
   return { ok: true, message: "Marked as paid." };
 }
 
@@ -328,7 +388,7 @@ export async function markItemUnpaid(itemId: string): Promise<PayrollResultMessa
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("payroll_items")
-    .update({ paid_at: null, paid_by: null })
+    .update({ paid_at: null, paid_by: null, paid_amount: null, paid_note: null })
     .eq("id", itemId)
     .select("id");
 

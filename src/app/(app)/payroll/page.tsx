@@ -86,6 +86,9 @@ export default async function PayrollPage({
           flaggedDays: (row.flagged_days ?? []) as ItemRow["flaggedDays"],
           reviewNote: row.review_note,
           paidAt: row.paid_at,
+          paidAmount: row.paid_amount === null ? null : Number(row.paid_amount),
+          paidDifference: row.paid_difference === null ? null : Number(row.paid_difference),
+          paidNote: row.paid_note,
         };
       })
       .sort((a, b) => b.net - a.net);

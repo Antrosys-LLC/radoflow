@@ -1,7 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { ASK_MODEL, costInPkr, resolveEffort, type UsageTotals } from "@/lib/assistant/models";
+import { describeAskContext, readAskContext } from "@/lib/assistant/context";
+import {
+  ASK_MODEL,
+  costInPkr,
+  costInUsd,
+  resolveEffort,
+  type UsageTotals,
+} from "@/lib/assistant/models";
 import { buildAssistantTools } from "@/lib/assistant/tools";
 import { getSession } from "@/lib/auth/session";
 import { requireAnthropicEnv } from "@/lib/env";
@@ -97,7 +104,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: t.ask.notAllowed }, { status: 403 });
   }
 
-  let body: { question?: unknown; language?: unknown; history?: unknown; effort?: unknown };
+  let body: {
+    question?: unknown;
+    language?: unknown;
+    history?: unknown;
+    effort?: unknown;
+    context?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -116,6 +129,12 @@ export async function POST(request: NextRequest) {
   }
 
   const history = readHistory(body.history);
+  /*
+   * What the person is looking at, when they asked from a record rather than
+   * from the floating widget. Validated rather than trusted — it arrives from
+   * the browser exactly as the question does. See lib/assistant/context.ts.
+   */
+  const context = readAskContext(body.context);
 
   let apiKey: string;
   try {
@@ -131,7 +150,16 @@ export async function POST(request: NextRequest) {
   const { tools, contextNote } = buildAssistantTools(supabase);
 
   const languageInstruction = LANGUAGE_INSTRUCTIONS[language] ?? LANGUAGE_INSTRUCTIONS["en"];
-  const system = `${SYSTEM_PROMPT_BASE}\n\n${contextNote}\n\n${languageInstruction}`;
+
+  /*
+   * The screen's own context goes last, after the general instructions and
+   * the tool note: it is the most specific thing the model is told, and the
+   * thing a question asked from a record is most likely to be about.
+   */
+  const screenContext = describeAskContext(context);
+  const system = [SYSTEM_PROMPT_BASE, contextNote, languageInstruction, screenContext]
+    .filter(Boolean)
+    .join("\n\n");
 
   const client = new Anthropic({ apiKey });
 
@@ -184,12 +212,40 @@ export async function POST(request: NextRequest) {
       .join("\n")
       .trim();
 
+    /*
+     * One row per call, with the tokens it actually used.
+     *
+     * The Anthropic console reports account spend with a delay and knows
+     * nothing about who asked or from which screen. This is the app's own
+     * record, so a bill can be checked rather than believed and the cost can
+     * be attributed to a person and a screen. The dollar figure is stored
+     * rather than the rupee one: the rate and the tax are settings the office
+     * changes, and a stored dollar amount can be re-priced later where a
+     * stored rupee amount cannot.
+     */
+    await supabase.from("assistant_usage").insert({
+      profile_id: session.userId,
+      surface: context?.surface ?? "general",
+      model: ASK_MODEL,
+      input_tokens: totals.input,
+      output_tokens: totals.output,
+      cache_read: totals.cacheRead,
+      cache_write: totals.cacheWrite,
+      cost_usd: costInUsd(totals),
+    });
+
     await supabase.from("audit_log").insert({
       actor_id: session.userId,
       action: "assistant.ask",
       entity_type: "assistant_query",
       note: question.slice(0, 500),
-      after: { language, effort, cost_pkr: costInPkr(totals), answer: text.slice(0, 2000) },
+      after: {
+        language,
+        effort,
+        surface: context?.surface ?? "general",
+        cost_pkr: costInPkr(totals),
+        answer: text.slice(0, 2000),
+      },
     });
 
     return NextResponse.json({

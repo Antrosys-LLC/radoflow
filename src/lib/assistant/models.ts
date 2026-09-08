@@ -90,14 +90,26 @@ export interface UsageTotals {
   cacheWrite: number;
 }
 
-/** What one answer cost, in whole rupees. */
-export function costInPkr(usage: UsageTotals): number {
-  const usd =
+/**
+ * What one answer cost Anthropic, in dollars, before tax or conversion.
+ *
+ * Logged per call rather than only converted to rupees, because the rupee
+ * figure depends on a rate and a tax the office can change: a stored dollar
+ * amount can be re-priced later, a stored rupee amount cannot.
+ */
+export function costInUsd(usage: UsageTotals): number {
+  return (
     (usage.input * USD_PER_MILLION.input +
       usage.output * USD_PER_MILLION.output +
       usage.cacheRead * USD_PER_MILLION.cacheRead +
       usage.cacheWrite * USD_PER_MILLION.cacheWrite) /
-    1_000_000;
+    1_000_000
+  );
+}
+
+/** What one answer cost, in whole rupees. */
+export function costInPkr(usage: UsageTotals): number {
+  const usd = costInUsd(usage);
 
   /*
    * Tax first, then conversion. Both are flat multipliers so the arithmetic is

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Ban, Check, Clock, HelpCircle, ListChecks } from "lucide-react";
 
+import { AskAbout } from "@/components/assistant/ask-about";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
@@ -97,7 +98,25 @@ export function ScanLog({ rows }: { rows: ScanLogRow[] }) {
 
   return (
     <Card className="p-4 sm:p-6">
-      <SectionTitle icon={ListChecks} title={t.canteenLog.title} subtitle={t.canteenLog.subtitle} />
+      <SectionTitle
+        icon={ListChecks}
+        title={t.canteenLog.title}
+        subtitle={t.canteenLog.subtitle}
+        action={
+          <AskAbout
+            context={{
+              surface: "canteen",
+              subject: t.canteenLog.title,
+              facts: {
+                scansToday: counts.all,
+                served: counts.served,
+                secondAttempts: counts.duplicate,
+                notRecognised: counts.unknown_person,
+              },
+            }}
+          />
+        }
+      />
 
       <div className="mt-4 flex flex-wrap gap-2">
         {FILTERS.map((option) => (

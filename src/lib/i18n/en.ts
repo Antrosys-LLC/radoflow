@@ -870,6 +870,12 @@ const en = {
     // it. Only the line under it is this screen's own.
     subtitle: "Attendance, leave and payroll — answered in plain language",
     // The same line in the floating widget, where there is room for less.
+    // The assistant attached to one record, rather than the floating widget.
+    // "Ask Claude" names the thing doing the answering, which is what people
+    // on the floor already call it.
+    askClaude: "Ask Claude",
+    askAboutThis: "Ask Claude about this record",
+    askAboutGreeting: "Ask me anything about this — I can see what is on your screen.",
     widgetSubtitle: "Attendance, leave and payroll",
     // Labels for assistive technology on the widget's panel and its button.
     panelLabel: "Ask the assistant",
@@ -1414,7 +1420,8 @@ const en = {
     // office owns the record — so it says plainly who to reach instead of
     // leaving somebody hunting for a button that does not exist.
     contactTitle: "Need something changed here?",
-    contactBody: "Everything on this screen except the language is kept by the office. To have any of it corrected, call or email — do not wait for it to appear on a payslip.",
+    contactBody:
+      "Everything on this screen except the language is kept by the office. To have any of it corrected, call or email — do not wait for it to appear on a payslip.",
     contactCall: "Call {number}",
     contactEmail: "Email {address}",
     language: "Language",

@@ -8,6 +8,7 @@ import { ExportButtons } from "@/components/export-buttons";
 import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
 import { matchesPerson } from "@/lib/people/match";
+import { AskAbout } from "@/components/assistant/ask-about";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { dictionaryFor, type Dictionary } from "@/lib/i18n";
@@ -259,6 +260,14 @@ export default async function AttendanceLogPage({
           subtitle={canSeeEveryone ? t.logs.subtitleAll : t.logs.subtitleMine}
           action={
             <div className="flex flex-wrap items-center gap-2">
+              <AskAbout
+                label={`${from} – ${to}`}
+                context={{
+                  surface: "attendance-log",
+                  subject: `${from} to ${to}`,
+                  facts: { from, to, people: visible.length, days: days.length },
+                }}
+              />
               <ExportButtons kind="attendance" params={{ from, to, dept: selectedDepts[0] }} />
               <Link
                 href="/attendance"

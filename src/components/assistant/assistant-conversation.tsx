@@ -9,6 +9,7 @@ import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
 import { cn } from "@/lib/utils";
 import { DEFAULT_EFFORT, EFFORT_LEVELS, type EffortLevel } from "@/lib/assistant/models";
+import type { AskContext } from "@/lib/assistant/context";
 import { LANGUAGE_LABELS, type LanguageCode } from "@/lib/i18n";
 
 /**
@@ -43,7 +44,7 @@ const SPEECH_LANG: Record<AnswerLanguage, string> = {
   en: "en-US",
 };
 
-interface Preset {
+export interface Preset {
   ur: string;
   romanUr: string;
   en: string;
@@ -138,10 +139,25 @@ function initialAnswerLanguage(): AnswerLanguage {
 export function AssistantConversation({
   firstName,
   compact = false,
+  context,
+  presets,
+  greeting,
 }: {
   firstName: string;
   /** The floating widget: tighter spacing, presets only while the thread is empty. */
   compact?: boolean;
+  /**
+   * The record the question is about, when it was asked from one.
+   *
+   * Sent with every question in the thread rather than only the first: a
+   * follow-up — "and the month before?" — is still about the same person, and
+   * a thread that forgets which one after one turn is worse than no context.
+   */
+  context?: AskContext;
+  /** Questions worth offering here. Defaults to the four general ones. */
+  presets?: Preset[];
+  /** The opening line, when the general greeting would be too vague. */
+  greeting?: string;
 }) {
   const t = useDictionary();
   const [answerLanguage, setAnswerLanguage] = useState<AnswerLanguage>(initialAnswerLanguage);
@@ -200,7 +216,13 @@ export function AssistantConversation({
       const response = await fetch("/api/assistant", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: trimmed, language: answerLanguage, history, effort }),
+        body: JSON.stringify({
+          question: trimmed,
+          language: answerLanguage,
+          history,
+          effort,
+          ...(context ? { context } : {}),
+        }),
       });
       const body = (await response.json().catch(() => null)) as {
         answer?: string;
@@ -349,7 +371,7 @@ export function AssistantConversation({
             {t.ask.commonQuestions}
           </p>
           <div className={cn("grid gap-2", !compact && "sm:grid-cols-2")}>
-            {PRESETS.map((preset) => (
+            {(presets ?? PRESETS).map((preset) => (
               <button
                 key={preset.en}
                 type="button"
@@ -381,7 +403,7 @@ export function AssistantConversation({
               dir={answerIsRtl ? "rtl" : "ltr"}
               className="rounded-2xl bg-secondary px-4 py-6 text-center text-sm text-muted-foreground"
             >
-              {GREETING[answerLanguage](firstName)}
+              {greeting ?? GREETING[answerLanguage](firstName)}
             </p>
           )
         ) : (

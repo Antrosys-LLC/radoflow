@@ -634,6 +634,10 @@ const roman: Dictionary = {
   },
   ask: {
     subtitle: "Haazri, chutti aur tankhwah — sadi zaban mein jawab",
+    askClaude: "Claude se poochein",
+    askAboutThis: "Is record ke bare mein Claude se poochein",
+    askAboutGreeting:
+      "Is ke bare mein jo poochna ho poochein — jo aap ki screen par hai woh mujhe nazar aa raha hai.",
     widgetSubtitle: "Haazri, chutti aur tankhwah",
     panelLabel: "Assistant se poochhein",
     openLabel: "Sawal poochhein",
@@ -1068,7 +1072,8 @@ const roman: Dictionary = {
     managedByAdmin:
       "Yeh tafseelat aap ka admin sambhalta hai. Tabdeeli ke liye un se rabta karein.",
     contactTitle: "Yahan kuch tabdeel karwana hai?",
-    contactBody: "Is screen par zaban ke ilawa sab kuch daftar ke paas hai. Kisi cheez ki durusti ke liye phone ya email karein — parchi par aane ka intezar na karein.",
+    contactBody:
+      "Is screen par zaban ke ilawa sab kuch daftar ke paas hai. Kisi cheez ki durusti ke liye phone ya email karein — parchi par aane ka intezar na karein.",
     contactCall: "{number} par call karein",
     contactEmail: "{address} par email karein",
     language: "Zaban",

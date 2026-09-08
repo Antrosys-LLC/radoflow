@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import { Banknote, KeyRound, Pencil, Plus, Search, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { AskAbout } from "@/components/assistant/ask-about";
 import { CnicInput, PasswordInput } from "@/components/credential-inputs";
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
@@ -391,6 +392,31 @@ function UserCard({
           <Banknote className="size-3.5" />
           {t.users.payAndDuty}
         </button>
+
+        {/* Attached to the person rather than to a screen: "how many days was
+            he absent last month" is a question about him, and the assistant
+            can go and look once it knows which "him". */}
+        <AskAbout
+          variant="icon"
+          label={user.full_name}
+          context={{
+            surface: "person",
+            subject: `${user.full_name} (${user.employee_code})`,
+            facts: {
+              employeeCode: user.employee_code,
+              role: user.roleName,
+              status: user.status,
+              paidAs: user.workerType,
+              payClass: user.payClass,
+              monthlySalaryRs: user.monthlySalary,
+              hourlyRateRs: user.hourlyRate,
+              dutyHours: user.dutyHours,
+              sundayPolicy: user.sundayPolicy,
+              earnsOvertime: user.overtimeEligible,
+              attendanceKept: user.requiresAttendance,
+            },
+          }}
+        />
 
         {canAdminister ? <PasswordReset userId={user.id} name={user.full_name} /> : null}
 

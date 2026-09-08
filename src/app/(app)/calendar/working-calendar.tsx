@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import { CalendarDays, CalendarPlus, Repeat, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { AskAbout } from "@/components/assistant/ask-about";
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
@@ -187,16 +188,30 @@ export function WorkingCalendar({
           title={t.calendar.exceptions}
           subtitle={t.calendar.exceptionsHint}
           action={
-            canManage ? (
-              <button
-                type="button"
-                onClick={() => setAdding(true)}
-                className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-all hover:opacity-90"
-              >
-                <CalendarPlus className="size-4" aria-hidden />
-                {t.calendar.addException}
-              </button>
-            ) : undefined
+            <div className="flex flex-wrap items-center gap-2">
+              <AskAbout
+                context={{
+                  surface: "calendar",
+                  subject: t.calendar.exceptions,
+                  facts: {
+                    workingWeekdays: WEEKDAY_KEYS.filter(
+                      (_key, weekday) => pattern.get(weekday) ?? true,
+                    ).join(", "),
+                    datedChanges: exceptions.length,
+                  },
+                }}
+              />
+              {canManage ? (
+                <button
+                  type="button"
+                  onClick={() => setAdding(true)}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-all hover:opacity-90"
+                >
+                  <CalendarPlus className="size-4" aria-hidden />
+                  {t.calendar.addException}
+                </button>
+              ) : null}
+            </div>
           }
         />
 

@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import { AlertTriangle, BadgeCheck, Banknote, Check, FileText, Play, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { AskAbout } from "@/components/assistant/ask-about";
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
@@ -215,6 +216,27 @@ export function PayrollClient({
               title={<Latin>{selected.label}</Latin>}
               subtitle={
                 <Latin>{`${selected.siteName} · ${formatDate(selected.period_start)} – ${formatDate(selected.period_end)}`}</Latin>
+              }
+              action={
+                <AskAbout
+                  label={selected.label}
+                  context={{
+                    surface: "payroll",
+                    subject: `${selected.label} (${selected.period_start} to ${selected.period_end})`,
+                    facts: {
+                      status: selected.status,
+                      headcount: selected.headcount,
+                      grossRs: selected.total_gross,
+                      deductionsRs: selected.total_deductions,
+                      taxRs: selected.total_tax,
+                      netRs: selected.total_net,
+                      locked: selected.locked,
+                      linesNeedingReview: items.filter(
+                        (item) => item.flaggedHours > 0 || item.reviewNote,
+                      ).length,
+                    },
+                  }}
+                />
               }
             />
 
@@ -804,14 +826,41 @@ function PayslipSheet({ item, onClose }: { item: ItemRow; onClose: () => void })
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t.payroll.closePayslip}
-            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground"
-          >
-            <X className="size-4" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* On the payslip itself, because "why is this number this
+                number" is the question this screen exists to answer and the
+                whole breakdown is already on it. */}
+            <AskAbout
+              variant="icon"
+              label={item.full_name}
+              context={{
+                surface: "payslip",
+                subject: `${item.full_name} (${item.employee_code}), ${item.department}`,
+                facts: {
+                  payClass: item.pay_class,
+                  dutyHours: item.regular_hours,
+                  overtimeHours: item.ot_hours,
+                  weekendHours: item.weekend_hours,
+                  grossRs: item.gross,
+                  deductionsRs: item.deductions,
+                  taxRs: item.tax,
+                  netRs: item.net,
+                  paidRs: item.paidAmount ?? "",
+                  differenceRs: item.paidDifference ?? "",
+                  droppedOvertimeHours: item.flaggedHours,
+                  reviewNote: item.reviewNote ?? "",
+                },
+              }}
+            />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={t.payroll.closePayslip}
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">

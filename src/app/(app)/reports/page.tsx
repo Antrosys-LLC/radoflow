@@ -15,6 +15,7 @@ import {
   type ScatterPoint,
   type Slice,
 } from "@/components/charts";
+import { AskAbout } from "@/components/assistant/ask-about";
 import { ExportButtons } from "@/components/export-buttons";
 import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
@@ -337,7 +338,29 @@ export default async function ReportsPage({
           icon={BarChart3}
           title={<Fill template={t.reports.title} values={{ scope: scopeLabel }} />}
           subtitle={<Fill template={t.reports.periodHint} values={{ from, to }} />}
-          action={<ExportButtons kind="payroll" params={exportParams} />}
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              {/* The headline figures, handed over with the question. Asking
+                  "why is overtime up" against a screen the assistant cannot
+                  see was the gap this closes. */}
+              <AskAbout
+                label={`${scopeLabel} · ${from} – ${to}`}
+                context={{
+                  surface: "reports",
+                  subject: `${scopeLabel}, ${from} to ${to}`,
+                  facts: {
+                    people: people.length,
+                    withAttendance: attended,
+                    workingDays: factory.workingDays,
+                    dutyHours: Math.round(factory.duty * 10) / 10,
+                    overtimeHours: Math.round(factory.overtime * 10) / 10,
+                    earnedRs: Math.round(factory.earned),
+                  },
+                }}
+              />
+              <ExportButtons kind="payroll" params={exportParams} />
+            </div>
+          }
         />
 
         <form className="grid gap-3 sm:grid-cols-[1fr_10rem_10rem_auto]">

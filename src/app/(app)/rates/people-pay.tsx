@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Banknote, ChevronDown, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { AskAbout } from "@/components/assistant/ask-about";
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
@@ -456,6 +457,35 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
               onConfirm={save}
             />
           </form>
+
+          {/* Under the figures, not above them: the question people ask
+              here — "what does this come to an hour" — is one they ask after
+              reading the numbers, not instead of. */}
+          <div className="flex justify-end">
+            <AskAbout
+              label={person.fullName}
+              context={{
+                surface: "pay",
+                subject: `${person.fullName} (${person.employeeCode}), ${person.departmentName}`,
+                facts: {
+                  paidAs: person.workerType,
+                  payClass: person.payClass,
+                  monthlySalaryRs: person.monthlySalary,
+                  hourlyRateRs: person.hourlyRate,
+                  perDayRs: rates.perDay,
+                  perHourRs: rates.perHour,
+                  perMinuteRs: rates.perMinute,
+                  perOvertimeHourRs: rates.perOvertimeHour,
+                  dutyHours: person.dutyHours,
+                  sundayPolicy: person.sundayPolicy,
+                  earnsOvertime: person.overtimeEligible,
+                  attendanceKept: person.requiresAttendance,
+                  allowancesRs: allowances,
+                  deductionsRs: deductions,
+                },
+              }}
+            />
+          </div>
 
           <Components person={person} />
         </div>

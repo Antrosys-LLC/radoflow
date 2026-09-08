@@ -4,6 +4,9 @@ import { useEffect, useId, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, X } from "lucide-react";
 
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
+
 /**
  * Search and filters for any list of people, written into the URL.
  *
@@ -26,21 +29,24 @@ export interface FilterSpec {
 const SEARCH_DEBOUNCE_MS = 300;
 
 export function FilterBar({
-  placeholder = "Search by name, code or CNIC",
+  placeholder,
   filters = [],
   total,
   showing,
 }: {
+  /** Defaults to the shared "name, code or CNIC" wording in the reader's language. */
   placeholder?: string;
   filters?: FilterSpec[];
   /** Rows before filtering, for the "showing x of y" line. */
   total?: number;
   showing?: number;
 }) {
+  const t = useDictionary();
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const searchId = useId();
+  const hint = placeholder ?? t.common.searchPlaceholder;
 
   const urlQuery = params.get("q") ?? "";
   const [query, setQuery] = useState(urlQuery);
@@ -92,8 +98,8 @@ export function FilterBar({
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder={placeholder}
-            aria-label={placeholder}
+            placeholder={hint}
+            aria-label={hint}
             className="w-full rounded-2xl border border-input bg-background py-2.5 pl-10 pr-4 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
           />
         </div>
@@ -123,14 +129,17 @@ export function FilterBar({
             className="inline-flex shrink-0 items-center gap-1.5 rounded-2xl px-3 py-2.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-danger"
           >
             <X className="size-4" />
-            Clear
+            {t.common.clear}
           </button>
         ) : null}
       </div>
 
       {total !== undefined && showing !== undefined && showing !== total ? (
         <p className="text-xs text-muted-foreground">
-          Showing {showing} of {total}
+          {/* Two counts inside one sentence, and Urdu puts them the other way
+              round — so the sentence is a template with named slots rather
+              than three pieces assembled in JSX. */}
+          <Fill template={t.common.showingOfTotal} values={{ showing, total }} />
         </p>
       ) : null}
     </div>

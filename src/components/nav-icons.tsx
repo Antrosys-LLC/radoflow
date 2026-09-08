@@ -2,7 +2,7 @@
 
 import {
   CalendarClock,
-  ClipboardCheck,
+  CalendarRange,
   Coins,
   Fingerprint,
   Gauge,
@@ -30,7 +30,7 @@ export const NAV_ICONS = {
   dashboard: LayoutDashboard,
   assistant: MessageCircleQuestion,
   attendance: CalendarClock,
-  calendar: ClipboardCheck,
+  calendar: CalendarRange,
   devices: Fingerprint,
   leave: ScrollText,
   people: Users,

@@ -27,6 +27,7 @@ const en = {
     attendance: "Attendance",
     checkInOut: "Check In / Out",
     attendanceLog: "Attendance Log",
+    workingCalendar: "Working Calendar",
     devices: "Biometric Devices",
     liveFloor: "Live Floor",
     rates: "Pay Rates",
@@ -117,6 +118,10 @@ const en = {
     // invented Urdu sentence around one would hide what actually failed.
     downloadFailed: "Download failed.",
     downloadNotBuilt: "Could not build the file ({status}).",
+    // The filter bar (`src/components/filter-bar.tsx`), which sits above every
+    // list of people in the app.
+    clear: "Clear",
+    showingOfTotal: "Showing {showing} of {total}",
   },
   /**
    * Database enum values that reach the screen as badge or field text, keyed by
@@ -126,6 +131,29 @@ const en = {
    * member to an enum without adding it here is a typecheck error in the two
    * translations, not a blank badge.
    */
+  /**
+   * The three dead ends: a page that does not exist, a page that failed, and a
+   * module this role may not open.
+   *
+   * The refusal is deliberately not an apology. Nothing is broken when a role
+   * lacks a module — somebody has to grant it — and saying so is what stops
+   * the office reporting it as a fault.
+   */
+  errors: {
+    notFoundTitle: "Page not found",
+    notFoundBody: "This page does not exist, or it has been moved.",
+    goHome: "Go to the start",
+    loadFailedTitle: "This page did not load",
+    loadFailedBody: "Something went wrong at our end. Try again, or go back to the start.",
+    tryAgain: "Try again",
+    deniedTitle: "Not available for your role",
+    // `{role}` is the role name as the office typed it, so it stays a slot
+    // rather than a translated word — a role called "Operations" is called
+    // that in every language.
+    deniedBody:
+      "The {role} role does not include this module. Ask an administrator to grant it — nothing needs reinstalling or updating.",
+    backToDashboard: "Back to my dashboard",
+  },
   status: {
     payroll: {
       draft: "Draft",
@@ -162,6 +190,30 @@ const en = {
     devicePurpose: {
       attendance: "Attendance",
       canteen: "Canteen",
+    },
+    /*
+     * `pay_class`. It reaches the screen on every payroll line and on every
+     * payslip, and until now it arrived as the enum member itself — so a
+     * translated payslip still said "monthly".
+     */
+    payClass: {
+      monthly: "Monthly",
+      hourly: "Hourly",
+    },
+    /*
+     * `sunday_policy` and `worker_type`, the two enums the pay screen sets on
+     * a person. Both reached the screen raw — a badge reading
+     * "Sun adjust_in_leave" is the column name, not a sentence.
+     */
+    sundayPolicy: {
+      off: "Off",
+      optional: "Optional",
+      compulsory: "Compulsory",
+      adjust_in_leave: "Adjusted against leave — not paid",
+    },
+    workerType: {
+      employee: "Employee",
+      contractor: "Contractor",
     },
     employment: {
       active: "Active",
@@ -427,6 +479,94 @@ const en = {
    * enum member's label. A future screen listing scan outcomes as badges
    * would want the noun, and would be wrong to reuse the imperative.
    */
+  /**
+   * Which days the factory works.
+   *
+   * Two decisions, and the screen keeps them apart because the database does
+   * and because confusing them is expensive: the weekly rule changes every
+   * future Sunday, a dated exception changes one.
+   */
+  calendar: {
+    weeklyPattern: "Every week",
+    weeklyPatternHint:
+      "The standing rule. Switching a day on here opens every one of them, from now on.",
+    working: "Working",
+    off: "Off",
+    // Sunday first, the order `work_week` stores and the order this screen
+    // reads it in — Sunday is the day the screen exists to change.
+    weekday: {
+      sunday: "Sunday",
+      monday: "Monday",
+      tuesday: "Tuesday",
+      wednesday: "Wednesday",
+      thursday: "Thursday",
+      friday: "Friday",
+      saturday: "Saturday",
+    },
+    readOnly: "You can see the calendar but not change it.",
+    exceptions: "One-off changes",
+    exceptionsHint:
+      "This Sunday only, or a shutdown on a Tuesday. A dated change beats the weekly rule.",
+    addException: "Add a day",
+    noExceptions: "No changes to the calendar",
+    noExceptionsHint: "Every day is following the weekly rule above.",
+    edit: "Edit",
+    remove: "Remove",
+    removed: "Removed.",
+    saved: "Saved.",
+    saveFailed: "Could not save that.",
+    nowWorking: "That day is now a working day.",
+    nowOff: "That day is now off.",
+    // `{date}` is the date itself, so it is a slot rather than digits set into
+    // the sentence — the rule every other date on every other screen follows.
+    editException: "Edit {date}",
+    addExceptionTitle: "Add a day",
+    date: "Date",
+    kind: "What kind of day",
+    reason: "Reason",
+    reasonPlaceholder: "Extra order",
+    reasonHint: "Kept with the day, so anyone reading the calendar later knows why.",
+    payMultiplier: "Pay multiplier",
+    payMultiplierHint:
+      "Leave it empty to use the usual rule for this factory. 2 means double pay for the day.",
+    // One entry per `day_type` member: the noun the enum stores, and under it
+    // what the choice actually does to the day.
+    dayType: {
+      workday: "Working day",
+      off: "Off",
+      holiday: "Holiday",
+      weekend_working: "Working weekend",
+      special_working: "Extra working day",
+    },
+    dayTypeHint: {
+      workday: "An ordinary day, whatever the weekly rule says.",
+      off: "Nobody works. Not a holiday — a shutdown, an outage.",
+      holiday: "A declared holiday.",
+      weekend_working: "A normally-off day switched on, paid at the weekend rate.",
+      special_working: "A day declared off, switched back on.",
+    },
+  },
+  /**
+   * The day register: who scanned, and what came of it.
+   *
+   * The counter panel answers one question for one man and then forgets him.
+   * These are the nouns — what happened — rather than the counter screen’s
+   * instruction to the server, which is why they are not the `canteen` group:
+   * a counter says “Give food”, a register says “Served”.
+   */
+  canteenLog: {
+    title: "Scans today",
+    subtitle: "Every finger on the canteen terminal today, and what came of it.",
+    everyScan: "All",
+    served: "Served",
+    refused: "Second attempt",
+    notRecognised: "Not recognised",
+    counterClosed: "Counter closed",
+    nothingToday: "No scans yet today",
+    nothingTodayHint: "Names appear here the moment the counter starts serving.",
+    // The finger matched nobody enrolled, so there is no name to show.
+    unknownWorker: "Unknown finger",
+  },
   canteen: {
     // served
     giveFood: "Give food",
@@ -772,6 +912,439 @@ const en = {
       xhigh: { label: "Deeper", short: "Deep", hint: "For hard questions" },
       max: { label: "Maximum", short: "Max", hint: "Slowest and dearest" },
     },
+  },
+  /**
+   * What the factory did, at three zoom levels.
+   *
+   * Chart titles and their one-line subtitles, which is nearly all of this
+   * screen: the figures themselves come from the payroll functions and carry
+   * no words. Department names, dates and rupee figures are rows, not
+   * dictionary entries, so they are wrapped rather than translated.
+   */
+  reports: {
+    // `{scope}` is a department name, or the whole-factory wording below.
+    title: "Reports · {scope}",
+    wholeFactory: "Whole factory",
+    periodHint: "{from} to {to} — every figure comes from the calculations the payroll run uses.",
+    from: "From",
+    to: "To",
+    // The five headline tiles: a label, and the line under it saying what the
+    // number counts. Without those lines "Working days" reads as calendar days.
+    people: "People",
+    peopleHint: "{count} with attendance",
+    workingDays: "Working days",
+    workingDaysHint: "Attended, and not a Sunday",
+    hoursWorked: "Hours worked",
+    hoursWorkedHint: "Duty and overtime",
+    overtime: "Overtime",
+    overtimeHint: "Up to 4 hours a working day",
+    earned: "Earned",
+    earnedHint: "Before deductions",
+    dailyHours: "Hours worked each day",
+    dailyHoursHint:
+      "Duty hours and overtime across everyone in scope. A Sunday shows as overtime only.",
+    punches: "Check-ins and check-outs",
+    punchesHint:
+      "A day where the two disagree has a missed punch — and a missed punch is a wrong payslip.",
+    hoursByDept: "Hours by department",
+    hoursByDeptHint: "Duty and overtime together.",
+    earnedByDept: "Earned by department",
+    earnedByDeptHint: "Base pay plus overtime, before deductions.",
+    mostOvertime: "Most overtime",
+    mostOvertimeHint: "The people working past their duty hours.",
+    topEarners: "Highest earners this period",
+    topEarnersHint: "A contractor shows the agreed amount.",
+    headcount: "Headcount by department",
+    headcountHint: "Tap a slice to drop it and watch the rest re-proportion.",
+    arrangements: "How people are paid",
+    arrangementsHint: "Every arrangement on the floor, as a share of the workforce.",
+    wageBill: "Wage bill by department",
+    wageBillHint: "Earned this period, before deductions.",
+    overtimeByDept: "Overtime by department",
+    overtimeByDeptHint: "The six departments working the most hours past duty.",
+    earningsAgainstHours: "Earnings against hours worked",
+    earningsAgainstHoursHint:
+      "One dot per person. A high dot with few hours is somebody no terminal is tracking — or somebody not turning up.",
+    // Axis and bar units. The capitalised pair label bars, the lower-case pair
+    // sit inside a sentence, and Urdu does not distinguish the two — which is
+    // fine: what matters is that each reads correctly where it is used.
+    unitHours: "Hours",
+    unitRupees: "Rupees",
+    unitPeople: "people",
+    unitRupeesLower: "rupees",
+    axisHours: "hours",
+    axisEarned: "earned",
+    // The five ways somebody on this floor can be paid, as the report groups
+    // them. Not a database enum — it is derived from four columns at once —
+    // so it lives here rather than in `status`.
+    arrangement: {
+      standard: "8h duty, with overtime",
+      twelveHour: "12h duty",
+      noOvertime: "No overtime",
+      contractors: "Contractors",
+      notFromAttendance: "Not paid from attendance",
+    },
+  },
+  /**
+   * Pay runs, and the payslip behind each line.
+   *
+   * The money words are the ones an argument gets had over, so they are stated
+   * plainly: "Net payable" is what leaves the office, "Gross" is before
+   * anything is taken off. Every figure, date and name on this screen is a
+   * row, so all of them are wrapped rather than translated.
+   */
+  payroll: {
+    periods: "Pay periods",
+    periodsHint: "Worked out from the attendance the terminals recorded",
+    newPeriod: "New period",
+    noPeriods: "No pay periods yet",
+    noPeriodsHint: "Create one covering the dates you want to pay for.",
+    // `{count}` people, `{amount}` rupees — both slots, and Urdu puts them the
+    // other way round.
+    paidSummary: "{count} paid · net {amount}",
+    notCalculated: "Not calculated yet",
+    grossPay: "Gross pay",
+    deductions: "Deductions",
+    tax: "Tax",
+    netPayable: "Net payable",
+    runPayroll: "Run payroll",
+    recalculate: "Work it out again",
+    calculating: "Working it out from attendance…",
+    approve: "Approve",
+    approving: "Approving…",
+    markPaidAndLock: "Mark paid and lock",
+    closingPeriod: "Closing the period…",
+    locked: "Locked — a period already paid cannot be worked out again.",
+    lines: "Payroll lines · {count}",
+    linesHint: "Hours come from the biometric terminals. Tap a row for the full payslip.",
+    // One banner for the whole run. `{count}` is a number of people, so the
+    // sentence is written to read correctly whether it is one or forty —
+    // English cannot inflect around a slot either.
+    reviewBanner:
+      "{count} worth a look before you approve — dropped hours, an attendance anomaly, or a pay swing against recent history. Nothing is calculated wrong; read the note on each payslip.",
+    nothingCalculated: "Nothing worked out yet",
+    nothingCalculatedHint: "Run the payroll to build the lines from attendance.",
+    // Table headings. Short because the table is already 900px wide before
+    // anyone opens it on a phone.
+    colRegularHours: "Duty h",
+    colOvertimeHours: "OT h",
+    colGross: "Gross",
+    colNet: "Net",
+    colPaid: "Paid",
+    payslip: "Payslip",
+    // `{hours}` is a figure, `{dates}` a run of dates — both slots.
+    droppedTooltip: "{hours} dropped by the overtime ceiling on {dates} — check before approving",
+    // The cash tally: two counts and two rupee figures in one sentence.
+    cashTally: "{paid} of {total} paid in cash · {paidAmount} of {totalAmount} handed out",
+    cashLeft: "{count} still to pay",
+    undo: "Undo",
+    undoing: "Undoing…",
+    notYet: "Not yet",
+    markPaid: "Mark paid",
+    markingPaid: "Marking {name} paid…",
+    newPeriodTitle: "New pay period",
+    periodLabel: "Name",
+    periodLabelPlaceholder: "August 2026",
+    from: "From",
+    to: "To",
+    creating: "Creating…",
+    createPeriod: "Create period",
+    // The three hour tiles on a payslip.
+    regular: "Duty",
+    overtime: "Overtime",
+    weekend: "Weekend",
+    worthLook: "Worth a look before approving",
+    droppedTitle: "{hours} dropped by the overtime ceiling",
+    droppedBody:
+      "Likely a double-duty day rather than a wrong number — check the punches for {dates} before approving.",
+    earnings: "Earnings",
+    netPay: "Net pay",
+    printPayslip: "Print payslip",
+    closePayslip: "Close payslip",
+    // A payroll line whose person is no longer in the directory. The line is
+    // still owed to somebody, so it is shown rather than hidden.
+    unknownPerson: "Unknown",
+  },
+  /**
+   * What an hour is worth, and what each person earns.
+   *
+   * Two different decisions on one screen, which is deliberate: the site rules
+   * say what overtime pays in general, and the per-person half says who that
+   * actually applies to. Reviewing one without the other is how a rate gets
+   * raised for a floor where nobody is marked as earning overtime.
+   *
+   * Every rupee figure, name and code here is a row, so all of them are
+   * wrapped rather than translated.
+   */
+  rates: {
+    payByPerson: "Pay by person · {count}",
+    payByPersonHint:
+      "What each person earns, how many hours their salary covers, and the lines attached to them. Grouped by department.",
+    searchPlaceholder: "Name, employee code or CNIC",
+    paidAs: "Paid as",
+    everyone: "Employees and contractors",
+    employees: "Employees",
+    contractors: "Contractors",
+    readOnly:
+      "You can see the pay rules but not change them. Changing them needs the “Manage pay rules” capability.",
+    // `{site}` is a factory name, so a slot rather than a translated word.
+    ratesFor: "Pay rates — {site}",
+    ratesForHint: "Rupees an hour for each kind of worked time",
+    noRates: "No rates set for this factory.",
+    latePenalties: "Late arrival penalties",
+    latePenaltiesHint: "Taken off automatically when somebody checks in after their shift starts",
+    noLatePenalty: "No late penalty is set.",
+    overtime: "Overtime",
+    weekend: "Weekend or off day",
+    holiday: "Holiday",
+    night: "Night shift",
+    perHour: "{amount} an hour",
+    // A late band, read-only: from and to are minutes, or "and beyond".
+    lateRange: "{from} to {to}",
+    beyond: "and beyond",
+    minutes: "{minutes} min",
+    penaltyOfDaily: "{percent}% of one day’s pay",
+    penaltyOfMonthly: "{percent}% of monthly pay",
+    // The rate form.
+    perHourNote:
+      "Rates are rupees per hour, not a multiple of the basic wage. Changing somebody’s basic pay leaves these untouched.",
+    otRate: "Overtime rate",
+    otRateHint: "An hour beyond the standard day",
+    weekendRate: "Weekend or off-day rate",
+    weekendRateHint: "An hour on a rest day that was switched on",
+    holidayRate: "Holiday rate",
+    holidayRateHint: "An hour on a declared holiday",
+    nightRate: "Night shift rate",
+    nightRateHint: "An hour on the night rotation",
+    standardHours: "Standard hours a day",
+    workingDaysMonth: "Working days a month",
+    otAfter: "Overtime starts after (min)",
+    roundTo: "Round hours to (min)",
+    effectiveFrom: "Effective from",
+    effectiveFromHint:
+      "A new date creates a new rate set; payroll already worked out keeps the old rates.",
+    whatThisPays: "What this pays",
+    weekendShiftExample: "An 8-hour weekend shift: {amount}",
+    overtimeExample: "4 hours of overtime: {amount}",
+    holidayShiftExample: "An 8-hour holiday shift: {amount}",
+    saveRates: "Save rates",
+    // The late-penalty ladder.
+    ladderNote:
+      "Bands are a ladder, not cumulative — arriving 90 minutes late costs the 1–2 hour penalty only. Lateness is measured from the shift start, after the grace period.",
+    colBand: "Band",
+    colLateFrom: "Late from",
+    colLateUntil: "Late until",
+    colDeduction: "Deduction",
+    noBands: "No late-arrival penalty is set — lateness currently costs nothing.",
+    bandName: "Band name",
+    bandNamePlaceholder: "Late 15–30 minutes",
+    lateFromField: "Late from (min)",
+    lateUntilField: "Late until (min)",
+    lateUntilPlaceholder: "blank = beyond",
+    deductPercent: "Deduct (%)",
+    basis: "Of",
+    basisDay: "One day’s pay",
+    basisMonth: "Monthly pay",
+    addBand: "Add band",
+    removeBand: "Remove {name}",
+    // Contract firms.
+    contractFirms: "Contract firms",
+    contractFirmsHint: "One agreed amount per firm, billed instead of pricing its people",
+    noFirms: "No contractor departments at this factory.",
+    firmsFooter:
+      "A firm left at zero is charged nothing and its people appear on no payroll line. The payroll run warns rather than passing over it in silence.",
+    onTheFloor: "{count} on the floor",
+    monthlyAmount: "Monthly amount (PKR)",
+    // Per person.
+    perMonth: "a month",
+    contractSuffix: "{amount} contract",
+    agreedFlat: "agreed, flat",
+    perDayShort: "{amount} a day",
+    tagContract: "Contract",
+    tagDuty: "{hours}h duty",
+    // `{policy}` is a `sunday_policy` member, already translated.
+    tagSunday: "Sunday: {policy}",
+    tagNotFromAttendance: "Not from attendance",
+    tagFlexible: "Flexible",
+    tagNoOvertime: "No overtime",
+    agreedAmount: "Agreed amount",
+    monthlySalary: "Monthly salary",
+    salaryCovers: "Salary covers",
+    hours8: "8 hours",
+    hours12: "12 hours",
+    sunday: "Sunday",
+    payClass: "Pay class",
+    hourlyRate: "Hourly rate",
+    tracking: "Attendance and pay",
+    trackingTracked: "Tracked — attendance and salary",
+    trackingSalaryOnly: "Salary only — no attendance kept",
+    trackingExempt: "Neither — owner",
+    trackingHint: "An owner draws nothing through this system and appears on no payroll run.",
+    earnsOvertime: "Earns overtime",
+    contractorNote:
+      "Nothing is worked out. The agreed amount is paid in full — no proration for days missed, no overtime, no late penalty.",
+    // Four figures in one line, and Urdu puts the division the other way
+    // round, so it is one template rather than a sentence built in JSX.
+    dailyBreakdown:
+      "{perDay} a day ({salary} ÷ {days}) · {perHour} an overtime hour (÷ 8) · overtime past {duty}h, capped at 4h a working day, uncapped on a Sunday.",
+    swipeSave: "Swipe to save {name}’s pay",
+    componentsTitle: "Allowances and deductions",
+    nothingAttached: "Nothing attached yet.",
+    componentNamePlaceholder: "Advance recovery",
+    amount: "Amount",
+    lineName: "Name",
+    kind: "Kind",
+    deduction: "Deduction",
+    allowance: "Allowance",
+    swipeAttach: "Swipe to attach this line",
+    attaching: "Attaching…",
+    removeLine: "Remove {name}",
+  },
+  /**
+   * User accounts: who exists, what they are paid, and what they may open.
+   *
+   * Three separate dialogs behind one card, and the wording keeps them apart
+   * on purpose — a correction to a spelling must never sit in the same swipe
+   * as a change to somebody’s salary.
+   *
+   * A person’s name, employee code, CNIC, department, factory and shift are
+   * all rows. They are wrapped rather than translated, and a CNIC especially:
+   * one reordered by the bidirectional algorithm is a different CNIC.
+   */
+  users: {
+    title: "User accounts · {count}",
+    hint: "Everyone who can sign in. The employee code is also their K50 fingerprint ID.",
+    addUser: "Add user",
+    searchPeople: "Search people",
+    everyRole: "Every role",
+    anyStatus: "Any status",
+    cannotSignIn: "Cannot sign in — no CNIC",
+    noCnic: "No CNIC — cannot sign in",
+    customAccessCount: "{count} custom access changes",
+    editProfile: "Edit profile",
+    noRole: "No role",
+    customAccess: "Custom access",
+    payAndDuty: "Pay and duty",
+    reactivate: "Reactivate",
+    suspend: "Suspend",
+    swipeSetRole: "Swipe to set {name}’s role",
+    updatingRole: "Changing the role…",
+    signOutWarning: "They will be signed out, and must sign in again for this to take effect.",
+    swipeReactivate: "Swipe to reactivate",
+    swipeSuspend: "Swipe to suspend",
+    reactivating: "Reactivating…",
+    suspending: "Suspending…",
+    setPassword: "Set password",
+    newPasswordFor: "New password for {name}",
+    swipeSetPassword: "Swipe to set {name}’s password",
+    settingPassword: "Setting the password…",
+    atLeast8: "At least 8 characters.",
+    // Adding somebody.
+    addTitle: "Add a user",
+    addHint:
+      "The employee code is used as their ZKTeco K50 fingerprint ID — enrol them on the terminal with the same number and the punches link themselves.",
+    fullName: "Full name",
+    fullNamePlaceholder: "Imran Sheikh",
+    employeeCode: "Employee code / K50 ID",
+    cnic: "CNIC (sign-in)",
+    tempPassword: "Temporary password",
+    passwordPlaceholder: "At least 8 characters",
+    email: "Email (optional)",
+    phone: "Phone",
+    designation: "Designation",
+    designationPlaceholder: "Loom Operator",
+    role: "Role",
+    roleAssignedElsewhere: "Assigned by somebody who manages access.",
+    shift: "Shift",
+    noShift: "No shift — must complete duty hours",
+    // `{name}` is the department’s own name; the suffix marks a contracted one.
+    contractorDepartment: "{name} (contractors)",
+    noShiftHint:
+      "Somebody with no shift is never marked late and their check-out is never rounded. Their hours and overtime are still counted from the punches.",
+    paidAs: "Paid as",
+    employeeFromAttendance: "Employee — worked out from attendance",
+    contractorFlat: "Contractor — flat agreed amount",
+    salaryCovers: "Salary covers",
+    hours8Overtime: "8 hours — anything past that is overtime",
+    hours12NoOvertime: "12 hours — all twelve are duty, no overtime",
+    sunday: "Sunday",
+    sundayOff: "Off — not expected in",
+    sundayOptional: "Optional — may come in",
+    sundayCompulsory: "Compulsory — expected in",
+    sundayAdjust: "Adjusted against leave — not paid",
+    sundayHint:
+      "Sunday is never a working day. Every hour worked on one is overtime, whatever this says.",
+    payType: "Pay type",
+    hourlyWage: "Hourly wage",
+    monthlySalaryOption: "Monthly salary",
+    monthlySalaryField: "Monthly salary (₨)",
+    hourlyRateField: "Hourly rate (₨)",
+    createUser: "Create user",
+    // Editing somebody.
+    editTitle: "Edit profile · {name}",
+    editHint:
+      "Name, employee code, contact details and placement. Pay, duty terms and access are changed from their own buttons on the card.",
+    saveChanges: "Save changes",
+    // Custom access.
+    accessTitle: "Custom access · {name}",
+    accessHint:
+      "On top of the {role} role. Use this to give one person something extra, or take something away, without creating a new role.",
+    useRole: "Use role",
+    grant: "Grant",
+    deny: "Deny",
+    // Pay and duty.
+    payTitle: "Pay and duty · {name}",
+    agreedAmountPkr: "Agreed amount (PKR)",
+    monthlySalaryPkr: "Monthly salary (PKR)",
+    hourlyRatePkr: "Hourly rate (PKR)",
+    hourlyOnlyHint: "Only used for staff paid by the hour.",
+    payClass: "Pay class",
+    tracking: "Attendance and pay",
+    trackingTracked: "Tracked — attendance and salary",
+    trackingSalaryOnly: "Salary only — no attendance kept",
+    trackingExempt: "Neither — owner",
+    trackingHint: "An owner draws nothing through this system and appears on no payroll run.",
+    earnsOvertime: "Earns overtime",
+    earnsOvertimeHint: "Unticked, hours past the duty boundary are recorded but never paid.",
+    contractorNote:
+      "Nothing is worked out for a contractor. They receive the agreed amount in full — no proration for days missed, no overtime, no late penalty.",
+    perDayLine: "{amount} a day ({salary} ÷ {days} days this month)",
+    perOvertimeHourLine: "{amount} an overtime hour (the daily rate ÷ 8)",
+    overtimeBoundary: "Past {hours} hours on a weekday, and every hour on a Sunday.",
+    swipeSavePay: "Swipe to save the pay settings",
+    componentsTitle: "Allowances and deductions",
+    componentsHint: "Applied to this person only, every period, until removed.",
+    componentFrom: "From {from}",
+    componentFromTo: "From {from} to {to}",
+    componentOngoing: "From {from} — ongoing",
+    nothingAttached: "Nothing attached to this person yet.",
+    needNameAndAmount: "Enter a name and an amount to attach it.",
+  },
+  /**
+   * Roles, and what each may do.
+   *
+   * A role’s own name and description are rows — the office writes them — and
+   * so are the capability labels, which come out of the permission catalogue.
+   * What is translated here is the screen around them.
+   */
+  roles: {
+    title: "Roles",
+    hint: "Pick a role to change what it can do, or create a new one",
+    unrestricted: "Unrestricted",
+    capabilities: "{count} capabilities",
+    heldBy: "{count} people",
+    newRoleName: "New role name",
+    newRolePlaceholder: "Payroll Officer",
+    whatFor: "What it is for",
+    whatForPlaceholder: "Runs payroll but cannot change access",
+    createRole: "Create role",
+    creating: "Creating…",
+    whatCanDo: "What {role} can do",
+    superuserHint: "This role holds every capability and cannot be restricted",
+    toggleHint: "Tap a capability to grant it or take it away — the change takes effect at once",
+    deleteRole: "Delete role",
+    superuserNote:
+      "{role} is an unrestricted role. Every capability is granted implicitly, so it can never be locked out of this screen by an accidental edit.",
   },
   profile: {
     title: "My profile",

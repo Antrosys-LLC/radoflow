@@ -88,6 +88,13 @@ const WORK_MODULES: readonly NavItem[] = [
     description: "Punches, hours and what they pay",
   },
   {
+    href: "/calendar",
+    labelKey: "workingCalendar",
+    icon: "calendar",
+    requires: ["calendar.manage", "attendance.view", "attendance.view.all"],
+    description: "Which days the factory works, and this Sunday's exception",
+  },
+  {
     href: "/devices",
     labelKey: "devices",
     icon: "devices",

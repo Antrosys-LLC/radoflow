@@ -4,6 +4,7 @@ import { Building2, CreditCard, Fingerprint, KeyRound, ScanFace } from "lucide-r
 import { AntrosysRibbon, showsAntrosysRibbon } from "@/components/antrosys-ribbon";
 import { AssistantWidget } from "@/components/assistant/assistant-widget";
 import { Fill } from "@/components/fill";
+import { LanguageSwitch } from "@/components/language-switch";
 import { Latin } from "@/components/latin";
 import { LiveClock } from "@/components/live-clock";
 import { ProfileMenu } from "@/components/profile-menu";
@@ -60,6 +61,7 @@ export function AppShell({ session, children }: { session: Session; children: Re
               <span className="sr-only">{t.common.identifyMethodsHint}</span>
             </span>
             <LiveClock />
+            <LanguageSwitch />
             <ProfileMenu session={session} />
           </div>
         </div>

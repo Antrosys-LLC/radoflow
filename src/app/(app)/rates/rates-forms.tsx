@@ -6,6 +6,9 @@ import { useFormStatus } from "react-dom";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
+import { Latin } from "@/components/latin";
 import { formatPKR } from "@/lib/time";
 import { deleteLateRule, saveLateRule, saveRates, type RatesResult } from "./actions";
 
@@ -55,6 +58,7 @@ export function RatesForm({
   current: RateValues | null;
   today: string;
 }) {
+  const t = useDictionary();
   const [state, formAction] = useActionState(saveRates, INITIAL);
   useToast(state);
 
@@ -68,45 +72,44 @@ export function RatesForm({
       <input type="hidden" name="site_id" value={siteId} />
 
       <div className="rounded-2xl bg-primary-soft p-4">
-        <p className="text-xs font-bold uppercase tracking-wide text-primary">{siteName}</p>
-        <p className="mt-1 text-sm text-foreground">
-          Rates are rupees <strong>per hour</strong>, not a multiple of the basic wage. Changing
-          someone&apos;s basic pay leaves these untouched.
+        <p className="text-xs font-bold uppercase tracking-wide text-primary">
+          <Latin>{siteName}</Latin>
         </p>
+        <p className="mt-1 text-sm text-foreground">{t.rates.perHourNote}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Money
           name="ot_hourly_rate"
-          label="Overtime rate"
-          hint="Per hour beyond the standard day"
+          label={t.rates.otRate}
+          hint={t.rates.otRateHint}
           value={ot}
           onChange={setOt}
         />
         <Money
           name="weekend_hourly_rate"
-          label="Weekend / off-day rate"
-          hint="Per hour on an activated rest day"
+          label={t.rates.weekendRate}
+          hint={t.rates.weekendRateHint}
           value={weekend}
           onChange={setWeekend}
         />
         <Money
           name="holiday_hourly_rate"
-          label="Holiday rate"
-          hint="Per hour on a declared holiday"
+          label={t.rates.holidayRate}
+          hint={t.rates.holidayRateHint}
           value={holiday}
           onChange={setHoliday}
         />
         <Money
           name="night_hourly_rate"
-          label="Night shift rate"
-          hint="Per hour on the night rotation"
+          label={t.rates.nightRate}
+          hint={t.rates.nightRateHint}
           value={current?.night_hourly_rate ?? 0}
         />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Standard hours / day">
+        <Field label={t.rates.standardHours}>
           <input
             name="standard_hours_per_day"
             type="number"
@@ -118,7 +121,7 @@ export function RatesForm({
             className={INPUT}
           />
         </Field>
-        <Field label="Working days / month">
+        <Field label={t.rates.workingDaysMonth}>
           <input
             name="standard_days_per_month"
             type="number"
@@ -127,7 +130,7 @@ export function RatesForm({
             className={INPUT}
           />
         </Field>
-        <Field label="Overtime starts after (min)">
+        <Field label={t.rates.otAfter}>
           <input
             name="ot_threshold_minutes"
             type="number"
@@ -136,7 +139,7 @@ export function RatesForm({
             className={INPUT}
           />
         </Field>
-        <Field label="Round hours to (min)">
+        <Field label={t.rates.roundTo}>
           <input
             name="round_to_minutes"
             type="number"
@@ -147,36 +150,43 @@ export function RatesForm({
         </Field>
       </div>
 
-      <Field
-        label="Effective from"
-        hint="A new date creates a new rate set; past payroll keeps the old rates."
-      >
+      <Field label={t.rates.effectiveFrom} hint={t.rates.effectiveFromHint}>
         <input
           name="effective_from"
           type="date"
           defaultValue={today}
+          dir="ltr"
           className={`${INPUT} max-w-xs`}
         />
       </Field>
 
       <div className="rounded-2xl bg-secondary p-4">
         <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-          What this pays
+          {t.rates.whatThisPays}
         </p>
+        {/* Each example is one sentence with the figure inside it: Urdu puts
+            the amount before the description, and a bold <strong> glued to a
+            tail cannot move. */}
         <ul className="mt-2 space-y-1 text-sm text-foreground">
           <li>
-            An 8-hour weekend shift: <strong>{formatPKR(weekend * 8)}</strong>
+            <Fill
+              template={t.rates.weekendShiftExample}
+              values={{ amount: formatPKR(weekend * 8) }}
+            />
           </li>
           <li>
-            4 hours of overtime: <strong>{formatPKR(ot * 4)}</strong>
+            <Fill template={t.rates.overtimeExample} values={{ amount: formatPKR(ot * 4) }} />
           </li>
           <li>
-            An 8-hour holiday shift: <strong>{formatPKR(holiday * 8)}</strong>
+            <Fill
+              template={t.rates.holidayShiftExample}
+              values={{ amount: formatPKR(holiday * 8) }}
+            />
           </li>
         </ul>
       </div>
 
-      <SaveButton label="Save rates" />
+      <SaveButton label={t.rates.saveRates} />
     </form>
   );
 }
@@ -191,6 +201,7 @@ export interface LateRule {
 }
 
 export function LateRulesEditor({ siteId, rules }: { siteId: string; rules: LateRule[] }) {
+  const t = useDictionary();
   const [state, formAction] = useActionState(saveLateRule, INITIAL);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -207,20 +218,17 @@ export function LateRulesEditor({ siteId, rules }: { siteId: string; rules: Late
 
   return (
     <div className="space-y-4">
-      <p className="rounded-2xl bg-secondary p-4 text-sm text-foreground">
-        Bands are a ladder, not cumulative — arriving 90 minutes late costs the 1–2 hour penalty
-        only. Lateness is measured from shift start <strong>after</strong> the grace period.
-      </p>
+      <p className="rounded-2xl bg-secondary p-4 text-sm text-foreground">{t.rates.ladderNote}</p>
 
       {rules.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] border-separate border-spacing-y-2 text-sm">
             <thead>
               <tr className="text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 pb-2">Band</th>
-                <th className="px-4 pb-2">Late from</th>
-                <th className="px-4 pb-2">Late until</th>
-                <th className="px-4 pb-2">Deduction</th>
+                <th className="px-4 pb-2">{t.rates.colBand}</th>
+                <th className="px-4 pb-2">{t.rates.colLateFrom}</th>
+                <th className="px-4 pb-2">{t.rates.colLateUntil}</th>
+                <th className="px-4 pb-2">{t.rates.colDeduction}</th>
                 <th className="px-4 pb-2" />
               </tr>
             </thead>
@@ -228,21 +236,32 @@ export function LateRulesEditor({ siteId, rules }: { siteId: string; rules: Late
               {rules.map((rule) => (
                 <tr key={rule.id} className="bg-secondary/70">
                   <td className="rounded-l-2xl px-4 py-3 font-semibold text-foreground">
-                    {rule.label}
+                    <Latin>{rule.label}</Latin>
                   </td>
-                  <td className="px-4 py-3 tabular-nums">{rule.from_minutes} min</td>
                   <td className="px-4 py-3 tabular-nums">
-                    {rule.to_minutes === null ? "and beyond" : `${rule.to_minutes} min`}
+                    <Fill template={t.rates.minutes} values={{ minutes: rule.from_minutes }} />
+                  </td>
+                  <td className="px-4 py-3 tabular-nums">
+                    {rule.to_minutes === null ? (
+                      t.rates.beyond
+                    ) : (
+                      <Fill template={t.rates.minutes} values={{ minutes: rule.to_minutes }} />
+                    )}
                   </td>
                   <td className="px-4 py-3 font-bold tabular-nums text-danger">
-                    {rule.penalty_percent}% of {rule.basis === "month" ? "monthly" : "daily"} pay
+                    <Fill
+                      template={
+                        rule.basis === "month" ? t.rates.penaltyOfMonthly : t.rates.penaltyOfDaily
+                      }
+                      values={{ percent: rule.penalty_percent }}
+                    />
                   </td>
                   <td className="rounded-r-2xl px-4 py-3 text-right">
                     <button
                       type="button"
                       disabled={pending}
                       onClick={() => remove(rule.id)}
-                      aria-label={`Remove ${rule.label}`}
+                      aria-label={fill(t.rates.removeBand, { name: rule.label })}
                       className="flex size-9 items-center justify-center rounded-xl bg-card text-muted-foreground transition-all hover:text-danger disabled:opacity-50"
                     >
                       <Trash2 className="size-4" />
@@ -255,7 +274,7 @@ export function LateRulesEditor({ siteId, rules }: { siteId: string; rules: Late
         </div>
       ) : (
         <p className="rounded-2xl bg-warning-soft p-4 text-sm font-semibold text-warning">
-          No late-arrival penalty is configured — lateness currently costs nothing.
+          {t.rates.noBands}
         </p>
       )}
 
@@ -265,11 +284,16 @@ export function LateRulesEditor({ siteId, rules }: { siteId: string; rules: Late
       >
         <input type="hidden" name="site_id" value={siteId} />
         <div className="lg:col-span-2">
-          <Field label="Band name">
-            <input name="label" required placeholder="Late 15–30 minutes" className={INPUT} />
+          <Field label={t.rates.bandName}>
+            <input
+              name="label"
+              required
+              placeholder={t.rates.bandNamePlaceholder}
+              className={INPUT}
+            />
           </Field>
         </div>
-        <Field label="Late from (min)">
+        <Field label={t.rates.lateFromField}>
           <input
             name="from_minutes"
             type="number"
@@ -279,16 +303,16 @@ export function LateRulesEditor({ siteId, rules }: { siteId: string; rules: Late
             className={INPUT}
           />
         </Field>
-        <Field label="Late until (min)">
+        <Field label={t.rates.lateUntilField}>
           <input
             name="to_minutes"
             type="number"
             min="1"
-            placeholder="blank = beyond"
+            placeholder={t.rates.lateUntilPlaceholder}
             className={INPUT}
           />
         </Field>
-        <Field label="Deduct (%)">
+        <Field label={t.rates.deductPercent}>
           <input
             name="penalty_percent"
             type="number"
@@ -300,14 +324,14 @@ export function LateRulesEditor({ siteId, rules }: { siteId: string; rules: Late
             className={INPUT}
           />
         </Field>
-        <Field label="Of">
+        <Field label={t.rates.basis}>
           <select name="basis" defaultValue="day" className={INPUT}>
-            <option value="day">One day&apos;s pay</option>
-            <option value="month">Monthly pay</option>
+            <option value="day">{t.rates.basisDay}</option>
+            <option value="month">{t.rates.basisMonth}</option>
           </select>
         </Field>
         <div className="lg:col-span-6">
-          <SaveButton label="Add band" icon="plus" />
+          <SaveButton label={t.rates.addBand} icon="plus" />
         </div>
       </form>
     </div>
@@ -366,7 +390,16 @@ function Field({
   );
 }
 
+/**
+ * The plain-string sibling of `<Fill>`, for an `aria-label` — an attribute
+ * cannot hold JSX, so the slot is substituted here instead.
+ */
+function fill(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_match, key: string) => String(values[key] ?? ""));
+}
+
 function SaveButton({ label, icon }: { label: string; icon?: "plus" }) {
+  const t = useDictionary();
   const { pending } = useFormStatus();
   return (
     <button
@@ -375,7 +408,7 @@ function SaveButton({ label, icon }: { label: string; icon?: "plus" }) {
       className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5 disabled:opacity-60"
     >
       {icon === "plus" ? <Plus className="size-4" /> : <Save className="size-4" />}
-      {pending ? "Saving…" : label}
+      {pending ? t.common.saving : label}
     </button>
   );
 }

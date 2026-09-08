@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { requirePermission } from "@/lib/auth/session";
+import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 
 import { UsersManager, type PermissionOption, type UserRow } from "./users-manager";
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 export default async function UsersPage() {
   const session = await requirePermission("people.manage");
+  const t = dictionaryFor(session.profile.language);
   const canManageAccess = session.permissions.has("access.manage");
   const supabase = await createClient();
 
@@ -85,7 +87,7 @@ export default async function UsersPage() {
       designation: profile.designation,
       status: profile.status,
       roleId,
-      roleName: role?.name ?? "No role",
+      roleName: role?.name ?? t.users.noRole,
       isSuperuser: role?.is_superuser ?? false,
       overrides: overridesByUser.get(profile.id) ?? [],
       workerType: profile.worker_type,

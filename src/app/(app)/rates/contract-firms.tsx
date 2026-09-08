@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { Building2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
+import { Latin } from "@/components/latin";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { setContractAmount } from "@/lib/pay/actions";
 
@@ -25,18 +28,18 @@ export interface ContractFirm {
  * see `runPayrollForPeriod`.
  */
 export function ContractFirms({ firms }: { firms: readonly ContractFirm[] }) {
+  const t = useDictionary();
+
   return (
     <Card className="p-4 sm:p-6">
       <SectionTitle
         icon={Building2}
-        title="Contract firms"
-        subtitle="One agreed amount per firm, billed instead of pricing its people"
+        title={t.rates.contractFirms}
+        subtitle={t.rates.contractFirmsHint}
       />
 
       {firms.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">
-          No contractor departments at this factory.
-        </p>
+        <p className="mt-4 text-sm text-muted-foreground">{t.rates.noFirms}</p>
       ) : (
         <div className="mt-4 grid gap-3">
           {firms.map((firm) => (
@@ -45,15 +48,13 @@ export function ContractFirms({ firms }: { firms: readonly ContractFirm[] }) {
         </div>
       )}
 
-      <p className="mt-3 text-xs text-muted-foreground">
-        A firm left at zero is charged nothing and its people appear on no payroll line. The payroll
-        run warns rather than passing over it in silence.
-      </p>
+      <p className="mt-3 text-xs text-muted-foreground">{t.rates.firmsFooter}</p>
     </Card>
   );
 }
 
 function FirmRow({ firm }: { firm: ContractFirm }) {
+  const t = useDictionary();
   const form = useRef<HTMLFormElement>(null);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -80,14 +81,18 @@ function FirmRow({ firm }: { firm: ContractFirm }) {
       <input type="hidden" name="department_id" value={firm.id} />
 
       <div className="min-w-[10rem] flex-1">
-        <p className="text-sm font-semibold text-foreground">{firm.name}</p>
+        {/* The firm is a department row, so its name is as the office typed
+            it — a firm called "Al-Rehman Labour" in every language. */}
+        <p className="text-sm font-semibold text-foreground">
+          <Latin>{firm.name}</Latin>
+        </p>
         <p className="text-xs text-muted-foreground">
-          {firm.headcount} {firm.headcount === 1 ? "person" : "people"} on the floor
+          <Fill template={t.rates.onTheFloor} values={{ count: firm.headcount }} />
         </p>
       </div>
 
       <label className="flex flex-col gap-1">
-        <span className="text-xs font-semibold text-muted-foreground">Monthly amount (PKR)</span>
+        <span className="text-xs font-semibold text-muted-foreground">{t.rates.monthlyAmount}</span>
         <input
           type="number"
           name="contract_amount"
@@ -104,7 +109,7 @@ function FirmRow({ firm }: { firm: ContractFirm }) {
         disabled={pending}
         className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
       >
-        {pending ? "Saving…" : "Save"}
+        {pending ? t.common.saving : t.common.save}
       </button>
     </form>
   );

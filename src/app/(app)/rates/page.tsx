@@ -2,10 +2,13 @@ import type { Metadata } from "next";
 import { Banknote, Clock, Coins } from "lucide-react";
 
 import { ExportButtons } from "@/components/export-buttons";
+import { Fill } from "@/components/fill";
+import { Latin } from "@/components/latin";
 import { FilterBar } from "@/components/filter-bar";
 import { matchesPerson } from "@/lib/people/match";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
+import { dictionaryFor, type Dictionary } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { todayInPakistan } from "@/lib/time";
 
@@ -28,6 +31,7 @@ export default async function RatesPage({
 }) {
   const filters = await searchParams;
   const session = await requireAnyPermission(["rates.view", "rates.manage"]);
+  const t = dictionaryFor(session.profile.language);
   const canManage = session.permissions.has("rates.manage");
   const supabase = await createClient();
 
@@ -80,8 +84,8 @@ export default async function RatesPage({
     // Unassigned people still need somewhere to appear, or they are invisible
     // on the one screen that decides what they are paid.
     departmentName: row.department_id
-      ? (deptName.get(row.department_id) ?? "Unassigned")
-      : "Unassigned",
+      ? (deptName.get(row.department_id) ?? t.common.unassigned)
+      : t.common.unassigned,
     workerType: row.worker_type,
     payClass: row.pay_class,
     monthlySalary: Number(row.monthly_salary),
@@ -109,29 +113,30 @@ export default async function RatesPage({
       <Card className="p-4 sm:p-6">
         <SectionTitle
           icon={Banknote}
-          title={`Pay by person · ${everyone.length}`}
-          subtitle="What each person earns, how many hours their salary covers, and the lines attached to them. Grouped by department."
+          title={<Fill template={t.rates.payByPerson} values={{ count: everyone.length }} />}
+          subtitle={t.rates.payByPersonHint}
           action={<ExportButtons kind="pay" params={{ dept: filters.dept }} />}
         />
 
         <FilterBar
-          placeholder="Search by name, employee code or CNIC"
+          placeholder={t.rates.searchPlaceholder}
           total={everyone.length}
           showing={people.length}
           filters={[
             {
               name: "dept",
-              label: "Department",
-              allLabel: "Every department",
+              label: t.common.department,
+              allLabel: t.common.everyDepartment,
+              // Department names are rows, so they are listed as stored.
               options: (departments ?? []).map((d) => ({ value: d.id, label: d.name })),
             },
             {
               name: "type",
-              label: "Paid as",
-              allLabel: "Employees and contractors",
+              label: t.rates.paidAs,
+              allLabel: t.rates.everyone,
               options: [
-                { value: "employee", label: "Employees" },
-                { value: "contractor", label: "Contractors" },
+                { value: "employee", label: t.rates.employees },
+                { value: "contractor", label: t.rates.contractors },
               ],
             },
           ]}
@@ -141,8 +146,7 @@ export default async function RatesPage({
           <PeoplePay people={people} />
         ) : (
           <p className="rounded-2xl bg-secondary px-4 py-3 text-sm text-muted-foreground">
-            You can see pay rules but not change them. Editing needs the &ldquo;Manage pay
-            rules&rdquo; capability.
+            {t.rates.readOnly}
           </p>
         )}
       </Card>
@@ -176,8 +180,8 @@ export default async function RatesPage({
             <Card className="p-4 sm:p-6">
               <SectionTitle
                 icon={Coins}
-                title={`Pay rates — ${site.name}`}
-                subtitle="Rupees per hour for each kind of worked time"
+                title={<Fill template={t.rates.ratesFor} values={{ site: site.name }} />}
+                subtitle={t.rates.ratesForHint}
               />
               {canManage ? (
                 <RatesForm
@@ -187,20 +191,20 @@ export default async function RatesPage({
                   today={today}
                 />
               ) : (
-                <ReadOnlyRates current={current ?? null} />
+                <ReadOnlyRates t={t} current={current ?? null} />
               )}
             </Card>
 
             <Card className="p-4 sm:p-6">
               <SectionTitle
                 icon={Clock}
-                title="Late arrival penalties"
-                subtitle="Deducted automatically when someone checks in after their shift start"
+                title={t.rates.latePenalties}
+                subtitle={t.rates.latePenaltiesHint}
               />
               {canManage ? (
                 <LateRulesEditor siteId={site.id} rules={siteLateRules} />
               ) : (
-                <ReadOnlyLateRules rules={siteLateRules} />
+                <ReadOnlyLateRules t={t} rules={siteLateRules} />
               )}
             </Card>
           </div>
@@ -210,15 +214,15 @@ export default async function RatesPage({
   );
 }
 
-function ReadOnlyRates({ current }: { current: RateValues | null }) {
+function ReadOnlyRates({ t, current }: { t: Dictionary; current: RateValues | null }) {
   if (!current) {
-    return <p className="text-sm text-muted-foreground">No rates configured for this factory.</p>;
+    return <p className="text-sm text-muted-foreground">{t.rates.noRates}</p>;
   }
   const rows = [
-    ["Overtime", current.ot_hourly_rate],
-    ["Weekend / off-day", current.weekend_hourly_rate],
-    ["Holiday", current.holiday_hourly_rate],
-    ["Night shift", current.night_hourly_rate],
+    [t.rates.overtime, current.ot_hourly_rate],
+    [t.rates.weekend, current.weekend_hourly_rate],
+    [t.rates.holiday, current.holiday_hourly_rate],
+    [t.rates.night, current.night_hourly_rate],
   ] as const;
 
   return (
@@ -228,28 +232,49 @@ function ReadOnlyRates({ current }: { current: RateValues | null }) {
           <dt className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
             {label}
           </dt>
-          <dd className="mt-0.5 text-lg font-bold text-foreground">₨ {value} / hour</dd>
+          <dd className="mt-0.5 text-lg font-bold text-foreground">
+            <Fill template={t.rates.perHour} values={{ amount: `₨ ${value}` }} />
+          </dd>
         </div>
       ))}
     </dl>
   );
 }
 
-function ReadOnlyLateRules({ rules }: { rules: LateRule[] }) {
+function ReadOnlyLateRules({ t, rules }: { t: Dictionary; rules: LateRule[] }) {
   if (rules.length === 0) {
-    return <p className="text-sm text-muted-foreground">No late penalty configured.</p>;
+    return <p className="text-sm text-muted-foreground">{t.rates.noLatePenalty}</p>;
   }
   return (
     <ul className="space-y-2">
       {rules.map((rule) => (
         <li key={rule.id} className="rounded-2xl bg-secondary px-4 py-3 text-sm">
-          <span className="font-semibold text-foreground">{rule.label}</span>
+          {/* The band name is what the office typed; the range and the
+              percentage are figures. Only the words around them translate. */}
+          <span className="font-semibold text-foreground">
+            <Latin>{rule.label}</Latin>
+          </span>
           <span className="text-muted-foreground">
-            {" "}
-            — {rule.from_minutes} to {rule.to_minutes ?? "∞"} min ·{" "}
+            {" — "}
+            <Fill
+              template={t.rates.lateRange}
+              values={{
+                from: <Fill template={t.rates.minutes} values={{ minutes: rule.from_minutes }} />,
+                to:
+                  rule.to_minutes === null ? (
+                    t.rates.beyond
+                  ) : (
+                    <Fill template={t.rates.minutes} values={{ minutes: rule.to_minutes }} />
+                  ),
+              }}
+            />
+            {" · "}
           </span>
           <span className="font-bold text-danger">
-            {rule.penalty_percent}% of {rule.basis === "month" ? "monthly" : "daily"} pay
+            <Fill
+              template={rule.basis === "month" ? t.rates.penaltyOfMonthly : t.rates.penaltyOfDaily}
+              values={{ percent: rule.penalty_percent }}
+            />
           </span>
         </li>
       ))}

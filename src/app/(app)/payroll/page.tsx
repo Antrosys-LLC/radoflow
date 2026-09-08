@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { requireAnyPermission } from "@/lib/auth/session";
+import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 
 import { PayrollClient, type ItemRow, type PeriodRow } from "./payroll-client";
@@ -18,6 +19,7 @@ export default async function PayrollPage({
   searchParams: Promise<{ period?: string }>;
 }) {
   const session = await requireAnyPermission(["payroll.view", "payroll.run"]);
+  const t = dictionaryFor(session.profile.language);
   const { period: requestedPeriod } = await searchParams;
   const supabase = await createClient();
 
@@ -68,7 +70,7 @@ export default async function PayrollPage({
         return {
           id: row.id,
           profile_id: row.profile_id,
-          full_name: person?.full_name ?? "Unknown",
+          full_name: person?.full_name ?? t.payroll.unknownPerson,
           employee_code: person?.employee_code ?? "—",
           department: deptById.get(person?.department_id ?? "") ?? "—",
           pay_class: row.pay_class,

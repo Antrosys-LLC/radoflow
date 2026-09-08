@@ -7,6 +7,7 @@ import { pakistanDayStartUtc, todayInPakistan } from "@/lib/time";
 import { shiftDate } from "@/lib/canteen/meals";
 
 import { CounterScreen, type ScanView } from "./counter-screen";
+import { ScanLog, type ScanLogRow } from "./scan-log";
 
 export const metadata: Metadata = {
   title: { absolute: "Canteen | Rado Dyeing and Textile" },
@@ -93,6 +94,8 @@ export default async function CanteenPage() {
     };
   }
 
+  const canSeeCounts = session.permissions.has("canteen.view") || session.isSuperuser;
+
   const { count: servedToday } = await supabase
     .from("meal_claims")
     .select("id", { count: "exact", head: true })
@@ -108,12 +111,78 @@ export default async function CanteenPage() {
     .gte("scanned_at", pakistanDayStartUtc(today))
     .lt("scanned_at", pakistanDayStartUtc(shiftDate(today, 1)));
 
+  /*
+   * The day's register, for whoever can read canteen records.
+   *
+   * Bounded by the same Pakistan day as the refusal tally rather than by
+   * `served_on`: an unrecognised finger has no `served_on` at all, and those
+   * rows are exactly the ones that explain why somebody went without.
+   *
+   * The names are joined in one extra query rather than through a foreign-key
+   * embed, because the readable name lives on `employee_directory` — the
+   * pay-free view — and a canteen supervisor has no read on `profiles`.
+   */
+  const scanLog: ScanLogRow[] = [];
+
+  if (canSeeCounts) {
+    const { data: todaysScans } = await supabase
+      .from("meal_scan_log")
+      .select("id, outcome, profile_id, meal_window_id, device_id, scanned_at")
+      .gte("scanned_at", pakistanDayStartUtc(today))
+      .lt("scanned_at", pakistanDayStartUtc(shiftDate(today, 1)))
+      .order("scanned_at", { ascending: false })
+      .limit(500);
+
+    const rows = todaysScans ?? [];
+    const profileIds = [...new Set(rows.map((row) => row.profile_id).filter(Boolean))] as string[];
+    const windowIds = [
+      ...new Set(rows.map((row) => row.meal_window_id).filter(Boolean)),
+    ] as string[];
+    const deviceIds = [...new Set(rows.map((row) => row.device_id).filter(Boolean))] as string[];
+
+    const [{ data: people }, { data: windows }, { data: terminals }] = await Promise.all([
+      profileIds.length
+        ? supabase
+            .from("employee_directory")
+            .select("id, full_name, employee_code, photo_url")
+            .in("id", profileIds)
+        : Promise.resolve({ data: [] }),
+      windowIds.length
+        ? supabase.from("meal_windows").select("id, name").in("id", windowIds)
+        : Promise.resolve({ data: [] }),
+      deviceIds.length
+        ? supabase.from("devices").select("id, name").in("id", deviceIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const person = new Map((people ?? []).map((row) => [row.id, row]));
+    const mealName = new Map((windows ?? []).map((row) => [row.id, row.name]));
+    const deviceName = new Map((terminals ?? []).map((row) => [row.id, row.name]));
+
+    for (const row of rows) {
+      const who = row.profile_id ? person.get(row.profile_id) : null;
+      scanLog.push({
+        id: String(row.id),
+        outcome: row.outcome,
+        fullName: who?.full_name ?? null,
+        employeeCode: who?.employee_code ?? null,
+        photoUrl: who?.photo_url ?? null,
+        mealName: row.meal_window_id ? (mealName.get(row.meal_window_id) ?? null) : null,
+        deviceName: row.device_id ? (deviceName.get(row.device_id) ?? null) : null,
+        scannedAt: row.scanned_at,
+      });
+    }
+  }
+
   return (
-    <CounterScreen
-      scan={scan}
-      servedToday={servedToday ?? 0}
-      refusedToday={refusedToday ?? 0}
-      canSeeCounts={session.permissions.has("canteen.view") || session.isSuperuser}
-    />
+    <div className="space-y-4">
+      <CounterScreen
+        scan={scan}
+        servedToday={servedToday ?? 0}
+        refusedToday={refusedToday ?? 0}
+        canSeeCounts={canSeeCounts}
+      />
+      {canSeeCounts ? <ScanLog rows={scanLog} /> : null}
+    </div>
   );
 }

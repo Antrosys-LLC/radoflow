@@ -1302,6 +1302,23 @@ const en = {
     cannotSignIn: "Cannot sign in — no CNIC",
     noCnic: "No CNIC — cannot sign in",
     customAccessCount: "{count} custom access changes",
+    // Selecting people, and changing them together.
+    selectPerson: "Select {name}",
+    selectAllShown: "Select all shown",
+    selectedCount: "{count} selected",
+    bulkAction: "What to change",
+    bulkValue: "Change it to",
+    applyToSelected: "Apply",
+    clearSelection: "Clear the selection",
+    // Confirming with your own password. Said differently for each action,
+    // because the reason differs — one hands an account over, one takes a
+    // person off the payroll.
+    confirmWithPassword: "Your password",
+    passwordWhyReset:
+      "Your own password, because whoever holds the new one can sign in as this person.",
+    passwordWhySuspend:
+      "Your own password. A suspended account cannot sign in and drops off the payroll run.",
+    passwordWhyBulk: "Your own password, because this changes every person selected above.",
     editProfile: "Edit profile",
     noRole: "No role",
     customAccess: "Custom access",

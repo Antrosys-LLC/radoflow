@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { verifyOwnPassword } from "@/lib/auth/reauth";
 import { requirePermission, type Session } from "@/lib/auth/session";
 import { cnicLoginEmail, formatCnic, isValidCnic } from "@/lib/cnic";
 import { trackingFlags } from "@/lib/people/tracking";
@@ -222,13 +223,26 @@ async function mayAdministerAccount(
  * Guarded by {@link mayAdministerAccount}: `people.manage` is what lets someone
  * reset a worker's password, not what lets them reset an administrator's.
  */
-export async function setUserPassword(userId: string, password: string): Promise<UserResult> {
+export async function setUserPassword(
+  userId: string,
+  password: string,
+  confirmPassword = "",
+): Promise<UserResult> {
   const session = await requirePermission("people.manage");
 
   if (!userId) return { ok: false, message: "No user selected." };
   if (password.length < 8) {
     return { ok: false, message: "The password must be at least 8 characters." };
   }
+
+  /*
+   * Your own password, to hand over somebody else's account. This is the
+   * single most consequential thing on the screen — whoever holds the new
+   * password *is* that person to every check the system makes — and it is the
+   * action most worth doing from an unattended session.
+   */
+  const confirmed = await verifyOwnPassword(session.userId, confirmPassword);
+  if (!confirmed.ok) return { ok: false, message: confirmed.message };
 
   const allowed = await mayAdministerAccount(session, userId, "reset its password");
   if (!allowed.ok) return { ok: false, message: allowed.message };
@@ -392,13 +406,26 @@ export async function updateUserProfile(_prev: UserResult, form: FormData): Prom
  * check here exists so the refusal arrives as a sentence someone can act on
  * rather than a raw Postgres error.
  */
+/**
+ * Locks or unlocks an account.
+ *
+ * Takes the acting person's own password, every time. Suspending somebody
+ * takes them off the floor and off the payroll, and the accounts that can do
+ * it are the ones most likely to be left signed in on a shared office
+ * machine — a session cookie proves somebody signed in this morning, not that
+ * they meant to do this now.
+ */
 export async function setUserStatus(
   userId: string,
   status: "active" | "suspended",
+  confirmPassword = "",
 ): Promise<UserResult> {
   const session = await requirePermission("people.manage");
 
   if (!userId) return { ok: false, message: "No user selected." };
+
+  const confirmed = await verifyOwnPassword(session.userId, confirmPassword);
+  if (!confirmed.ok) return { ok: false, message: confirmed.message };
 
   const act = status === "active" ? "reactivate it" : "suspend it";
   const allowed = await mayAdministerAccount(session, userId, act);
@@ -425,4 +452,117 @@ export async function setUserStatus(
 
   revalidatePath("/admin/users");
   return { ok: true, message: status === "active" ? "Account reactivated." : "Account suspended." };
+}
+
+/**
+ * The same change, to several people at once.
+ *
+ * The office does this by hand constantly — a whole department moved to a new
+ * shift, a season's contractors suspended together — and doing it one card at
+ * a time is where mistakes come from: forty repetitions of a small action,
+ * with no way to see afterwards which ones took.
+ *
+ * Deliberately narrow. Placement changes (department, shift) and role
+ * assignment are here because they are the ones done in batches; suspending is
+ * here too, but carries the same password confirmation a single suspension
+ * does. Setting a password is *not* here and will not be: forty accounts
+ * cannot share one password, and a bulk version of that would be a way to
+ * quietly hand over the factory.
+ */
+export type BulkAction = "suspend" | "reactivate" | "role" | "department" | "shift";
+
+export async function bulkUpdateUsers(
+  userIds: readonly string[],
+  action: BulkAction,
+  /** The role, department or shift id. Empty means "unassign". */
+  value = "",
+  confirmPassword = "",
+): Promise<UserResult> {
+  const session = await requirePermission("people.manage");
+
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (ids.length === 0) return { ok: false, message: "Nobody selected." };
+
+  if (action === "role" && !session.isSuperuser && !session.permissions.has("access.manage")) {
+    return {
+      ok: false,
+      message: "Assigning a role needs the capability to manage access.",
+    };
+  }
+
+  const supabase = await createClient();
+
+  // Suspending in bulk is still suspending: the same confirmation, once for
+  // the batch rather than once per person.
+  if (action === "suspend" || action === "reactivate") {
+    const confirmed = await verifyOwnPassword(session.userId, confirmPassword);
+    if (!confirmed.ok) return { ok: false, message: confirmed.message };
+
+    /*
+     * Each account is checked individually rather than the batch being waved
+     * through: `mayAdministerAccount` is what stops `people.manage` reaching
+     * an administrator, and a bulk path that skipped it would be the way
+     * around the single-account rule rather than a convenience over it.
+     */
+    const status = action === "suspend" ? "suspended" : "active";
+    const refused: string[] = [];
+
+    for (const id of ids) {
+      const allowed = await mayAdministerAccount(session, id, "change its status");
+      if (!allowed.ok) {
+        refused.push(id);
+        continue;
+      }
+      await supabase.from("profiles").update({ status }).eq("id", id);
+    }
+
+    revalidatePath("/admin/users");
+
+    if (refused.length > 0) {
+      return {
+        ok: true,
+        message: `Changed ${ids.length - refused.length} of ${ids.length}. ${refused.length} are administrator accounts you cannot change.`,
+      };
+    }
+    return { ok: true, message: `Changed ${ids.length} people.` };
+  }
+
+  if (action === "role") {
+    // Replaced rather than added to: a person has one role on this screen, and
+    // leaving the old row behind would silently make it two.
+    const { error: cleared } = await supabase.from("user_roles").delete().in("user_id", ids);
+    if (cleared) return { ok: false, message: cleared.message };
+
+    if (value) {
+      const { error } = await supabase
+        .from("user_roles")
+        .insert(ids.map((id) => ({ user_id: id, role_id: value })));
+      if (error) return { ok: false, message: error.message };
+    }
+
+    revalidatePath("/admin/users");
+    return {
+      ok: true,
+      message: `Role set for ${ids.length} people. They will be signed out and must sign in again.`,
+    };
+  }
+
+  /*
+   * Written as two explicit payloads rather than a computed key: the generated
+   * types reject a dynamic column name, and spelling both out is also what
+   * stops a future third action quietly writing to a column nobody checked.
+   */
+  const payload =
+    action === "department" ? { department_id: value || null } : { shift_id: value || null };
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .update(payload)
+    .in("id", ids)
+    .select("id");
+
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath("/admin/users");
+  return { ok: true, message: `Changed ${data?.length ?? 0} people.` };
 }

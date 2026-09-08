@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { AskAbout } from "@/components/assistant/ask-about";
 import { CnicInput, PasswordInput } from "@/components/credential-inputs";
+import { BulkBar } from "./bulk-bar";
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
@@ -127,6 +128,22 @@ export function UsersManager({
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
+  /*
+   * Held as a set of ids rather than a flag on each row: the list is filtered
+   * client-side, and a selection that lived on the rows would silently empty
+   * itself the moment somebody typed in the search box.
+   */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  function toggleSelected(id: string) {
+    setSelected((was) => {
+      const next = new Set(was);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const shown = users.filter((user) => {
     if (roleFilter && user.roleId !== roleFilter) return false;
     if (statusFilter === "active" && user.status !== "active") return false;
@@ -134,6 +151,10 @@ export function UsersManager({
     if (statusFilter === "no-cnic" && user.cnic) return false;
     return matchesPerson(user, query);
   });
+
+  // Only what is on screen can be selected in one go — "select all" over a
+  // hidden remainder is how the wrong forty people get suspended.
+  const allShownSelected = shown.length > 0 && shown.every((user) => selected.has(user.id));
 
   return (
     <div className="space-y-5">
@@ -201,6 +222,18 @@ export function UsersManager({
               />
             </span>
           ) : null}
+
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-secondary px-3 py-2 text-xs font-semibold text-foreground">
+            <input
+              type="checkbox"
+              checked={allShownSelected}
+              onChange={() =>
+                setSelected(allShownSelected ? new Set() : new Set(shown.map((u) => u.id)))
+              }
+              className="size-4 rounded border-input"
+            />
+            {t.users.selectAllShown}
+          </label>
         </div>
 
         <div className="grid gap-2 lg:grid-cols-2">
@@ -210,6 +243,8 @@ export function UsersManager({
               user={user}
               roles={roles}
               canManageAccess={canManageAccess}
+              selected={selected.has(user.id)}
+              onSelect={() => toggleSelected(user.id)}
               onTune={() => setTuning(user)}
               onPay={() => setPaying(user)}
               onEdit={() => setEditing(user)}
@@ -221,6 +256,18 @@ export function UsersManager({
           <p className="rounded-2xl bg-secondary px-4 py-8 text-center text-sm text-muted-foreground">
             {t.common.nobodyMatches}
           </p>
+        ) : null}
+
+        {selected.size > 0 ? (
+          <BulkBar
+            selected={[...selected]}
+            roles={roles}
+            departments={departments}
+            shifts={shifts}
+            canManageAccess={canManageAccess}
+            onDone={() => setSelected(new Set())}
+            onClear={() => setSelected(new Set())}
+          />
         ) : null}
       </Card>
 
@@ -258,6 +305,8 @@ function UserCard({
   user,
   roles,
   canManageAccess,
+  selected,
+  onSelect,
   onTune,
   onPay,
   onEdit,
@@ -265,6 +314,8 @@ function UserCard({
   user: UserRow;
   roles: Option[];
   canManageAccess: boolean;
+  selected: boolean;
+  onSelect: () => void;
   onTune: () => void;
   onPay: () => void;
   onEdit: () => void;
@@ -284,6 +335,13 @@ function UserCard({
   const roleChanged = roleId !== (user.roleId ?? "");
 
   const [confirmingStatus, setConfirmingStatus] = useState(false);
+  /*
+   * Typed at the moment of the change, never held. Suspending somebody takes
+   * them off the floor and off the payroll, and a session cookie on an
+   * unattended office machine is not evidence that whoever is sitting there
+   * meant to do it.
+   */
+  const [statusPassword, setStatusPassword] = useState("");
 
   useEffect(() => {
     if (!state.message) return;
@@ -304,8 +362,21 @@ function UserCard({
   const canAdminister = canManageAccess || !user.isSuperuser;
 
   return (
-    <div className={cn("rounded-2xl bg-secondary p-4", suspended && "opacity-60")}>
+    <div
+      className={cn(
+        "rounded-2xl bg-secondary p-4 transition-all",
+        suspended && "opacity-60",
+        selected && "ring-2 ring-primary",
+      )}
+    >
       <div className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onSelect}
+          aria-label={fill(t.users.selectPerson, { name: user.full_name })}
+          className="mt-1 size-4 shrink-0 rounded border-input"
+        />
         <Avatar name={user.full_name} />
         <div className="min-w-0 flex-1">
           {/* Name, employee code and CNIC — all three Latin in every
@@ -447,18 +518,34 @@ function UserCard({
       ) : null}
 
       {confirmingStatus ? (
-        <div className="mt-3">
+        <div className="mt-3 space-y-2">
+          <PasswordInput
+            value={statusPassword}
+            onChange={setStatusPassword}
+            autoComplete="current-password"
+            placeholder={t.users.confirmWithPassword}
+            className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs outline-none focus:border-primary"
+          />
+          <p className="text-[11px] text-muted-foreground">{t.users.passwordWhySuspend}</p>
           <SwipeToConfirm
             tone={suspended ? "default" : "danger"}
             label={suspended ? t.users.swipeReactivate : t.users.swipeSuspend}
             confirmedLabel={suspended ? t.users.reactivating : t.users.suspending}
-            pending={pending}
+            pending={pending || statusPassword.length === 0}
             onConfirm={() =>
               startTransition(async () => {
-                const result = await setUserStatus(user.id, suspended ? "active" : "suspended");
-                if (result.ok) toast.success(result.message);
-                else toast.error(result.message);
-                setConfirmingStatus(false);
+                const result = await setUserStatus(
+                  user.id,
+                  suspended ? "active" : "suspended",
+                  statusPassword,
+                );
+                if (result.ok) {
+                  toast.success(result.message);
+                  setConfirmingStatus(false);
+                  setStatusPassword("");
+                } else {
+                  toast.error(result.message);
+                }
                 router.refresh();
               })
             }
@@ -488,11 +575,13 @@ function PasswordReset({ userId, name }: { userId: string; name: string }) {
   const t = useDictionary();
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
+  // The operator's own, to prove it is still them. Never held between uses.
+  const [mine, setMine] = useState("");
   const [pending, startTransition] = useTransition();
 
   const save = () =>
     startTransition(async () => {
-      const result = await setUserPassword(userId, value);
+      const result = await setUserPassword(userId, value, mine);
       if (!result.ok) {
         toast.error(result.message);
         return;
@@ -501,6 +590,7 @@ function PasswordReset({ userId, name }: { userId: string; name: string }) {
       // recoverable, only replaceable.
       toast.success(result.message, { duration: Infinity, closeButton: true });
       setValue("");
+      setMine("");
       setOpen(false);
     });
 
@@ -534,6 +624,7 @@ function PasswordReset({ userId, name }: { userId: string; name: string }) {
           type="button"
           onClick={() => {
             setValue("");
+            setMine("");
             setOpen(false);
           }}
           className="rounded-xl px-2 py-2 text-xs font-semibold text-muted-foreground transition-all hover:text-foreground"
@@ -545,12 +636,22 @@ function PasswordReset({ userId, name }: { userId: string; name: string }) {
       {/* Locking someone out of their own account is worth a deliberate
           gesture, the same as changing their role or their pay. */}
       {value.length >= 8 ? (
-        <SwipeToConfirm
-          label={fill(t.users.swipeSetPassword, { name: name.split(" ")[0] ?? "" })}
-          confirmedLabel={t.users.settingPassword}
-          pending={pending}
-          onConfirm={save}
-        />
+        <>
+          <PasswordInput
+            value={mine}
+            onChange={setMine}
+            autoComplete="current-password"
+            placeholder={t.users.confirmWithPassword}
+            className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs outline-none focus:border-primary"
+          />
+          <p className="text-[11px] text-muted-foreground">{t.users.passwordWhyReset}</p>
+          <SwipeToConfirm
+            label={fill(t.users.swipeSetPassword, { name: name.split(" ")[0] ?? "" })}
+            confirmedLabel={t.users.settingPassword}
+            pending={pending || mine.length === 0}
+            onConfirm={save}
+          />
+        </>
       ) : (
         <p className="text-[11px] text-muted-foreground">{t.users.atLeast8}</p>
       )}

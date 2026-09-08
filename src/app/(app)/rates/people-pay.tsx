@@ -11,7 +11,8 @@ import { Latin } from "@/components/latin";
 import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { Card } from "@/components/ui-kit";
 import { addUserComponent, removeUserComponent, updateUserPay } from "@/lib/pay/actions";
-import { trackingValueOf } from "@/lib/people/tracking";
+import { deriveRates } from "@/lib/pay/derived";
+import { trackingValueOf, type TrackingChoice } from "@/lib/people/tracking";
 import { cn } from "@/lib/utils";
 
 /**
@@ -184,13 +185,29 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
 
   const isContractor = workerType === "contractor";
   const monthly = Number(salary) || 0;
-  const perDay = monthly / days;
-  const perOtHour = perDay / 8;
 
-  const trackingValue = trackingValueOf({
-    requires_attendance: person.requiresAttendance,
-    payroll_exempt: person.payrollExempt,
-  });
+  /*
+   * The same arithmetic payroll runs, shown while the figures are being typed.
+   * A monthly figure is what gets agreed; an hour and a minute of it are what
+   * get argued about, so all four are on screen at once.
+   */
+  const noAttendance = dutyHours === "none";
+  const rates = deriveRates(monthly, noAttendance ? 8 : Number(dutyHours) || 8);
+  const perDay = rates.perDay;
+  const perOtHour = rates.perOvertimeHour;
+
+  /*
+   * Held in state rather than left uncontrolled, because the duty select can
+   * force it: "no attendance needed" and `salary_only` are one arrangement
+   * said two ways, and two controls that can disagree about it would let the
+   * form submit a contradiction.
+   */
+  const [tracking, setTracking] = useState(
+    trackingValueOf({
+      requires_attendance: person.requiresAttendance,
+      payroll_exempt: person.payrollExempt,
+    }),
+  );
 
   const deductions = person.components
     .filter((c) => c.kind !== "earning")
@@ -337,6 +354,7 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
                 >
                   <option value="8">{t.rates.hours8}</option>
                   <option value="12">{t.rates.hours12}</option>
+                  <option value="none">{t.rates.noAttendanceNeeded}</option>
                 </select>
               </Field>
 
@@ -373,12 +391,20 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
                 />
               </Field>
               <Field label={t.rates.tracking}>
-                <select name="tracking" defaultValue={trackingValue} className={INPUT}>
+                <select
+                  name="tracking"
+                  value={noAttendance ? "salary_only" : tracking}
+                  onChange={(event) => setTracking(event.target.value as TrackingChoice)}
+                  disabled={noAttendance}
+                  className={cn(INPUT, noAttendance && "opacity-50")}
+                >
                   <option value="tracked">{t.rates.trackingTracked}</option>
                   <option value="salary_only">{t.rates.trackingSalaryOnly}</option>
                   <option value="exempt">{t.rates.trackingExempt}</option>
                 </select>
-                <p className="mt-1 text-xs text-muted-foreground">{t.rates.trackingHint}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {noAttendance ? t.rates.noAttendanceHint : t.rates.trackingHint}
+                </p>
               </Field>
               <label className="flex items-center gap-2 self-end pb-2 text-xs font-semibold text-foreground">
                 <input
@@ -408,9 +434,18 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
                     salary: money(monthly),
                     days,
                     perHour: `Rs ${money2(perOtHour)}`,
-                    duty: dutyHours,
+                    duty: noAttendance ? 8 : dutyHours,
                   }}
                 />
+                <span className="mt-1 block">
+                  <Fill
+                    template={t.rates.hourlyBreakdown}
+                    values={{
+                      perHour: `Rs ${money2(rates.perHour)}`,
+                      perMinute: `Rs ${rates.perMinute.toFixed(2)}`,
+                    }}
+                  />
+                </span>
               </p>
             ) : null}
 

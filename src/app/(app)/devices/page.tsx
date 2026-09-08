@@ -41,7 +41,7 @@ export default async function DevicesPage() {
     supabase
       .from("devices")
       .select(
-        "id, name, model, serial_number, mode, purpose, ip_address, port, status, last_seen_at, last_error, is_active, site_id",
+        "id, name, model, serial_number, mode, purpose, direction, ip_address, port, status, last_seen_at, last_error, is_active, site_id",
       )
       .order("name"),
     supabase.from("sites").select("id, name").order("name"),
@@ -111,6 +111,14 @@ export default async function DevicesPage() {
                           {device.purpose === "canteen" ? (
                             <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
                               {t.status.devicePurpose.canteen}
+                            </span>
+                          ) : null}
+                          {/* A gate terminal states its own direction, so the
+                              card says which door it is on. `auto` says
+                              nothing, and gets no badge. */}
+                          {device.purpose !== "canteen" && device.direction !== "auto" ? (
+                            <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                              {t.status.deviceDirection[device.direction]}
                             </span>
                           ) : null}
                         </p>

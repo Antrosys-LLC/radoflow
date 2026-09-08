@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requirePermission } from "@/lib/auth/session";
+import { deriveRates } from "@/lib/pay/derived";
 import { trackingFlags } from "@/lib/people/tracking";
 import { createClient } from "@/lib/supabase/server";
 
@@ -39,15 +40,37 @@ export async function updateUserPay(_prev: PayResult, form: FormData): Promise<P
   const workerType = (text(form, "worker_type") || "employee") as "employee" | "contractor";
   const payClass = (text(form, "pay_class") || "monthly") as "monthly" | "hourly";
   const monthlySalary = Number(text(form, "monthly_salary") || 0);
-  const hourlyRate = Number(text(form, "hourly_rate") || 0);
-  const dutyHours = Number(text(form, "duty_hours") || 8);
+  const dutyHoursRaw = text(form, "duty_hours") || "8";
+
+  /*
+   * "No attendance needed" is a third answer to "what does the salary cover",
+   * and it is not a number of hours — it means the salary is not earned by the
+   * clock at all. It arrives on the same select because that is the question
+   * the office is answering, and it leaves the person's duty figure untouched:
+   * they may go back on the clock next month, and overwriting it with a
+   * default would quietly re-band them when they do.
+   */
+  const noAttendance = dutyHoursRaw === "none";
+  const dutyHours = noAttendance ? null : Number(dutyHoursRaw);
   const sundayPolicy = (text(form, "sunday_policy") || "off") as
     "off" | "optional" | "compulsory" | "adjust_in_leave";
 
-  if (monthlySalary < 0 || hourlyRate < 0) {
+  /*
+   * An hourly rate left at zero on a monthly salary is derived rather than
+   * stored as zero. Every wage here is quoted by the month and settled by the
+   * hour — an hour short, twenty minutes late — and a zero rate silently
+   * prices all of that at nothing. Typed in explicitly, the figure is honoured
+   * as it stands: an agreed rate that differs from the arithmetic is a real
+   * arrangement, not a mistake to correct.
+   */
+  const hourlyRateRaw = Number(text(form, "hourly_rate") || 0);
+  const hourlyRate =
+    hourlyRateRaw > 0 ? hourlyRateRaw : deriveRates(monthlySalary, dutyHours ?? 8).perHour;
+
+  if (monthlySalary < 0 || hourlyRateRaw < 0) {
     return { ok: false, message: "Pay cannot be negative." };
   }
-  if (dutyHours <= 0 || dutyHours > 24) {
+  if (dutyHours !== null && (!(dutyHours > 0) || dutyHours > 24)) {
     return { ok: false, message: "Duty hours must be between 1 and 24." };
   }
 
@@ -59,9 +82,13 @@ export async function updateUserPay(_prev: PayResult, form: FormData): Promise<P
       pay_class: payClass,
       monthly_salary: monthlySalary,
       hourly_rate: hourlyRate,
-      duty_hours: dutyHours,
+      // Left alone when the answer was "no attendance needed" — see above.
+      ...(dutyHours === null ? {} : { duty_hours: dutyHours }),
       sunday_policy: sundayPolicy,
-      ...trackingFlags(text(form, "tracking")),
+      // "No attendance needed" is the same state the tracking select calls
+      // `salary_only`, so it resolves to one set of flags either way rather
+      // than to two columns that can contradict each other.
+      ...trackingFlags(noAttendance ? "salary_only" : text(form, "tracking")),
       overtime_eligible: form.get("overtime_eligible") !== null,
     })
     .eq("id", userId);

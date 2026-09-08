@@ -23,7 +23,8 @@ function fill(template: string, values: Record<string, string | number>): string
   return template.replace(/\{(\w+)\}/g, (_match, key: string) => String(values[key] ?? ""));
 }
 import { addUserComponent, removeUserComponent, updateUserPay } from "@/lib/pay/actions";
-import { trackingValueOf } from "@/lib/people/tracking";
+import { deriveRates } from "@/lib/pay/derived";
+import { trackingValueOf, type TrackingChoice } from "@/lib/people/tracking";
 import {
   createUser,
   setUserOverride,
@@ -1137,10 +1138,17 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
   const [dutyHours, setDutyHours] = useState(String(user.dutyHours));
   const [salary, setSalary] = useState(String(user.monthlySalary));
 
-  const trackingValue = trackingValueOf({
-    requires_attendance: user.requiresAttendance,
-    payroll_exempt: user.payrollExempt,
-  });
+  /*
+   * Controlled, because the duty select can force it: "no attendance needed"
+   * and `salary_only` are one arrangement said two ways, and two controls free
+   * to disagree would let the form submit a contradiction.
+   */
+  const [tracking, setTracking] = useState(
+    trackingValueOf({
+      requires_attendance: user.requiresAttendance,
+      payroll_exempt: user.payrollExempt,
+    }),
+  );
 
   useEffect(() => {
     if (!state.message) return;
@@ -1157,9 +1165,11 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
    * overtime is worth beside it.
    */
   const monthly = Number(salary) || 0;
-  const daysThisMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-  const perDay = monthly > 0 ? monthly / daysThisMonth : 0;
-  const perOtHour = perDay / 8;
+  const noAttendance = dutyHours === "none";
+  const rates = deriveRates(monthly, noAttendance ? 8 : Number(dutyHours) || 8);
+  const daysThisMonth = rates.daysInMonth;
+  const perDay = rates.perDay;
+  const perOtHour = rates.perOvertimeHour;
   const money = (value: number) =>
     value.toLocaleString("en-PK", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 
@@ -1232,6 +1242,7 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
             >
               <option value="8">{t.users.hours8Overtime}</option>
               <option value="12">{t.users.hours12NoOvertime}</option>
+              <option value="none">{t.users.noAttendanceNeeded}</option>
             </select>
           </div>
         </div>
@@ -1254,12 +1265,20 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
 
         <div>
           <label className="text-sm font-semibold text-foreground">{t.users.tracking}</label>
-          <select name="tracking" defaultValue={trackingValue} className={INPUT}>
+          <select
+            name="tracking"
+            value={noAttendance ? "salary_only" : tracking}
+            onChange={(event) => setTracking(event.target.value as TrackingChoice)}
+            disabled={noAttendance}
+            className={cn(INPUT, noAttendance && "opacity-50")}
+          >
             <option value="tracked">{t.users.trackingTracked}</option>
             <option value="salary_only">{t.users.trackingSalaryOnly}</option>
             <option value="exempt">{t.users.trackingExempt}</option>
           </select>
-          <p className="mt-1 text-xs text-muted-foreground">{t.users.trackingHint}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {noAttendance ? t.users.noAttendanceHint : t.users.trackingHint}
+          </p>
         </div>
 
         <div className="space-y-2.5">
@@ -1303,8 +1322,22 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
                 values={{ amount: `Rs ${money(perOtHour)}` }}
               />
             </p>
+            {/* The hour and the minute, because that is the granularity
+                every argument about this salary is actually had at. */}
+            <p className="mt-1">
+              <Fill
+                template={t.users.perHourLine}
+                values={{
+                  perHour: `Rs ${money(rates.perHour)}`,
+                  perMinute: `Rs ${rates.perMinute.toFixed(2)}`,
+                }}
+              />
+            </p>
             <p className="mt-1 opacity-80">
-              <Fill template={t.users.overtimeBoundary} values={{ hours: dutyHours }} />
+              <Fill
+                template={t.users.overtimeBoundary}
+                values={{ hours: noAttendance ? 8 : dutyHours }}
+              />
             </p>
           </div>
         ) : null}

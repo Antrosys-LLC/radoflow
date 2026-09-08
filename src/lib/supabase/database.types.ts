@@ -34,6 +34,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      // HAND-WRITTEN, not generated. Added with the migration
+      // 20260908100000_checkout_devices_paid_amounts_and_settings.sql because
+      // the local database will not start here, so this file cannot be
+      // regenerated against it. Delete this block and re-run
+      // `npm run db:types` once a local database is available.
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
+      assistant_usage: {
+        Row: {
+          asked_at: string
+          cache_read: number
+          cache_write: number
+          cost_usd: number
+          id: number
+          input_tokens: number
+          model: string
+          output_tokens: number
+          profile_id: string | null
+          surface: string | null
+        }
+        Insert: {
+          asked_at?: string
+          cache_read?: number
+          cache_write?: number
+          cost_usd?: number
+          id?: number
+          input_tokens?: number
+          model: string
+          output_tokens?: number
+          profile_id?: string | null
+          surface?: string | null
+        }
+        Update: {
+          asked_at?: string
+          cache_read?: number
+          cache_write?: number
+          cost_usd?: number
+          id?: number
+          input_tokens?: number
+          model?: string
+          output_tokens?: number
+          profile_id?: string | null
+          surface?: string | null
+        }
+        Relationships: []
+      }
       approvals: {
         Row: {
           amount: number | null
@@ -535,6 +600,7 @@ export type Database = {
       }
       devices: {
         Row: {
+          direction: Database["public"]["Enums"]["device_direction"]
           auto_sync: boolean
           comm_key: string | null
           consecutive_failures: number
@@ -559,6 +625,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          direction?: Database["public"]["Enums"]["device_direction"]
           auto_sync?: boolean
           comm_key?: string | null
           consecutive_failures?: number
@@ -583,6 +650,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          direction?: Database["public"]["Enums"]["device_direction"]
           auto_sync?: boolean
           comm_key?: string | null
           consecutive_failures?: number
@@ -1325,6 +1393,9 @@ export type Database = {
       }
       payroll_items: {
         Row: {
+          paid_amount: number | null
+          paid_difference: number | null
+          paid_note: string | null
           allowances: number
           base_pay: number
           base_rate: number
@@ -1358,6 +1429,8 @@ export type Database = {
           weekend_pay: number
         }
         Insert: {
+          paid_amount?: number | null
+          paid_note?: string | null
           allowances?: number
           base_pay?: number
           base_rate?: number
@@ -1391,6 +1464,8 @@ export type Database = {
           weekend_pay?: number
         }
         Update: {
+          paid_amount?: number | null
+          paid_note?: string | null
           allowances?: number
           base_pay?: number
           base_rate?: number
@@ -2543,6 +2618,7 @@ export type Database = {
         | "pending"
       component_calc: "fixed" | "percent" | "slab" | "formula"
       component_kind: "earning" | "deduction" | "tax"
+      device_direction: "auto" | "in" | "out"
       day_type:
         | "workday"
         | "off"
@@ -2714,6 +2790,7 @@ export const Constants = {
       ],
       component_calc: ["fixed", "percent", "slab", "formula"],
       component_kind: ["earning", "deduction", "tax"],
+      device_direction: ["auto", "in", "out"],
       day_type: [
         "workday",
         "off",

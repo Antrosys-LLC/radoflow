@@ -76,6 +76,7 @@ export async function saveDevice(_prev: ActionResult, form: FormData): Promise<A
     model: fieldText(form, "model") || "ZKTeco K50",
     mode: (fieldText(form, "mode") || "push") as "push" | "pull",
     purpose: (fieldText(form, "purpose") || "attendance") as "attendance" | "canteen",
+    direction: (fieldText(form, "direction") || "auto") as "auto" | "in" | "out",
     ip_address: ip || null,
     port: portValue,
     comm_key: fieldText(form, "comm_key") || null,

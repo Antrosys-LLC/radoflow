@@ -187,6 +187,16 @@ const en = {
       push: "Push (ADMS)",
       pull: "Pull (TCP)",
     },
+    /*
+     * `device_direction`. What a punch from this terminal means — a fact about
+     * where the terminal is installed, not about the punch. `auto` is the
+     * original behaviour and stays the default.
+     */
+    deviceDirection: {
+      auto: "Works it out",
+      in: "Check-in gate",
+      out: "Check-out gate",
+    },
     devicePurpose: {
       attendance: "Attendance",
       canteen: "Canteen",
@@ -749,6 +759,15 @@ const en = {
     // `status.deviceMode` labels: this text tells the office which to pick.
     modePushOption: "Push — terminal uploads to us (recommended)",
     modePullOption: "Pull — we connect to the terminal over TCP",
+    // Which door this terminal is on. The instructions the form offers when
+    // one is being chosen, rather than the enum's own labels in
+    // `status.deviceDirection` — which is what the card and the terminal's
+    // page show once it is set.
+    gate: "Which gate",
+    gateHint: "A terminal by the door in records arrivals; one on the way out records departures",
+    gateAutoOption: "Works it out — first punch in, last punch out",
+    gateInOption: "Check-in — every punch here is an arrival",
+    gateOutOption: "Check-out — every punch here is a departure",
     records: "What this terminal records",
     recordsHint: "A canteen scan is a meal, never a clock-in — nobody is paid for eating.",
     purposeAttendanceOption: "Attendance — clock in and out",
@@ -1170,6 +1189,13 @@ const en = {
     agreedAmount: "Agreed amount",
     monthlySalary: "Monthly salary",
     salaryCovers: "Salary covers",
+    // The third answer to "what does the salary cover": not a number of hours
+    // at all. It is the same arrangement the tracking select calls
+    // `salary_only`, offered on the question the office is actually asking.
+    noAttendanceNeeded: "No attendance needed — salary paid in full",
+    noAttendanceHint:
+      "No attendance is kept for this person and no hours are priced. The salary is paid in full.",
+    hourlyBreakdown: "{perHour} an hour · {perMinute} a minute",
     hours8: "8 hours",
     hours12: "12 hours",
     sunday: "Sunday",
@@ -1265,6 +1291,10 @@ const en = {
     employeeFromAttendance: "Employee — worked out from attendance",
     contractorFlat: "Contractor — flat agreed amount",
     salaryCovers: "Salary covers",
+    noAttendanceNeeded: "No attendance needed — salary paid in full",
+    noAttendanceHint:
+      "No attendance is kept for this person and no hours are priced. The salary is paid in full.",
+    perHourLine: "{perHour} an hour · {perMinute} a minute",
     hours8Overtime: "8 hours — anything past that is overtime",
     hours12NoOvertime: "12 hours — all twelve are duty, no overtime",
     sunday: "Sunday",

@@ -155,6 +155,13 @@ const GOVERNANCE_MODULES: readonly NavItem[] = [
     description: "Create roles and choose what each can do",
   },
   {
+    href: "/admin/claude-spend",
+    labelKey: "claudeSpend",
+    icon: "rates",
+    requires: ["settings.manage"],
+    description: "What the assistant costs, in rupees",
+  },
+  {
     href: "/canteen/settings",
     labelKey: "canteenSettings",
     icon: "canteen",

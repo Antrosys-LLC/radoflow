@@ -146,6 +146,7 @@ const roman: Dictionary = {
     liveFloor: "Floor, Live",
     rates: "Ujrat ke Rate",
     canteen: "Canteen",
+    claudeSpend: "Claude ka kharch",
     canteenSettings: "Canteen ki Settings",
     reports: "Reports",
     payroll: "Tankhwah",
@@ -209,6 +210,33 @@ const roman: Dictionary = {
     deniedBody:
       "{role} kirdar mein yeh hissa shamil nahi. Kisi muntazim se ijazat dilwayein — kuch dobara nasb ya update karne ki zaroorat nahi.",
     backToDashboard: "Apne dashboard par wapas",
+  },
+  spend: {
+    title: "Claude ka kharch",
+    subtitle: "Barah-e-raast Anthropic account se, tax jor kar rupayon mein",
+    perSecond: "Fi second",
+    averagedOver: "{days} dinon ka ausat",
+    today: "Aaj",
+    thisPeriod: "Is arse mein",
+    acrossDays: "{days} dinon mein",
+    sinceMidnight: "Raat barah baje se takhmina",
+    notConfigured: "Anthropic ki admin key muqarrar nahi",
+    notConfiguredHint:
+      "Account ki apni report parhne ke liye mezban par ANTHROPIC_ADMIN_KEY muqarrar karein. Key Anthropic Console mein Settings, Admin API keys se banti hai. Tab tak sirf neeche wala apna hisab dastyab hai.",
+    refused: "Anthropic ne darkhwast radd kar di",
+    unreachable: "Anthropic tak rasai nahi ho saki",
+    problemHint:
+      "Neeche ke adad sirf isi app ke apne hisab se hain, usi account par hone wala baqi kharch un mein shamil nahi.",
+    appTitle: "Is app ne kya poocha",
+    appSubtitle: "Yahan har sawal ke hisab se gina gaya — upar wale account se kam daira",
+    appSpend: "Kharch",
+    appCalls: "Jawabat",
+    settingsTitle: "Rate aur tax",
+    settingsHint:
+      "Ek dollar kitne rupay ka, aur bank kitna tax lagata hai. Jahan bhi dollar rupayon mein dikhaya jata hai, yehi dono lagte hain.",
+    settingsReadOnly: "Aap yeh dekh sakte hain, badal nahi sakte.",
+    rate: "Ek dollar ke rupay",
+    tax: "Tax (%)",
   },
   status: {
     payroll: {

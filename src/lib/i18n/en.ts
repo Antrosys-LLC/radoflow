@@ -32,6 +32,7 @@ const en = {
     liveFloor: "Live Floor",
     rates: "Pay Rates",
     canteen: "Canteen",
+    claudeSpend: "Claude Spend",
     canteenSettings: "Canteen Settings",
     reports: "Reports",
     payroll: "Payroll",
@@ -153,6 +154,42 @@ const en = {
     deniedBody:
       "The {role} role does not include this module. Ask an administrator to grant it — nothing needs reinstalling or updating.",
     backToDashboard: "Back to my dashboard",
+  },
+  /**
+   * What Claude costs the factory.
+   *
+   * Two sources side by side: Anthropic's own account statement, and this
+   * app's record of what it asked for. The per-second figure is the one most
+   * likely to be misread, so it says what it is averaged over — the cost
+   * endpoint reports by the day, and there is no per-second measurement to be
+   * had.
+   */
+  spend: {
+    title: "What Claude costs",
+    subtitle: "Taken from the Anthropic account itself, converted to rupees with the tax added",
+    perSecond: "A second",
+    averagedOver: "Averaged over {days} days",
+    today: "Today",
+    thisPeriod: "This period",
+    acrossDays: "Across {days} days",
+    sinceMidnight: "Estimated since midnight",
+    notConfigured: "No Anthropic admin key is set",
+    notConfiguredHint:
+      "Set ANTHROPIC_ADMIN_KEY on the host to read the account's own cost report. Create the key in the Anthropic Console under Settings, Admin API keys. Until then only this app's own tally below is available.",
+    refused: "Anthropic refused the request",
+    unreachable: "Could not reach Anthropic",
+    problemHint:
+      "The figures below are this app's own tally only, and cover nothing else billed to the same account.",
+    appTitle: "What this app asked for",
+    appSubtitle: "Counted here, per question — narrower than the account statement above",
+    appSpend: "Spent",
+    appCalls: "Questions answered",
+    settingsTitle: "Rate and tax",
+    settingsHint:
+      "What one dollar costs in rupees, and the tax the bank adds. Both are used everywhere a dollar figure is shown in rupees.",
+    settingsReadOnly: "You can see these but not change them.",
+    rate: "Rupees to the dollar",
+    tax: "Tax (%)",
   },
   status: {
     payroll: {

@@ -191,6 +191,52 @@ const en = {
     rate: "Rupees to the dollar",
     tax: "Tax (%)",
   },
+  /**
+   * Light, dark, or whatever the phone is set to.
+   *
+   * `system` is a real choice rather than a starting value: a phone that
+   * switches to dark at sunset should take the app with it.
+   */
+  theme: {
+    label: "Appearance",
+    light: "Light",
+    dark: "Dark",
+    system: "Match my device",
+  },
+  /**
+   * The words inside a chart rather than around it.
+   *
+   * The titles come from the screen that draws the chart; these are the parts
+   * the chart owns — its legend, the table under it, and what it says when
+   * there is nothing to draw. They were the last English left on an Urdu
+   * reports screen, and the most visible, because a legend sits in the middle
+   * of the picture.
+   */
+  chart: {
+    viewAsTable: "View as a table",
+    // Column headings. Short, because they sit in a narrow scrolling table.
+    colDate: "Date",
+    colName: "Name",
+    colValue: "Value",
+    colDuty: "Duty",
+    colOvertime: "Overtime",
+    colTotal: "Total",
+    colIn: "In",
+    colOut: "Out",
+    colUnmatched: "Unmatched",
+    // Legends.
+    dutyHours: "Duty hours",
+    overtime: "Overtime",
+    checkedIn: "Checked in",
+    checkedOut: "Checked out",
+    // Nothing to draw is a sentence, not an empty axis.
+    noAttendance: "No attendance in this period.",
+    noPunches: "No punches in this period.",
+    nothingRecorded: "Nothing recorded in this period.",
+    nothingToPlot: "Nothing to plot in this period.",
+    // A ninth category is never a generated hue: it folds into this.
+    other: "Other",
+  },
   status: {
     payroll: {
       draft: "Draft",

@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 
+import { useDictionary } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 
 import {
@@ -145,6 +146,24 @@ function Frame({
   children: React.ReactNode;
   table: React.ReactNode;
 }) {
+  const t = useDictionary();
+
+  /*
+   * The table under every chart is rendered only once somebody opens it.
+   *
+   * It is the accessible equivalent of the picture and lists *every* row, not
+   * just the dozen the chart draws — which on a four-hundred-person factory is
+   * four hundred rows per chart, eight charts to a reports screen. All of it
+   * was being rendered on the server and shipped inside a collapsed
+   * `<details>` on every single load: about twelve hundred rows nobody had
+   * asked to see, and the single reason that screen took nine seconds.
+   *
+   * Deferring the render keeps the whole table available — the summary is
+   * still there, still announced, still one click — while the page stops
+   * paying for it up front.
+   */
+  const [tableOpen, setTableOpen] = useState(false);
+
   return (
     <figure className="rounded-3xl border border-border bg-card p-4 shadow-[0_1px_2px_rgb(0_0_0/0.04)] sm:p-5">
       <figcaption className="mb-3">
@@ -152,11 +171,11 @@ function Frame({
         {subtitle ? <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p> : null}
       </figcaption>
       {children}
-      <details className="mt-3">
+      <details className="mt-3" onToggle={(event) => setTableOpen(event.currentTarget.open)}>
         <summary className="cursor-pointer text-xs font-semibold text-muted-foreground hover:text-foreground">
-          View as a table
+          {t.chart.viewAsTable}
         </summary>
-        <div className="mt-2 max-h-64 overflow-auto">{table}</div>
+        <div className="mt-2 max-h-64 overflow-auto">{tableOpen ? table : null}</div>
       </details>
     </figure>
   );
@@ -254,13 +273,14 @@ export function DailyHours({
   dutyColor?: string;
   overtimeColor?: string;
 }) {
+  const t = useDictionary();
   const [hover, setHover] = useState<number | null>(null);
   const clipId = useId();
 
   if (data.length === 0) {
     return (
       <Frame title={title} subtitle={subtitle} table={null}>
-        <Empty message="No attendance in this period." />
+        <Empty message={t.chart.noAttendance} />
       </Frame>
     );
   }
@@ -291,15 +311,15 @@ export function DailyHours({
       subtitle={subtitle}
       table={
         <DataTable
-          head={["Date", "Duty", "Overtime", "Total"]}
+          head={[t.chart.colDate, t.chart.colDuty, t.chart.colOvertime, t.chart.colTotal]}
           rows={data.map((d) => [d.date, d.duty, d.overtime, d.duty + d.overtime])}
         />
       }
     >
       <Legend
         items={[
-          { label: "Duty hours", color: dutyColor },
-          { label: "Overtime", color: overtimeColor },
+          { label: t.chart.dutyHours, color: dutyColor },
+          { label: t.chart.overtime, color: overtimeColor },
         ]}
       />
 
@@ -448,12 +468,13 @@ export function PunchTrend({
   title: string;
   subtitle?: string | undefined;
 }) {
+  const t = useDictionary();
   const [hover, setHover] = useState<number | null>(null);
 
   if (data.length === 0) {
     return (
       <Frame title={title} subtitle={subtitle} table={null}>
-        <Empty message="No punches in this period." />
+        <Empty message={t.chart.noPunches} />
       </Frame>
     );
   }
@@ -482,15 +503,15 @@ export function PunchTrend({
       subtitle={subtitle}
       table={
         <DataTable
-          head={["Date", "In", "Out", "Unmatched"]}
+          head={[t.chart.colDate, t.chart.colIn, t.chart.colOut, t.chart.colUnmatched]}
           rows={data.map((d) => [d.date, d.checkIns, d.checkOuts, d.checkIns - d.checkOuts])}
         />
       }
     >
       <Legend
         items={[
-          { label: "Checked in", color: "var(--viz-series-1)" },
-          { label: "Checked out", color: "var(--viz-series-2)" },
+          { label: t.chart.checkedIn, color: "var(--viz-series-1)" },
+          { label: t.chart.checkedOut, color: "var(--viz-series-2)" },
         ]}
       />
 
@@ -651,6 +672,7 @@ export function RankedBars({
   unit?: string;
   max?: number;
 }) {
+  const t = useDictionary();
   const [hover, setHover] = useState<string | null>(null);
 
   const sorted = [...data].sort((a, b) => b.value - a.value);
@@ -660,7 +682,7 @@ export function RankedBars({
   if (shown.length === 0 || shown.every((d) => d.value === 0)) {
     return (
       <Frame title={title} subtitle={subtitle} table={null}>
-        <Empty message="Nothing recorded in this period." />
+        <Empty message={t.chart.nothingRecorded} />
       </Frame>
     );
   }
@@ -672,7 +694,10 @@ export function RankedBars({
       title={title}
       subtitle={subtitle}
       table={
-        <DataTable head={["Name", unit || "Value"]} rows={sorted.map((d) => [d.label, d.value])} />
+        <DataTable
+          head={[t.chart.colName, unit || t.chart.colValue]}
+          rows={sorted.map((d) => [d.label, d.value])}
+        />
       }
     >
       <ul className="space-y-1.5">
@@ -773,6 +798,7 @@ export function DonutChart({
   unit?: string;
   format?: NumberFormat;
 }) {
+  const t = useDictionary();
   const show = (value: number) => formatWith(format, value);
   const [hover, setHover] = useState<string | null>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -803,7 +829,7 @@ export function DonutChart({
   if (folded.length === 0) {
     return (
       <Frame title={title} subtitle={subtitle} table={null}>
-        <Empty message="Nothing recorded in this period." />
+        <Empty message={t.chart.nothingRecorded} />
       </Frame>
     );
   }
@@ -815,7 +841,10 @@ export function DonutChart({
       title={title}
       subtitle={subtitle}
       table={
-        <DataTable head={["Name", unit || "Value"]} rows={folded.map((d) => [d.label, d.value])} />
+        <DataTable
+          head={[t.chart.colName, unit || t.chart.colValue]}
+          rows={folded.map((d) => [d.label, d.value])}
+        />
       }
     >
       <div className="flex flex-wrap items-center gap-5">
@@ -958,6 +987,7 @@ export function ScatterPlot({
   formatX?: NumberFormat;
   formatY?: NumberFormat;
 }) {
+  const t = useDictionary();
   const showX = (value: number) => formatWith(formatX, value);
   const showY = (value: number) => formatWith(formatY, value);
   const [hover, setHover] = useState<number | null>(null);
@@ -966,7 +996,7 @@ export function ScatterPlot({
   if (data.length === 0) {
     return (
       <Frame title={title} subtitle={subtitle} table={null}>
-        <Empty message="Nothing to plot in this period." />
+        <Empty message={t.chart.nothingToPlot} />
       </Frame>
     );
   }
@@ -994,7 +1024,10 @@ export function ScatterPlot({
       title={title}
       subtitle={subtitle}
       table={
-        <DataTable head={["Name", xLabel, yLabel]} rows={data.map((d) => [d.label, d.x, d.y])} />
+        <DataTable
+          head={[t.chart.colName, xLabel, yLabel]}
+          rows={data.map((d) => [d.label, d.x, d.y])}
+        />
       }
     >
       <div className="relative">
@@ -1115,6 +1148,7 @@ export function RadialArea({
   subtitle?: string | undefined;
   format?: NumberFormat;
 }) {
+  const t = useDictionary();
   const show = (value: number) => formatWith(format, value);
   const [hover, setHover] = useState<string | null>(null);
 
@@ -1126,7 +1160,7 @@ export function RadialArea({
   if (shown.length === 0) {
     return (
       <Frame title={title} subtitle={subtitle} table={null}>
-        <Empty message="Nothing recorded in this period." />
+        <Empty message={t.chart.nothingRecorded} />
       </Frame>
     );
   }
@@ -1143,7 +1177,12 @@ export function RadialArea({
     <Frame
       title={title}
       subtitle={subtitle}
-      table={<DataTable head={["Name", "Value"]} rows={shown.map((d) => [d.label, d.value])} />}
+      table={
+        <DataTable
+          head={[t.chart.colName, t.chart.colValue]}
+          rows={shown.map((d) => [d.label, d.value])}
+        />
+      }
     >
       <div className="flex flex-wrap items-center gap-5">
         <svg

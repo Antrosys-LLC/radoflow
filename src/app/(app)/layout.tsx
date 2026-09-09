@@ -2,7 +2,10 @@ import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/app-shell";
 import { LanguageProvider } from "@/components/language-provider";
+import { cookies } from "next/headers";
+
 import { requireSession } from "@/lib/auth/session";
+import { resolveThemeChoice, THEME_COOKIE } from "@/lib/theme";
 
 /**
  * Nothing in this group can be prerendered: every route reads the session
@@ -18,7 +21,8 @@ export const dynamic = "force-dynamic";
  * can never render a page with an empty shell.
  */
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const session = await requireSession();
+  const [session, store] = await Promise.all([requireSession(), cookies()]);
+  const theme = resolveThemeChoice(store.get(THEME_COOKIE)?.value);
 
   /*
    * The provider is seeded here rather than in the root layout because this is
@@ -28,7 +32,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
    */
   return (
     <LanguageProvider language={session.profile.language}>
-      <AppShell session={session}>{children}</AppShell>
+      <AppShell session={session} theme={theme}>
+        {children}
+      </AppShell>
     </LanguageProvider>
   );
 }

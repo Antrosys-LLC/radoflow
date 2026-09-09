@@ -9,10 +9,12 @@ import { Latin } from "@/components/latin";
 import { LiveClock } from "@/components/live-clock";
 import { ProfileMenu } from "@/components/profile-menu";
 import { SidebarNav, MobileNav } from "@/components/sidebar-nav";
+import { ThemeSwitch } from "@/components/theme-switch";
 import { can } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
 import { navigationFor } from "@/lib/navigation";
 import type { Session } from "@/lib/auth/session";
+import type { ThemeChoice } from "@/lib/theme";
 
 /**
  * The signed-in application frame.
@@ -21,7 +23,16 @@ import type { Session } from "@/lib/auth/session";
  * anything reaches the browser, so a role never receives markup for modules it
  * cannot open.
  */
-export function AppShell({ session, children }: { session: Session; children: React.ReactNode }) {
+export function AppShell({
+  session,
+  theme,
+  children,
+}: {
+  session: Session;
+  /** The stored theme choice, so the switch opens on the right option. */
+  theme: ThemeChoice;
+  children: React.ReactNode;
+}) {
   const t = dictionaryFor(session.profile.language);
   const sections = navigationFor(session);
   const showRibbon = showsAntrosysRibbon(session);
@@ -61,6 +72,7 @@ export function AppShell({ session, children }: { session: Session; children: Re
               <span className="sr-only">{t.common.identifyMethodsHint}</span>
             </span>
             <LiveClock />
+            <ThemeSwitch initial={theme} />
             <LanguageSwitch />
             <ProfileMenu session={session} />
           </div>

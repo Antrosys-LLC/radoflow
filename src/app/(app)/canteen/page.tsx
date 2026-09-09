@@ -96,20 +96,27 @@ export default async function CanteenPage() {
 
   const canSeeCounts = session.permissions.has("canteen.view") || session.isSuperuser;
 
-  const { count: servedToday } = await supabase
-    .from("meal_claims")
-    .select("id", { count: "exact", head: true })
-    .eq("served_on", today);
-
-  // Bounded by the Pakistan day, not the database session's UTC one — the
-  // night shift eats either side of midnight, and those refusals are the ones
-  // worth counting.
-  const { count: refusedToday } = await supabase
-    .from("meal_scan_log")
-    .select("id", { count: "exact", head: true })
-    .eq("outcome", "duplicate")
-    .gte("scanned_at", pakistanDayStartUtc(today))
-    .lt("scanned_at", pakistanDayStartUtc(shiftDate(today, 1)));
+  /*
+   * Both tallies at once. This screen is polled every five seconds with a
+   * queue in front of it, so two sequential counts are two sequential waits
+   * on every tick.
+   *
+   * The refusal count is bounded by the Pakistan day, not the database
+   * session's UTC one — the night shift eats either side of midnight, and
+   * those refusals are the ones worth counting.
+   */
+  const [{ count: servedToday }, { count: refusedToday }] = await Promise.all([
+    supabase
+      .from("meal_claims")
+      .select("id", { count: "exact", head: true })
+      .eq("served_on", today),
+    supabase
+      .from("meal_scan_log")
+      .select("id", { count: "exact", head: true })
+      .eq("outcome", "duplicate")
+      .gte("scanned_at", pakistanDayStartUtc(today))
+      .lt("scanned_at", pakistanDayStartUtc(shiftDate(today, 1))),
+  ]);
 
   /*
    * The day's register, for whoever can read canteen records.

@@ -49,17 +49,20 @@ export default async function PayrollPage({
 
   let items: ItemRow[] = [];
   if (selectedId) {
-    const { data: rows } = await supabase
-      .from("payroll_items")
-      .select("*")
-      .eq("period_id", selectedId);
-
-    // The directory is the pay-free view, so a payroll operator can label rows
-    // without needing read access to the full profile record.
-    const { data: people } = await supabase
-      .from("employee_directory")
-      .select("id, full_name, employee_code, department_id");
-    const { data: departments } = await supabase.from("departments").select("id, name");
+    /*
+     * Three independent reads, so three round trips run at once rather than
+     * one after another. Nothing here depends on anything else here — the
+     * lines, the names and the department labels are joined in memory below —
+     * and on a payroll of four hundred the difference is the whole wait.
+     *
+     * The directory is the pay-free view, so a payroll operator can label rows
+     * without needing read access to the full profile record.
+     */
+    const [{ data: rows }, { data: people }, { data: departments }] = await Promise.all([
+      supabase.from("payroll_items").select("*").eq("period_id", selectedId),
+      supabase.from("employee_directory").select("id, full_name, employee_code, department_id"),
+      supabase.from("departments").select("id, name"),
+    ]);
 
     const personById = new Map((people ?? []).map((p) => [p.id, p]));
     const deptById = new Map((departments ?? []).map((d) => [d.id, d.name]));

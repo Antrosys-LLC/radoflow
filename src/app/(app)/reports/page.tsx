@@ -31,6 +31,7 @@ import {
   splitDayHours,
 } from "@/lib/payroll/hours";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
+import { selectInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
 import { formatHours, todayInPakistan } from "@/lib/time";
 
@@ -81,29 +82,41 @@ export default async function ReportsPage({
   const everyone = staff ?? [];
   const people = params.dept ? everyone.filter((p) => p.department_id === params.dept) : everyone;
 
-  const [{ data: days }, { data: punches }] = await Promise.all([
-    people.length > 0
-      ? supabase
+  /*
+   * Both reads, batched by id and run concurrently.
+   *
+   * Batched because PostgREST takes its filters in the URI: four hundred
+   * profile ids is a fifteen-kilobyte request line, which is slow at best and
+   * rejected at worst — and a rejected read hands back no rows, which this
+   * screen would draw as a factory that did no work all month. That is the
+   * exact failure `selectInBatches` exists to prevent, and this screen was the
+   * one place still building the long URI by hand.
+   */
+  const profileIds = people.map((person) => person.id);
+
+  const [days, punches] = await Promise.all([
+    selectInBatches(
+      profileIds,
+      (batch) =>
+        supabase
           .from("attendance_days")
           .select("profile_id, work_date, regular_hours, day_type, status, hours_are_final")
-          .in(
-            "profile_id",
-            people.map((p) => p.id),
-          )
+          .in("profile_id", batch)
           .gte("work_date", from)
-          .lte("work_date", to)
-      : Promise.resolve({ data: [] }),
-    people.length > 0
-      ? supabase
+          .lte("work_date", to),
+      `Could not read attendance for ${from} to ${to}`,
+    ),
+    selectInBatches(
+      profileIds,
+      (batch) =>
+        supabase
           .from("punches")
           .select("work_date, direction, profile_id")
-          .in(
-            "profile_id",
-            people.map((p) => p.id),
-          )
+          .in("profile_id", batch)
           .gte("work_date", from)
-          .lte("work_date", to)
-      : Promise.resolve({ data: [] }),
+          .lte("work_date", to),
+      `Could not read punches for ${from} to ${to}`,
+    ),
   ]);
 
   const rule = DEFAULT_PAY_RULE;
@@ -113,7 +126,7 @@ export default async function ReportsPage({
   const dutyOf = new Map(people.map((p) => [p.id, Number(p.duty_hours ?? 8)]));
   const byPerson = new Map<string, AttendanceDay[]>();
 
-  for (const row of days ?? []) {
+  for (const row of days) {
     const list = byPerson.get(row.profile_id) ?? [];
     list.push({
       workDate: row.work_date,
@@ -190,7 +203,7 @@ export default async function ReportsPage({
     { workingDays: 0, duty: 0, overtime: 0, earned: 0 },
   );
 
-  const attended = new Set((days ?? []).map((d) => d.profile_id)).size;
+  const attended = new Set(days.map((d) => d.profile_id)).size;
 
   // ---- Per day, for the two trends ---------------------------------------
   // Shared with the dashboard so the two screens cannot disagree about a month.
@@ -206,7 +219,7 @@ export default async function ReportsPage({
   );
 
   const punchTotals = new Map<string, { checkIns: number; checkOuts: number }>();
-  for (const punch of punches ?? []) {
+  for (const punch of punches) {
     const entry = punchTotals.get(punch.work_date) ?? { checkIns: 0, checkOuts: 0 };
     /*
      * Most K50 units are configured without dedicated in/out keys, so a punch

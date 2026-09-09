@@ -108,13 +108,32 @@
   --accent-foreground: oklch(0.78 0.16 45);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 14%);
-  --charcoal: oklch(0.24 0.006 80);
+  /*
+   * Lifted clear of --card (0.24). Charcoal is the "solid control" surface —
+   * the profile button, the counter's closed panel — and it sat at exactly the
+   * card's lightness in dark, so those controls disappeared into the header
+   * they were sitting on.
+   */
+  --charcoal: oklch(0.34 0.008 80);
   --charcoal-foreground: oklch(0.98 0.005 95);
   --primary-soft: oklch(0.32 0.05 45);
   --success-soft: oklch(0.3 0.05 165);
   --danger-soft: oklch(0.3 0.06 22);
   --warning-soft: oklch(0.32 0.06 80);
   --info-soft: oklch(0.3 0.05 250);
+  /*
+   * The status hues, raised for a dark surface.
+   *
+   * The light values are tuned against a near-white background and are legible
+   * but thin against near-black — `danger` and `info` especially, which carry
+   * short text (a deduction, a badge) at small sizes where thin is the same as
+   * unreadable. Everything else inherits the light value deliberately: orange
+   * on charcoal is the identity of this app and does not want softening.
+   */
+  --danger: oklch(0.71 0.19 25.3);
+  --destructive: oklch(0.71 0.19 25.3);
+  --info: oklch(0.72 0.13 250);
+  --success: oklch(0.75 0.16 162.48);
 }
 
 @layer base {
@@ -133,8 +152,15 @@
 /*
  * Urdu script only. Roman Urdu is Latin letters and keeps the Latin face —
  * Nastaliq's Latin coverage is not its purpose.
+ *
+ * Two selectors, because Urdu reaches the screen two ways. `[data-language]`
+ * is the whole interface set to Urdu. `[lang="ur"]` is a single element that
+ * is Urdu regardless of the interface — the canteen counter's instruction is
+ * always Urdu, in twice the size, for the man at the front of the queue who
+ * never signed in to anything and whose language nobody knows.
  */
-[data-language="ur"] body {
+[data-language="ur"] body,
+[lang="ur"] {
   font-family: var(--font-urdu);
   /*
    * Nastaliq is calligraphic and occupies far more vertical space than a Latin
@@ -145,13 +171,45 @@
 }
 
 /*
- * Content that is Latin whatever the interface language: names, employee
- * codes, CNICs, money, times, dates. Wins over the document font in Urdu and
- * is a no-op in the other two languages.
+ * Form controls do not inherit the document font — every browser substitutes
+ * its own UI face unless told otherwise. Without this an Urdu interface has
+ * Nastaliq everywhere except the places people type, which is where legibility
+ * matters most.
  */
-.font-latin {
-  font-family: var(--font-sans);
+[data-language="ur"] input,
+[data-language="ur"] select,
+[data-language="ur"] textarea,
+[data-language="ur"] button,
+[data-language="ur"] optgroup,
+[data-language="ur"] option {
+  font-family: inherit;
+}
+
+/*
+ * Content that is Latin whatever the interface language: names, employee
+ * codes, CNICs, money, times, dates.
+ *
+ * Declared after the Urdu rules above and with `!important`, because both
+ * carry the same specificity and this one has to win in every nesting: a name
+ * inside an Urdu paragraph inside an Urdu page is still a name. Nastaliq has
+ * no Latin coverage worth the name, so losing this renders an employee code in
+ * a fallback face at a different size mid-sentence.
+ */
+.font-latin,
+[data-language="ur"] .font-latin,
+[data-language="ur"] .font-latin * {
+  font-family: var(--font-sans) !important;
   line-height: normal;
+}
+
+/*
+ * Numbers inside an Urdu sentence stay Western digits. Nastaliq ships
+ * Eastern Arabic forms and will use them given the chance, which turns an
+ * employee code and a rupee figure into something the office cannot match
+ * against a payslip.
+ */
+[data-language="ur"] {
+  font-variant-numeric: lining-nums;
 }
 
 /*

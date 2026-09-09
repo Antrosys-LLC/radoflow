@@ -1,5 +1,5 @@
 import type { NavIconName } from "@/components/nav-icons";
-import { isAntrosys } from "@/lib/auth/antrosys";
+import { canUseAssistant, isAntrosys } from "@/lib/auth/antrosys";
 import type { Session } from "@/lib/auth/session";
 import type { Dictionary } from "@/lib/i18n";
 
@@ -64,7 +64,9 @@ const WORK_MODULES: readonly NavItem[] = [
     href: "/assistant",
     labelKey: "ask",
     icon: "assistant",
-    requires: ["assistant.ask"],
+    // Empty, because permissions cannot express this: the gate is the role.
+    // `navigationFor` filters it on canUseAssistant below.
+    requires: [],
     description: "Ask a question, by voice or text — Urdu, Roman Urdu or English",
   },
   {
@@ -206,7 +208,14 @@ function visible(items: readonly NavItem[], session: Session | null): NavItem[] 
 /** The menu for this user, with empty sections dropped. */
 export function navigationFor(session: Session | null): NavSection[] {
   const sections: NavSection[] = [
-    { titleKey: "workspace", items: visible(WORK_MODULES, session) },
+    {
+      titleKey: "workspace",
+      items: visible(WORK_MODULES, session).filter(
+        // Ask is role-gated, not permission-gated — every question costs money
+        // against a monthly ceiling. See lib/auth/antrosys.ts.
+        (item) => item.href !== "/assistant" || canUseAssistant(session),
+      ),
+    },
     { titleKey: "administration", items: visible(GOVERNANCE_MODULES, session) },
     // Filtered on the role, not on a permission — see ANTROSYS_MODULES.
     { titleKey: "antrosys", items: isAntrosys(session) ? [...ANTROSYS_MODULES] : [] },

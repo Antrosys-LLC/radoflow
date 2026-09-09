@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui-kit";
+import { LoadingWord } from "@/components/loading-word";
 import { cn } from "@/lib/utils";
 
 /**
@@ -34,7 +35,12 @@ export function PageSkeleton({
 }) {
   return (
     <div className="space-y-5 pb-6" aria-busy="true" aria-live="polite">
+      {/* Announced to a screen reader as plain "Loading" — the joke is for
+          people watching the screen, and a reader hearing "Flibbertigibbeting"
+          learns nothing about what the page is doing. */}
       <span className="sr-only">Loading…</span>
+
+      <LoadingWord />
 
       {stats > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

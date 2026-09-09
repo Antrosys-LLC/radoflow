@@ -29,3 +29,24 @@ export const ANTROSYS_ROLE = "admin-antrosys";
 export function isAntrosys(session: Session | null): boolean {
   return session?.roles.some((role) => role.key === ANTROSYS_ROLE) ?? false;
 }
+
+/** The two roles that answer for what the system costs to run. */
+export const LEADERSHIP_ROLES = [ANTROSYS_ROLE, "ceo"] as const;
+
+/**
+ * Who may ask Claude anything.
+ *
+ * Keyed on the role, not on `assistant.ask`, and that is the point. Every
+ * question costs real money against a monthly ceiling, and the two roles here
+ * are the two that answer for that spend. A permission can be granted to
+ * another role from the access screen in two clicks — which is how Operations
+ * and Manager came to hold it when the assistant was a reporting convenience,
+ * long before it appeared on every record in the app.
+ *
+ * The permission still exists and the migration still revokes the old grants;
+ * this is the belt to that braces, so re-granting the key by accident does not
+ * quietly reopen a bill to four hundred people.
+ */
+export function canUseAssistant(session: Session | null): boolean {
+  return session?.roles.some((role) => LEADERSHIP_ROLES.includes(role.key as never)) ?? false;
+}

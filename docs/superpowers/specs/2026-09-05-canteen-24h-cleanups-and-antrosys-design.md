@@ -10,10 +10,9 @@ Eight changes, of which seven are small and one is a real rule change:
 1. One meal per person per **24 hours**, enforced at a canteen terminal.
 2. Antrosys stops being tracked for attendance but stays a contract firm, billed
    ₨35,000 a month.
-3. The Digitalize Register module goes.
-4. The Employee enrolment mapping panel goes.
-5. `/me/profile` becomes a read-only record of who you are — no password change.
-6. The sidebar scrolls independently of the page.
+3. The Employee enrolment mapping panel goes.
+4. `/me/profile` becomes a read-only record of who you are — no password change.
+5. The sidebar scrolls independently of the page.
 7. Check-in and check-out are told apart at a glance, everywhere.
 
 Multilingual support and the Urdu font were asked for at the same time and are
@@ -121,18 +120,7 @@ attendance kept").
 This section therefore ships as **documented steps**, not code. That is the
 correct outcome, not a gap.
 
-## Section 3 — The five cleanups
-
-### Remove the Digitalize Register module
-
-Delete `src/app/(app)/admin/registers/` entirely, its navigation entry in
-`src/lib/navigation.ts`, and the `registers.import` permission grant.
-
-The permission row itself stays in the catalogue. Deleting a permission cascades
-to `role_permissions` and to any `user_permission_overrides` naming it — and a
-migration that removes a permission cannot be undone by re-adding the row,
-because the grants that referenced it are gone. A permission nothing checks is
-inert; a deleted one takes history with it.
+## Section 3 — The cleanups
 
 ### Remove the Employee enrolment mapping panel
 

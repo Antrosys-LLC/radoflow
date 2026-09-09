@@ -13,6 +13,7 @@ import {
   type UsageTotals,
 } from "@/lib/assistant/models";
 import { buildAssistantTools } from "@/lib/assistant/tools";
+import { canUseAssistant } from "@/lib/auth/antrosys";
 import { getSession } from "@/lib/auth/session";
 import { requireAnthropicEnv } from "@/lib/env";
 import { dictionaryFor, resolveLanguage } from "@/lib/i18n";
@@ -103,7 +104,13 @@ export async function POST(request: NextRequest) {
   }
   const t = dictionaryFor(session.profile.language);
 
-  if (!session.isSuperuser && !session.permissions.has("assistant.ask")) {
+  /*
+   * The role, not the permission. Every question costs money against a monthly
+   * ceiling, and the two roles that answer for that spend are the two that may
+   * ask — see lib/auth/antrosys.ts. Checked here as well as in the interface,
+   * because a hidden button is not a closed door.
+   */
+  if (!canUseAssistant(session)) {
     return NextResponse.json({ error: t.ask.notAllowed }, { status: 403 });
   }
 

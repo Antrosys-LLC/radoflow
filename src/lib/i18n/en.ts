@@ -292,6 +292,23 @@ const en = {
       contract_amount: "Contract",
     },
   },
+  /**
+   * The header's clock and date, and what each of them opens.
+   *
+   * Two controls rather than one block: each answers a different question, and
+   * each now opens the thing that answers it — a face for the time, a month
+   * you can page through for the date.
+   */
+  clock: {
+    showClock: "Show the clock",
+    showCalendar: "Show the calendar",
+    factoryTime: "Factory time — Pakistan",
+    previousMonth: "Previous month",
+    nextMonth: "Next month",
+    month: "Month",
+    year: "Year",
+    goToDate: "Go to a date",
+  },
   status: {
     payroll: {
       draft: "Draft",
@@ -1276,65 +1293,6 @@ const en = {
     contractorsHint: "Paid an agreed amount, flat. No proration, no overtime, no late penalty.",
     noEmployees: "Nobody here is paid from attendance.",
     noContractors: "No contractors here.",
-    ratesFor: "Pay rates — {site}",
-    ratesForHint: "Rupees an hour for each kind of worked time",
-    noRates: "No rates set for this factory.",
-    latePenalties: "Late arrival penalties",
-    latePenaltiesHint: "Taken off automatically when somebody checks in after their shift starts",
-    noLatePenalty: "No late penalty is set.",
-    overtime: "Overtime",
-    weekend: "Weekend or off day",
-    holiday: "Holiday",
-    night: "Night shift",
-    perHour: "{amount} an hour",
-    // A late band, read-only: from and to are minutes, or "and beyond".
-    lateRange: "{from} to {to}",
-    beyond: "and beyond",
-    minutes: "{minutes} min",
-    penaltyOfDaily: "{percent}% of one day’s pay",
-    penaltyOfMonthly: "{percent}% of monthly pay",
-    // The rate form.
-    perHourNote:
-      "Rates are rupees per hour, not a multiple of the basic wage. Changing somebody’s basic pay leaves these untouched.",
-    otRate: "Overtime rate",
-    otRateHint: "An hour beyond the standard day",
-    weekendRate: "Weekend or off-day rate",
-    weekendRateHint: "An hour on a rest day that was switched on",
-    holidayRate: "Holiday rate",
-    holidayRateHint: "An hour on a declared holiday",
-    nightRate: "Night shift rate",
-    nightRateHint: "An hour on the night rotation",
-    standardHours: "Standard hours a day",
-    workingDaysMonth: "Working days a month",
-    otAfter: "Overtime starts after (min)",
-    roundTo: "Round hours to (min)",
-    effectiveFrom: "Effective from",
-    effectiveFromHint:
-      "A new date creates a new rate set; payroll already worked out keeps the old rates.",
-    whatThisPays: "What this pays",
-    weekendShiftExample: "An 8-hour weekend shift: {amount}",
-    overtimeExample: "4 hours of overtime: {amount}",
-    holidayShiftExample: "An 8-hour holiday shift: {amount}",
-    saveRates: "Save rates",
-    // The late-penalty ladder.
-    ladderNote:
-      "Bands are a ladder, not cumulative — arriving 90 minutes late costs the 1–2 hour penalty only. Lateness is measured from the shift start, after the grace period.",
-    colBand: "Band",
-    colLateFrom: "Late from",
-    colLateUntil: "Late until",
-    colDeduction: "Deduction",
-    noBands: "No late-arrival penalty is set — lateness currently costs nothing.",
-    bandName: "Band name",
-    bandNamePlaceholder: "Late 15–30 minutes",
-    lateFromField: "Late from (min)",
-    lateUntilField: "Late until (min)",
-    lateUntilPlaceholder: "blank = beyond",
-    deductPercent: "Deduct (%)",
-    basis: "Of",
-    basisDay: "One day’s pay",
-    basisMonth: "Monthly pay",
-    addBand: "Add band",
-    removeBand: "Remove {name}",
     // Contract firms.
     contractFirms: "Contract firms",
     contractFirmsHint: "One agreed amount per firm, billed instead of pricing its people",

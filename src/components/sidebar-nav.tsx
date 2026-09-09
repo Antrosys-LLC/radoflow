@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { useDictionary } from "@/components/language-provider";
+import { Latin } from "@/components/latin";
 import { NavIcon } from "@/components/nav-icons";
 import { cn } from "@/lib/utils";
 import type { NavSection } from "@/lib/navigation";
@@ -14,7 +15,30 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function SidebarNav({ sections }: { sections: NavSection[] }) {
+/**
+ * How many requests are waiting on this person, as a badge.
+ *
+ * Only ever on Approvals, and only when there is something there: a zero on a
+ * menu entry is a number to read and dismiss every time the page loads, which
+ * is worse than no number at all.
+ */
+function PendingBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+
+  return (
+    <span className="ms-auto inline-flex min-w-5 items-center justify-center rounded-full bg-danger px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-white">
+      <Latin>{count}</Latin>
+    </span>
+  );
+}
+
+export function SidebarNav({
+  sections,
+  pendingApprovals = 0,
+}: {
+  sections: NavSection[];
+  pendingApprovals?: number;
+}) {
   const pathname = usePathname();
   const t = useDictionary();
 
@@ -42,6 +66,7 @@ export function SidebarNav({ sections }: { sections: NavSection[] }) {
                 >
                   <NavIcon name={item.icon} className="size-5 shrink-0" />
                   {t.nav[item.labelKey]}
+                  {item.href === "/approvals" ? <PendingBadge count={pendingApprovals} /> : null}
                 </Link>
               );
             })}
@@ -58,7 +83,13 @@ export function SidebarNav({ sections }: { sections: NavSection[] }) {
  * Capped at five destinations: workers use this on a phone, one-handed, and a
  * scrolling strip of tiny targets is unusable in that setting.
  */
-export function MobileNav({ sections }: { sections: NavSection[] }) {
+export function MobileNav({
+  sections,
+  pendingApprovals = 0,
+}: {
+  sections: NavSection[];
+  pendingApprovals?: number;
+}) {
   const pathname = usePathname();
   const t = useDictionary();
   const items = sections.flatMap((s) => s.items).slice(0, 5);
@@ -78,7 +109,16 @@ export function MobileNav({ sections }: { sections: NavSection[] }) {
                 active ? "bg-primary-soft text-primary" : "text-muted-foreground",
               )}
             >
-              <NavIcon name={item.icon} className="size-6 shrink-0" />
+              <span className="relative">
+                <NavIcon name={item.icon} className="size-6 shrink-0" />
+                {/* On the icon rather than beside the label: the bottom bar's
+                    labels are already truncated at five destinations. */}
+                {item.href === "/approvals" && pendingApprovals > 0 ? (
+                  <span className="absolute -end-2 -top-1 inline-flex min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold tabular-nums text-white">
+                    <Latin>{pendingApprovals}</Latin>
+                  </span>
+                ) : null}
+              </span>
               <span className="w-full truncate text-center">{t.nav[item.labelKey]}</span>
             </Link>
           );

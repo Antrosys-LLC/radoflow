@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 
+import { useCapabilities } from "@/components/capabilities";
 import { ClaudeIcon } from "@/components/claude-icon";
 
 import { AssistantConversation, type Preset } from "@/components/assistant/assistant-conversation";
@@ -47,6 +48,7 @@ export function AskAbout({
   className?: string;
 }) {
   const t = useDictionary();
+  const { assistant } = useCapabilities();
   const [open, setOpen] = useState(false);
   const container = useRef<HTMLDivElement>(null);
 
@@ -59,6 +61,13 @@ export function AskAbout({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
+
+  /*
+   * Nothing at all for somebody who may not ask. Rendered on eight screens and
+   * once per row on two of them, so a disabled button would be a hundred
+   * invitations to a refusal.
+   */
+  if (!assistant) return null;
 
   return (
     <div ref={container} className={cn("relative", className)}>

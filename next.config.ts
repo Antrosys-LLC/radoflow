@@ -2,6 +2,21 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+
+  /*
+   * Where the build lands. `.next` unless something asks for elsewhere.
+   *
+   * `next dev` and `next build` both write here, and a production build run
+   * while a dev server is using the same folder leaves the dev server serving
+   * client chunks from a module graph that no longer matches the source. What
+   * that looks like from the floor is a screen that renders on the server and
+   * then dies on hydration reading a dictionary key that is right there in the
+   * file — which is exactly what happened once, and cost an evening.
+   *
+   * So: a verification build runs `NEXT_DIST_DIR=.next-check next build` and
+   * leaves the dev cache alone. Deployment sets nothing and gets `.next`.
+   */
+  distDir: process.env["NEXT_DIST_DIR"] ?? ".next",
   // typedRoutes is off deliberately: most links here are built from database
   // ids (`/devices/${id}`), which the literal route union cannot express
   // without a cast at every call site — noise that hides real mistakes.

@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 
 import { loadingWord } from "@/lib/loading-words";
+import { createTickStore } from "@/lib/tick";
 
 /**
  * The word above a loading skeleton, changing while you wait.
@@ -20,20 +21,16 @@ import { loadingWord } from "@/lib/loading-words";
  * React provides for exactly that, and it keeps the timer out of render.
  */
 
-function subscribe(onChange: () => void): () => void {
-  const timer = setInterval(onChange, 2200);
-  return () => clearInterval(timer);
-}
+/** How long a word stays up. Coarse enough that a fast render does not flicker. */
+const WORD_MS = 2200;
 
-/** Which word we are on. Coarse enough that a fast render does not flicker. */
-function currentStep(): number {
-  return Math.floor(Date.now() / 2200);
-}
+const words = createTickStore(WORD_MS);
 
 export function LoadingWord() {
   // The server snapshot is a constant, so the markup it renders and the
   // browser's first paint agree; the timer takes over from there.
-  const step = useSyncExternalStore(subscribe, currentStep, () => 0);
+  const at = useSyncExternalStore(words.subscribe, words.getSnapshot, words.getServerSnapshot);
+  const step = Math.floor(at / WORD_MS);
 
   return (
     <p aria-hidden className="text-sm font-semibold text-muted-foreground">

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { BATCH_CONCURRENCY, ID_BATCH_SIZE, selectInBatches } from "./in-batches";
+import {
+  BATCH_CONCURRENCY,
+  ID_BATCH_SIZE,
+  PAGE_SIZE,
+  selectAllInBatches,
+  selectInBatches,
+} from "./in-batches";
 
 /** `count` ids, distinguishable so order can be asserted. */
 function ids(count: number): string[] {
@@ -121,5 +127,81 @@ describe("selectInBatches", () => {
     );
 
     expect(rows).toEqual([]);
+  });
+});
+
+describe("selectAllInBatches", () => {
+  /**
+   * A source that holds `perId` rows for every id and serves them a page at a
+   * time, exactly as PostgREST does: a request for more than a page's worth
+   * comes back silently truncated.
+   */
+  function paged(perId: number) {
+    return (batch: string[], first: number, last: number) => {
+      const all = batch.flatMap((id) => Array.from({ length: perId }, (_, n) => ({ id, n })));
+      const window = all.slice(first, last + 1);
+      return Promise.resolve({ data: window.slice(0, PAGE_SIZE), error: null });
+    };
+  }
+
+  it("keeps asking until a batch runs out of rows", async () => {
+    // 100 ids × 30 rows = 3,000 — three pages for the first batch alone, and
+    // the shape that made payroll price a month's attendance off its first
+    // thousand rows.
+    const rows = await selectAllInBatches(ids(250), paged(30), "could not read");
+
+    expect(rows).toHaveLength(250 * 30);
+    expect(rows[0]).toEqual({ id: "id-0", n: 0 });
+    expect(rows.at(-1)).toEqual({ id: "id-249", n: 29 });
+  });
+
+  it("asks once more when a page comes back exactly full", async () => {
+    // The last page of an exact multiple is empty, and stopping on a full page
+    // would end one row short of it every time.
+    const calls: number[] = [];
+    const rows = await selectAllInBatches(
+      ids(1),
+      (batch, first, last) => {
+        calls.push(first);
+        const all = Array.from({ length: PAGE_SIZE }, (_, n) => ({ id: batch[0], n }));
+        return Promise.resolve({ data: all.slice(first, last + 1), error: null });
+      },
+      "could not read",
+    );
+
+    expect(rows).toHaveLength(PAGE_SIZE);
+    expect(calls).toEqual([0, PAGE_SIZE]);
+  });
+
+  it("throws rather than handing back a short answer", async () => {
+    // The whole point. A payroll run that reads an error as "this person never
+    // came to work" pays them nothing for a month they worked.
+    await expect(
+      selectAllInBatches(
+        ids(150),
+        (batch) =>
+          Promise.resolve(
+            batch[0] === "id-100"
+              ? { data: null, error: { message: "URI too long" } }
+              : { data: [], error: null },
+          ),
+        "could not read attendance",
+      ),
+    ).rejects.toThrow("could not read attendance: URI too long");
+  });
+
+  it("does nothing at all for no ids", async () => {
+    let called = false;
+    const rows = await selectAllInBatches(
+      [],
+      () => {
+        called = true;
+        return Promise.resolve({ data: [], error: null });
+      },
+      "could not read",
+    );
+
+    expect(rows).toEqual([]);
+    expect(called).toBe(false);
   });
 });

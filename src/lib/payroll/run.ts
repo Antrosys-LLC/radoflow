@@ -2,6 +2,7 @@ import { calculatePayroll, summarisePayroll } from "./engine";
 import { daysInMonthOf, roundMoney } from "./hours";
 import { toEmployee, toLateTier, toPayComponent, toPayRule } from "./mappers";
 import type { AttendanceDay, DayType, PayComponent, PayrollResult } from "./types";
+import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /**
@@ -31,6 +32,28 @@ export interface RunSummary {
    * means a human should check the listed dates before approving this run.
    */
   flagged: { name: string; hours: number; dates: string[] }[];
+}
+
+/** The columns the attendance read asks for, as they come back. */
+interface AttendanceRow {
+  profile_id: string | null;
+  work_date: string;
+  day_type: string | null;
+  status: string | null;
+  regular_hours: number | string | null;
+  minutes_late: number | null;
+  hours_are_final: boolean | null;
+}
+
+/** One person's own allowance or deduction line. */
+interface PersonalComponentRow {
+  profile_id: string;
+  code: string;
+  label: string;
+  kind: PayComponent["kind"];
+  amount: number | string;
+  effective_from: string;
+  effective_to: string | null;
 }
 
 interface PeriodRow {
@@ -112,19 +135,41 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
   const siteComponents = (components ?? []).map(toPayComponent);
   const tiers = (lateRules ?? []).map(toLateTier);
 
-  // One query for the whole period rather than per employee.
-  const { data: attendance } = await supabase
-    .from("attendance_days")
-    .select("profile_id, work_date, day_type, status, regular_hours, minutes_late, hours_are_final")
-    .gte("work_date", period.period_start)
-    .lte("work_date", period.period_end)
-    .in(
-      "profile_id",
-      staff.map((s) => s.id),
-    );
+  /*
+   * The period's attendance, in one pass — batched by id and paged.
+   *
+   * This was a single `.in()` over every profile at the site, and it was
+   * wrong twice over on a factory this size. Four hundred UUIDs build a
+   * request URI of tens of kilobytes, which PostgREST rejects; and a reply is
+   * capped at a thousand rows without saying so, which four hundred people
+   * over a month passes on the third day. Both failures look identical from
+   * here — fewer rows than there are — and the engine reads a person with no
+   * rows as a person who never came to work, so the quiet version of this bug
+   * pays somebody nothing for a month they worked.
+   *
+   * `selectAllInBatches` throws rather than returning a short answer, and the
+   * order is explicit because paging without one may repeat a row on two pages
+   * and drop another entirely.
+   */
+  const attendance = await selectAllInBatches<AttendanceRow>(
+    staff.map((s) => s.id),
+    (ids, first, last) =>
+      supabase
+        .from("attendance_days")
+        .select(
+          "profile_id, work_date, day_type, status, regular_hours, minutes_late, hours_are_final",
+        )
+        .gte("work_date", period.period_start)
+        .lte("work_date", period.period_end)
+        .in("profile_id", ids)
+        .order("profile_id")
+        .order("work_date")
+        .range(first, last),
+    `Could not read attendance for ${period.period_start} to ${period.period_end}`,
+  );
 
   const daysByProfile = new Map<string, AttendanceDay[]>();
-  for (const row of attendance ?? []) {
+  for (const row of attendance) {
     if (!row.profile_id) continue;
     const list = daysByProfile.get(row.profile_id) ?? [];
     list.push({
@@ -138,18 +183,26 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     daysByProfile.set(row.profile_id, list);
   }
 
-  // Per-person allowances and deductions on top of the site-wide set.
-  const { data: personalComponents } = await supabase
-    .from("profile_pay_components")
-    .select("*")
-    .in(
-      "profile_id",
-      staff.map((s) => s.id),
-    )
-    .lte("effective_from", period.period_end);
+  // Per-person allowances and deductions on top of the site-wide set. Batched
+  // for the same reason as the attendance above: one `.in()` over the whole
+  // factory is a URI the server refuses, and a refused read here silently
+  // strips somebody's allowance off their payslip.
+  const personalComponents = await selectAllInBatches<PersonalComponentRow>(
+    staff.map((s) => s.id),
+    (ids, first, last) =>
+      supabase
+        .from("profile_pay_components")
+        .select("*")
+        .in("profile_id", ids)
+        .lte("effective_from", period.period_end)
+        .order("profile_id")
+        .order("code")
+        .range(first, last),
+    "Could not read per-person pay components",
+  );
 
   const extrasByProfile = new Map<string, PayComponent[]>();
-  for (const row of personalComponents ?? []) {
+  for (const row of personalComponents) {
     if (row.effective_to && row.effective_to < period.period_start) continue;
     const list = extrasByProfile.get(row.profile_id) ?? [];
     list.push({

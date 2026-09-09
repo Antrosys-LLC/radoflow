@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, X } from "lucide-react";
 
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
+import { createTickStore } from "@/lib/tick";
 import { PAKISTAN_LOCALE, PAKISTAN_TIMEZONE } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -21,15 +22,14 @@ import { cn } from "@/lib/utils";
  * read `14:07:33`.
  */
 
-/** Ticks once a second, without writing state from an effect. */
-function subscribeToSeconds(onChange: () => void): () => void {
-  const timer = setInterval(onChange, 1000);
-  return () => clearInterval(timer);
-}
-
-function nowMs(): number {
-  return Date.now();
-}
+/**
+ * One second, shared by every clock on the page.
+ *
+ * Module scope on purpose: the store caches its reading, and a reading that
+ * changed on every call is what sent this component into an infinite render
+ * loop and put the error boundary over the dashboard. See lib/tick.ts.
+ */
+const seconds = createTickStore(1000);
 
 /** The parts of an instant, on the factory's clock rather than the browser's. */
 function pakistanParts(at: number) {
@@ -60,7 +60,11 @@ export function ClockAndDate() {
   const t = useDictionary();
   // Zero on the server: the browser's clock is the only one that can be right,
   // and rendering a server time guarantees a hydration mismatch.
-  const at = useSyncExternalStore(subscribeToSeconds, nowMs, () => 0);
+  const at = useSyncExternalStore(
+    seconds.subscribe,
+    seconds.getSnapshot,
+    seconds.getServerSnapshot,
+  );
   const [open, setOpen] = useState<"none" | "date" | "time">("none");
   const container = useRef<HTMLDivElement>(null);
 

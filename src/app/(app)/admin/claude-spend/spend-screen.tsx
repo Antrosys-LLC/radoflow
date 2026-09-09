@@ -14,6 +14,7 @@ import { Latin } from "@/components/latin";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import type { BudgetState } from "@/lib/assistant/budget";
 import { usdToPkr, type DailySpend } from "@/lib/assistant/spend";
+import { createTickStore } from "@/lib/tick";
 import { formatDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -262,13 +263,12 @@ function Figure({
  * zero and the real figure has to arrive after hydration. This is the shape
  * React provides for exactly that, and it keeps the tick out of render.
  */
-function subscribeToSeconds(onChange: () => void): () => void {
-  const timer = setInterval(onChange, 1000);
-  return () => clearInterval(timer);
-}
+const seconds = createTickStore(1000);
 
-function secondsSinceMidnight(): number {
-  const now = new Date();
+/** Seconds elapsed today, from the store's cached reading. */
+function secondsSinceMidnight(at: number): number {
+  if (at === 0) return 0;
+  const now = new Date(at);
   return now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 }
 
@@ -279,13 +279,18 @@ function secondsSinceMidnight(): number {
  * "Rs 0.004 a second" is unreadable as a rate and obvious as a total.
  */
 function Ticker({ perSecondPkr, label }: { perSecondPkr: number; label: React.ReactNode }) {
-  const seconds = useSyncExternalStore(subscribeToSeconds, secondsSinceMidnight, () => 0);
+  const at = useSyncExternalStore(
+    seconds.subscribe,
+    seconds.getSnapshot,
+    seconds.getServerSnapshot,
+  );
+  const elapsed = secondsSinceMidnight(at);
 
   return (
     <div className="mt-3 rounded-2xl bg-primary-soft px-4 py-3">
       <p className="text-[11px] font-bold uppercase tracking-wide text-primary">{label}</p>
       <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">
-        <Latin>{rupees(perSecondPkr * seconds)}</Latin>
+        <Latin>{rupees(perSecondPkr * elapsed)}</Latin>
       </p>
     </div>
   );

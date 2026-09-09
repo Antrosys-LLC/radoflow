@@ -82,3 +82,71 @@ export async function selectInBatches<T>(
 
   return collected.flat();
 }
+
+/**
+ * The PostgREST page size, and the reason this second function exists.
+ *
+ * A hosted Supabase project caps any single response at a thousand rows and
+ * says nothing about having done so — the reply is a valid, complete-looking
+ * array that happens to stop. `selectInBatches` splits by *id* to keep the URI
+ * short, which is a different problem: a hundred people over a nine-day period
+ * fits in one page, the same hundred over a month does not, and payroll then
+ * prices whoever fell off the end as though they never came to work.
+ */
+export const PAGE_SIZE = 1000;
+
+/**
+ * Every matching row for a long list of ids — batched by id, and paged.
+ *
+ * The `select` callback is handed the batch and a row range, and must apply
+ * both. It must also impose a stable order, or paging is meaningless: without
+ * one, Postgres may return the same row on two pages and omit another
+ * entirely.
+ *
+ * Prefer this over `selectInBatches` wherever the rows per id are unbounded —
+ * a date range, an audit trail, a person's punches. Use the simpler one only
+ * when each id yields a handful of rows and the batch cannot approach a page.
+ */
+export async function selectAllInBatches<T>(
+  ids: readonly string[],
+  select: (batch: string[], from: number, to: number) => PromiseLike<Result<T>>,
+  describe: string,
+): Promise<T[]> {
+  if (ids.length === 0) return [];
+
+  const batches: string[][] = [];
+  for (let i = 0; i < ids.length; i += ID_BATCH_SIZE) {
+    batches.push(ids.slice(i, i + ID_BATCH_SIZE));
+  }
+
+  const collected: T[][] = new Array<T[]>(batches.length);
+  let next = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const index = next++;
+      const batch = batches[index];
+      if (!batch) return;
+
+      const rows: T[] = [];
+      for (let offset = 0; ; offset += PAGE_SIZE) {
+        const { data, error } = await select(batch, offset, offset + PAGE_SIZE - 1);
+        if (error) throw new Error(`${describe}: ${error.message}`);
+
+        const page = data ?? [];
+        rows.push(...page);
+        // A short page is the last page. A full one might not be, so ask again
+        // — one wasted round trip on an exact multiple is the price of never
+        // stopping one row early.
+        if (page.length < PAGE_SIZE) break;
+      }
+      collected[index] = rows;
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(BATCH_CONCURRENCY, batches.length) }, () => worker()),
+  );
+
+  return collected.flat();
+}

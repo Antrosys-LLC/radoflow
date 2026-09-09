@@ -19,6 +19,7 @@ import { ExportButtons } from "@/components/export-buttons";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
 import { Card, SectionTitle } from "@/components/ui-kit";
+import { createTickStore } from "@/lib/tick";
 import { formatDateTime, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -60,11 +61,14 @@ export interface GateEntryView {
   editedByName: string | null;
 }
 
-/** A minute is fine granularity for a countdown measured in an hour. */
-function subscribeToMinutes(onChange: () => void): () => void {
-  const timer = setInterval(onChange, 30_000);
-  return () => clearInterval(timer);
-}
+/**
+ * Half a minute is fine granularity for a countdown measured in an hour.
+ *
+ * Shared at module scope, so a register of five hundred rows runs one timer
+ * rather than five hundred — and so the reading is cached, which is what
+ * `useSyncExternalStore` requires. See lib/tick.ts.
+ */
+const minutes = createTickStore(30_000);
 
 export function GateScreen({
   entries,
@@ -150,9 +154,9 @@ function EntryRow({
   // Recomputed on a timer, so the row stops offering an edit the moment the
   // hour is up rather than when somebody next reloads.
   const now = useSyncExternalStore(
-    subscribeToMinutes,
-    () => Date.now(),
-    () => 0,
+    minutes.subscribe,
+    minutes.getSnapshot,
+    minutes.getServerSnapshot,
   );
   const minutesLeft = now
     ? Math.max(0, Math.ceil((Date.parse(entry.createdAt) + EDIT_WINDOW_MS - now) / 60_000))

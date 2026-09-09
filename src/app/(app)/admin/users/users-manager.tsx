@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import { Banknote, KeyRound, Pencil, Plus, Search, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { ApproverPicker } from "@/components/approver-picker";
 import { AskAbout } from "@/components/assistant/ask-about";
 import { CnicInput, PasswordInput } from "@/components/credential-inputs";
 import { BulkBar } from "./bulk-bar";
@@ -1261,6 +1262,7 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
 
+  const [approverId, setApproverId] = useState("");
   const [workerType, setWorkerType] = useState(user.workerType);
   const [dutyHours, setDutyHours] = useState(String(user.dutyHours));
   const [salary, setSalary] = useState(String(user.monthlySalary));
@@ -1307,6 +1309,7 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
     >
       <form ref={form} action={formAction} className="space-y-4">
         <input type="hidden" name="user_id" value={user.id} />
+        <input type="hidden" name="approver_id" value={approverId} readOnly />
 
         <div>
           <label className="text-sm font-semibold text-foreground">{t.users.paidAs}</label>
@@ -1468,6 +1471,8 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
             </p>
           </div>
         ) : null}
+
+        <ApproverPicker value={approverId} onChange={setApproverId} />
 
         <SwipeToConfirm
           label={t.users.swipeSavePay}

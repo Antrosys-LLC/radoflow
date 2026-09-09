@@ -392,6 +392,67 @@ export type Database = {
           },
         ]
       }
+      // HAND-WRITTEN, not generated — added with
+      // 20260909090000_change_requests.sql for the same reason as the block
+      // above: the local database will not start here. Delete and re-run
+      // `npm run db:types` once one is available.
+      change_requests: {
+        Row: {
+          apply_error: string | null
+          assigned_to: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          entity_id: string | null
+          entity_table: string
+          id: string
+          kind: Database["public"]["Enums"]["change_kind"]
+          payload: Json
+          requested_by: string
+          site_id: string | null
+          status: Database["public"]["Enums"]["request_status"]
+          summary: string | null
+          title: string
+        }
+        Insert: {
+          apply_error?: string | null
+          assigned_to?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          entity_id?: string | null
+          entity_table: string
+          id?: string
+          kind: Database["public"]["Enums"]["change_kind"]
+          payload: Json
+          requested_by: string
+          site_id?: string | null
+          status?: Database["public"]["Enums"]["request_status"]
+          summary?: string | null
+          title: string
+        }
+        Update: {
+          apply_error?: string | null
+          assigned_to?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          entity_id?: string | null
+          entity_table?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["change_kind"]
+          payload?: Json
+          requested_by?: string
+          site_id?: string | null
+          status?: Database["public"]["Enums"]["request_status"]
+          summary?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
       calendar_days: {
         Row: {
           created_at: string
@@ -2619,6 +2680,12 @@ export type Database = {
       component_calc: "fixed" | "percent" | "slab" | "formula"
       component_kind: "earning" | "deduction" | "tax"
       device_direction: "auto" | "in" | "out"
+      change_kind:
+        | "attendance_correction"
+        | "calendar_day"
+        | "work_week"
+        | "pay_change"
+        | "contract_amount"
       day_type:
         | "workday"
         | "off"
@@ -2791,6 +2858,13 @@ export const Constants = {
       component_calc: ["fixed", "percent", "slab", "formula"],
       component_kind: ["earning", "deduction", "tax"],
       device_direction: ["auto", "in", "out"],
+      change_kind: [
+        "attendance_correction",
+        "calendar_day",
+        "work_week",
+        "pay_change",
+        "contract_amount",
+      ],
       day_type: [
         "workday",
         "off",

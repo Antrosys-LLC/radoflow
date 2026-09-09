@@ -149,6 +149,7 @@ const roman: Dictionary = {
     canteen: "Canteen",
     claudeSpend: "Claude ka kharch",
     canteenSettings: "Canteen ki Settings",
+    approvals: "Manzooriyan",
     reports: "Reports",
     payroll: "Tankhwah",
     users: "User Accounts",
@@ -273,6 +274,38 @@ const roman: Dictionary = {
     nothingRecorded: "Is arse mein kuch darj nahi hua.",
     nothingToPlot: "Is arse mein dikhane ko kuch nahi.",
     other: "Deegar",
+  },
+  approvals: {
+    waiting: "Aap ke muntazir",
+    waitingHint:
+      "Jin tabdeeliyon ki manzoori aap se mangi gayi hai. Aap ki manzoori tak kuch lagu nahi hota.",
+    cannotDecide: "Yeh faisle karne walon mein aap shamil nahi.",
+    nothingWaiting: "Koi faisla zer-e-iltiwa nahi.",
+    mine: "Main ne kya manga",
+    mineHint: "Aap ki apni darkhwastein, aur un ka nateeja",
+    noneOfMine: "Aap ne abhi kuch nahi manga.",
+    approve: "Manzoor karein",
+    reject: "Mustarad karein",
+    withdraw: "Wapas lein",
+    note: "Faisle ke sath note",
+    notePlaceholder: "Wajah, agar likhni ho",
+    sendTo: "Manzoori ke liye bhejein",
+    sendToHint: "Yeh tabdeeli un ki manzoori tak roki rahe gi.",
+    pickApprover: "Faisla karne wala chunein",
+    needsApproval: "Manzoori darkar",
+    status: {
+      pending: "Zer-e-iltiwa",
+      approved: "Manzoor",
+      rejected: "Mustarad",
+      cancelled: "Wapas li gayi",
+    },
+    kind: {
+      attendance_correction: "Hazri",
+      calendar_day: "Calendar",
+      work_week: "Kaam ka hafta",
+      pay_change: "Ujrat",
+      contract_amount: "Theka",
+    },
   },
   status: {
     payroll: {
@@ -463,6 +496,14 @@ const roman: Dictionary = {
     counts: "Shumar",
     sunday: "Itwar",
     edited: "Tabdeel shuda",
+    correctDay: "Is din ko durust karein",
+    correctDayHint:
+      "Reh gaye punch ya ghalat machine par lagi chutti ke liye. Is ke baad din band ho jata hai taake agla sync ise badal na sake.",
+    hoursFollow: "Ghante inhi do auqat se nikale jate hain.",
+    correctReason: "Wajah",
+    correctReasonPlaceholder: "Machine ne chutti ka waqt nahi liya",
+    correctReasonHint:
+      "Din ke sath mehfooz rehti hai, aur manzoori dene wale ke paas yehi bunyad hoti hai.",
     approved: "Manzoor",
     unpaidHint: "Rozana overtime ki had se ooper — darj hai, ada nahi hoga",
     unpaidHours: "{hours} bila muawza",
@@ -873,6 +914,11 @@ const roman: Dictionary = {
     contractors: "Thekedaar",
     readOnly:
       "Aap ujrat ke usool dekh sakte hain, badal nahi sakte. Badalne ke liye “ujrat ke usool sambhalein” ki ijazat darkar hai.",
+    employeesHint: "Hazri se ujrat — duty ghante, overtime aur der ki katoti lagu",
+    contractorsHint:
+      "Tay shuda raqam, muqarrara. Chhuttiyon ki katoti nahi, overtime nahi, der par katoti nahi.",
+    noEmployees: "Yahan kisi ki ujrat hazri se nahi.",
+    noContractors: "Yahan koi thekedaar nahi.",
     ratesFor: "Ujrat ke rate — {site}",
     ratesForHint: "Har qism ke kaam ke waqt ke liye fi ghanta rupay",
     noRates: "Is factory ke liye koi rate muqarrar nahi.",

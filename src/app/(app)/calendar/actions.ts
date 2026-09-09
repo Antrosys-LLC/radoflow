@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
+import { submitChangeRequest } from "@/lib/approvals/actions";
+import { needsApproval } from "@/lib/approvals/changes";
 import { requirePermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
@@ -42,6 +44,32 @@ function readDate(value: FormDataEntryValue | null): string | null {
   return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text ? null : text;
 }
 
+/**
+ * Weekday and day-type names for the request summaries.
+ *
+ * English and at module scope on purpose: a summary is written once, stored,
+ * and read later by somebody whose language is not known when it is written.
+ * Translating it at write time would freeze the requester's language onto the
+ * approver's screen.
+ */
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+const DAY_TYPE_NAMES: Record<DayType, string> = {
+  workday: "Working day",
+  off: "Day off",
+  holiday: "Holiday",
+  weekend_working: "Working weekend",
+  special_working: "Extra working day",
+};
+
 function refresh() {
   // Attendance, the live board and payroll all read the calendar, so the
   // stale page is never only this one.
@@ -61,15 +89,37 @@ export async function setWeekdayWorking(
   _prev: CalendarResult,
   form: FormData,
 ): Promise<CalendarResult> {
-  await requirePermission("calendar.manage");
+  const session = await requirePermission("calendar.manage");
 
   const siteId = String(form.get("site_id") ?? "").trim();
   const weekday = Number(String(form.get("weekday") ?? ""));
   const isWorking = String(form.get("is_working") ?? "") === "true";
+  const approverId = String(form.get("approver_id") ?? "").trim() || null;
 
   if (!siteId) return { ok: false, message: "Choose a factory." };
   if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
     return { ok: false, message: "That is not a day of the week." };
+  }
+
+  /*
+   * Changing the standing pattern changes every future week, which is the
+   * largest thing anybody can do from this screen — so it is asked for rather
+   * than done, unless Antrosys is the one doing it.
+   */
+  if (needsApproval(session)) {
+    const day = WEEKDAY_NAMES[weekday] ?? String(weekday);
+    return submitChangeRequest({
+      kind: "work_week",
+      entityTable: "work_week",
+      entityId: null,
+      payload: { site_id: siteId, weekday, is_working: isWorking },
+      siteId,
+      title: isWorking ? `Open every ${day}` : `Close every ${day}`,
+      summary: isWorking
+        ? `${day} becomes a working day, from now on.`
+        : `${day} becomes a day off, from now on.`,
+      assignedTo: approverId,
+    });
   }
 
   const supabase = await createClient();
@@ -101,6 +151,7 @@ export async function saveCalendarDay(
   const day = readDate(form.get("day"));
   const dayType = readDayType(form.get("day_type"));
   const reason = String(form.get("reason") ?? "").trim();
+  const approverId = String(form.get("approver_id") ?? "").trim() || null;
 
   if (!siteId) return { ok: false, message: "Choose a factory." };
   if (!day) return { ok: false, message: "Choose a date." };
@@ -116,6 +167,25 @@ export async function saveCalendarDay(
    * So a Sunday switched on already pays at the weekend rate on its own, and a
    * multiplier typed here changed nothing while looking as though it had.
    */
+
+  if (needsApproval(session)) {
+    return submitChangeRequest({
+      kind: "calendar_day",
+      entityTable: "calendar_days",
+      entityId: null,
+      payload: {
+        site_id: siteId,
+        day,
+        day_type: dayType,
+        reason: reason || null,
+        created_by: session.userId,
+      },
+      siteId,
+      title: `${DAY_TYPE_NAMES[dayType]} on ${day}`,
+      summary: reason ? `${day} — ${reason}` : day,
+      assignedTo: approverId,
+    });
+  }
 
   const supabase = await createClient();
   const { error } = await supabase.from("calendar_days").upsert(
@@ -141,10 +211,41 @@ export async function deleteCalendarDay(
   _prev: CalendarResult,
   form: FormData,
 ): Promise<CalendarResult> {
-  await requirePermission("calendar.manage");
+  const session = await requirePermission("calendar.manage");
 
   const id = String(form.get("id") ?? "").trim();
   if (!id) return { ok: false, message: "Nothing to remove." };
+
+  /*
+   * Removing an exception puts the date back on the weekly rule, which can
+   * turn a day the factory worked into a day it was closed — the same size of
+   * change as making one, so it waits the same way.
+   *
+   * There is no "delete" payload, so this is expressed as what it means: the
+   * day goes back to being an ordinary working day. An approver reading it
+   * sees the effect rather than the mechanism.
+   */
+  if (needsApproval(session)) {
+    const supabase = await createClient();
+    const { data: existing } = await supabase
+      .from("calendar_days")
+      .select("day, site_id, day_type")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!existing) return { ok: false, message: "That day is no longer there." };
+
+    return submitChangeRequest({
+      kind: "calendar_day",
+      entityTable: "calendar_days",
+      entityId: id,
+      payload: { day_type: "workday", reason: null },
+      siteId: existing.site_id,
+      title: `Undo the change on ${existing.day}`,
+      summary: `${existing.day} goes back to an ordinary working day.`,
+      assignedTo: String(form.get("approver_id") ?? "").trim() || null,
+    });
+  }
 
   const supabase = await createClient();
   const { error } = await supabase.from("calendar_days").delete().eq("id", id);

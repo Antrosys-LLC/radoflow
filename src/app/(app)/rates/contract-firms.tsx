@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Building2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ApproverPicker } from "@/components/approver-picker";
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
@@ -55,6 +56,7 @@ export function ContractFirms({ firms }: { firms: readonly ContractFirm[] }) {
 
 function FirmRow({ firm }: { firm: ContractFirm }) {
   const t = useDictionary();
+  const [approverId, setApproverId] = useState("");
   const form = useRef<HTMLFormElement>(null);
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -79,6 +81,7 @@ function FirmRow({ firm }: { firm: ContractFirm }) {
       className="flex flex-wrap items-end gap-3 rounded-2xl bg-secondary p-3"
     >
       <input type="hidden" name="department_id" value={firm.id} />
+      <input type="hidden" name="approver_id" value={approverId} readOnly />
 
       <div className="min-w-[10rem] flex-1">
         {/* The firm is a department row, so its name is as the office typed
@@ -111,6 +114,10 @@ function FirmRow({ firm }: { firm: ContractFirm }) {
       >
         {pending ? t.common.saving : t.common.save}
       </button>
+
+      <div className="w-full">
+        <ApproverPicker value={approverId} onChange={setApproverId} />
+      </div>
     </form>
   );
 }

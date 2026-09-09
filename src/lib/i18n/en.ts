@@ -35,6 +35,7 @@ const en = {
     canteen: "Canteen",
     claudeSpend: "Claude Spend",
     canteenSettings: "Canteen Settings",
+    approvals: "Approvals",
     reports: "Reports",
     payroll: "Payroll",
     users: "User Accounts",
@@ -248,6 +249,48 @@ const en = {
     nothingToPlot: "Nothing to plot in this period.",
     // A ninth category is never a generated hue: it folds into this.
     other: "Other",
+  },
+  /**
+   * Changes held until somebody senior agrees.
+   *
+   * A request's own title and summary are written in English when it is made
+   * and stored, because a summary has to survive the row it describes changing
+   * underneath it and the reader's language is not known at write time. These
+   * are the words around them.
+   */
+  approvals: {
+    waiting: "Waiting for you",
+    waitingHint: "Changes somebody has asked you to approve. Nothing takes effect until you do.",
+    cannotDecide: "You are not one of the people who decide these.",
+    nothingWaiting: "Nothing is waiting for a decision.",
+    mine: "What I asked for",
+    mineHint: "Your own requests, and what came of them",
+    noneOfMine: "You have not asked for anything yet.",
+    approve: "Approve",
+    reject: "Reject",
+    withdraw: "Withdraw",
+    note: "A note with the decision",
+    notePlaceholder: "Why, if it needs saying",
+    // The picker on every guarded form.
+    sendTo: "Send for approval to",
+    sendToHint: "This change is held until they approve it.",
+    pickApprover: "Choose who decides",
+    needsApproval: "Needs approval",
+    // `request_status`, as this screen words it.
+    status: {
+      pending: "Waiting",
+      approved: "Approved",
+      rejected: "Rejected",
+      cancelled: "Withdrawn",
+    },
+    // One entry per `change_kind`.
+    kind: {
+      attendance_correction: "Attendance",
+      calendar_day: "Calendar",
+      work_week: "Working week",
+      pay_change: "Pay",
+      contract_amount: "Contract",
+    },
   },
   status: {
     payroll: {
@@ -529,6 +572,16 @@ const en = {
     counts: "Counts",
     sunday: "Sunday",
     edited: "Edited",
+    // Putting one day right. Hours are not a field: they follow from the two
+    // clock readings, because a day whose hours disagree with its own in and
+    // out times is a day nobody can check.
+    correctDay: "Correct this day",
+    correctDayHint:
+      "For a missed punch or a clock-out on the wrong terminal. The day is locked afterwards so the next sync cannot undo it.",
+    hoursFollow: "The hours are worked out from these two times.",
+    correctReason: "Why",
+    correctReasonPlaceholder: "Terminal missed the check-out",
+    correctReasonHint: "Kept with the day, and it is what an approver has to go on.",
     approved: "Approved",
     unpaidHint: "Past the daily overtime ceiling — recorded, not paid",
     unpaidHours: "{hours} unpaid",
@@ -1217,6 +1270,12 @@ const en = {
     readOnly:
       "You can see the pay rules but not change them. Changing them needs the “Manage pay rules” capability.",
     // `{site}` is a factory name, so a slot rather than a translated word.
+    // The two arrangements, kept apart on the pay screen. Almost nothing on a
+    // contractor's row means what it means on an employee's.
+    employeesHint: "Paid from attendance — duty hours, overtime and late penalties apply",
+    contractorsHint: "Paid an agreed amount, flat. No proration, no overtime, no late penalty.",
+    noEmployees: "Nobody here is paid from attendance.",
+    noContractors: "No contractors here.",
     ratesFor: "Pay rates — {site}",
     ratesForHint: "Rupees an hour for each kind of worked time",
     noRates: "No rates set for this factory.",

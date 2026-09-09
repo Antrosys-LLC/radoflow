@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
+import { submitChangeRequest } from "@/lib/approvals/actions";
+import { describeFieldChanges, money, needsApproval } from "@/lib/approvals/changes";
 import { requirePermission } from "@/lib/auth/session";
 import { deriveRates } from "@/lib/pay/derived";
 import { trackingFlags } from "@/lib/people/tracking";
@@ -32,7 +34,7 @@ function text(form: FormData, key: string): string {
  * shift is paid for eight with the last four as overtime.
  */
 export async function updateUserPay(_prev: PayResult, form: FormData): Promise<PayResult> {
-  await requirePermission("people.manage");
+  const session = await requirePermission("people.manage");
 
   const userId = text(form, "user_id");
   if (!userId) return { ok: false, message: "No user selected." };
@@ -75,6 +77,60 @@ export async function updateUserPay(_prev: PayResult, form: FormData): Promise<P
   }
 
   const supabase = await createClient();
+
+  const payload = {
+    worker_type: workerType,
+    pay_class: payClass,
+    monthly_salary: monthlySalary,
+    hourly_rate: hourlyRate,
+    ...(dutyHours === null ? {} : { duty_hours: dutyHours }),
+    sunday_policy: sundayPolicy,
+    ...trackingFlags(noAttendance ? "salary_only" : text(form, "tracking")),
+    overtime_eligible: form.get("overtime_eligible") !== null,
+  };
+
+  /*
+   * What somebody is paid is the change this workflow exists for. It waits for
+   * a director unless Antrosys made it — and the summary is built from the row
+   * as it stands *now*, because by the time it is read the approver needs to
+   * see what they are agreeing to change from.
+   */
+  if (needsApproval(session)) {
+    const { data: before } = await supabase
+      .from("profiles")
+      .select(
+        "full_name, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, overtime_eligible, requires_attendance",
+      )
+      .eq("id", userId)
+      .maybeSingle();
+
+    const summary = describeFieldChanges(
+      (before ?? {}) as Record<string, unknown>,
+      payload as Record<string, unknown>,
+      {
+        worker_type: "Paid as",
+        pay_class: "Pay class",
+        monthly_salary: "Salary",
+        hourly_rate: "Hourly rate",
+        duty_hours: "Salary covers",
+        sunday_policy: "Sunday",
+        overtime_eligible: "Earns overtime",
+        requires_attendance: "Attendance kept",
+      },
+    );
+
+    return submitChangeRequest({
+      kind: "pay_change",
+      entityTable: "profiles",
+      entityId: userId,
+      payload,
+      siteId: null,
+      title: `Pay for ${before?.full_name ?? "an employee"}`,
+      summary: summary || `Salary set to ${money(monthlySalary)}.`,
+      assignedTo: text(form, "approver_id") || null,
+    });
+  }
+
   const { error } = await supabase
     .from("profiles")
     .update({
@@ -178,7 +234,7 @@ export async function removeUserComponent(componentId: string): Promise<PayResul
  * payroll item for its people.
  */
 export async function setContractAmount(_prev: PayResult, form: FormData): Promise<PayResult> {
-  await requirePermission("rates.manage");
+  const session = await requirePermission("rates.manage");
 
   const departmentId = text(form, "department_id");
   const amount = Number(text(form, "contract_amount") || 0);
@@ -189,6 +245,32 @@ export async function setContractAmount(_prev: PayResult, form: FormData): Promi
   }
 
   const supabase = await createClient();
+
+  /*
+   * A contract amount is the whole of what a firm is paid — one figure billed
+   * once a month, with none of its people priced individually. It is the
+   * largest single number anybody edits in this app, so it waits like a
+   * salary does.
+   */
+  if (needsApproval(session)) {
+    const { data: firm } = await supabase
+      .from("departments")
+      .select("name, contract_amount, site_id")
+      .eq("id", departmentId)
+      .maybeSingle();
+
+    return submitChangeRequest({
+      kind: "contract_amount",
+      entityTable: "departments",
+      entityId: departmentId,
+      payload: { contract_amount: amount },
+      siteId: firm?.site_id ?? null,
+      title: `Contract amount for ${firm?.name ?? "a firm"}`,
+      summary: `${money(Number(firm?.contract_amount ?? 0))} → ${money(amount)} a month`,
+      assignedTo: text(form, "approver_id") || null,
+    });
+  }
+
   const { error } = await supabase
     .from("departments")
     .update({ contract_amount: amount })

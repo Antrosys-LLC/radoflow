@@ -6,6 +6,7 @@ import { useFormStatus } from "react-dom";
 import { CalendarDays, CalendarPlus, Repeat, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { ApproverPicker } from "@/components/approver-picker";
 import { AskAbout } from "@/components/assistant/ask-about";
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
@@ -122,6 +123,12 @@ export function WorkingCalendar({
 }) {
   const t = useDictionary();
   const [siteId, setSiteId] = useState(sites[0]?.id ?? "");
+  /*
+   * One approver for the screen rather than one per control. Two of the three
+   * changes here are single taps — a weekday toggle, a remove button — and a
+   * picker inside each would ask the same question three times.
+   */
+  const [approverId, setApproverId] = useState("");
   const [editing, setEditing] = useState<CalendarDayRow | null>(null);
   const [adding, setAdding] = useState(false);
 
@@ -132,6 +139,8 @@ export function WorkingCalendar({
 
   return (
     <div className="space-y-5 pb-6">
+      {canManage ? <ApproverPicker value={approverId} onChange={setApproverId} /> : null}
+
       {sites.length > 1 ? (
         <div className="flex flex-wrap gap-2">
           {sites.map((site) => (
@@ -172,6 +181,7 @@ export function WorkingCalendar({
               // has to say the same thing rather than guess "off".
               isWorking={pattern.get(weekday) ?? true}
               canManage={canManage}
+              approverId={approverId}
             />
           ))}
         </div>
@@ -252,7 +262,7 @@ export function WorkingCalendar({
                     >
                       {t.calendar.edit}
                     </button>
-                    <RemoveButton id={row.id} label={t.calendar.remove} />
+                    <RemoveButton id={row.id} label={t.calendar.remove} approverId={approverId} />
                   </span>
                 ) : null}
               </li>
@@ -264,6 +274,7 @@ export function WorkingCalendar({
       {adding || editing ? (
         <ExceptionDialog
           siteId={siteId}
+          approverId={approverId}
           row={editing}
           onClose={() => {
             setAdding(false);
@@ -287,12 +298,15 @@ function WeekdayToggle({
   label,
   isWorking,
   canManage,
+  approverId,
 }: {
   siteId: string;
   weekday: number;
   label: string;
   isWorking: boolean;
   canManage: boolean;
+  /** Empty when the person never queues, or has not chosen yet. */
+  approverId: string;
 }) {
   const t = useDictionary();
   const router = useRouter();
@@ -316,6 +330,7 @@ function WeekdayToggle({
     data.set("site_id", siteId);
     data.set("weekday", String(weekday));
     data.set("is_working", String(next));
+    data.set("approver_id", approverId);
 
     startTransition(async () => {
       const result = await setWeekdayWorking(INITIAL, data);
@@ -349,7 +364,15 @@ function WeekdayToggle({
   );
 }
 
-function RemoveButton({ id, label }: { id: string; label: string }) {
+function RemoveButton({
+  id,
+  label,
+  approverId,
+}: {
+  id: string;
+  label: string;
+  approverId: string;
+}) {
   const t = useDictionary();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -363,6 +386,7 @@ function RemoveButton({ id, label }: { id: string; label: string }) {
       onClick={() => {
         const data = new FormData();
         data.set("id", id);
+        data.set("approver_id", approverId);
         startTransition(async () => {
           const result = await deleteCalendarDay(INITIAL, data);
           if (result.ok) toast.success(t.calendar.removed);
@@ -380,10 +404,12 @@ function RemoveButton({ id, label }: { id: string; label: string }) {
 /** Adding or rewriting one dated exception. */
 function ExceptionDialog({
   siteId,
+  approverId,
   row,
   onClose,
 }: {
   siteId: string;
+  approverId: string;
   row: CalendarDayRow | null;
   onClose: () => void;
 }) {
@@ -428,6 +454,7 @@ function ExceptionDialog({
 
         <form action={action} className="mt-4 space-y-4">
           <input type="hidden" name="site_id" value={siteId} readOnly />
+          <input type="hidden" name="approver_id" value={approverId} readOnly />
 
           <label className="block">
             <span className="text-xs font-bold text-muted-foreground">{t.calendar.date}</span>

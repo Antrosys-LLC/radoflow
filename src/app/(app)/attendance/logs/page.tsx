@@ -10,6 +10,7 @@ import { Latin } from "@/components/latin";
 import { matchesPerson } from "@/lib/people/match";
 import { AskAbout } from "@/components/assistant/ask-about";
 import { Card, SectionTitle } from "@/components/ui-kit";
+import { CorrectDayButton } from "./correct-day";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { dictionaryFor, type Dictionary } from "@/lib/i18n";
 import {
@@ -92,7 +93,28 @@ function statusLabel(t: Dictionary, status: string | null): string {
  * literal `[]`, which infers as `never[]` and makes every field below an error
  * that has nothing to do with the actual shape.
  */
+/**
+ * A stored instant as "HH:MM" on the factory's clock.
+ *
+ * `formatTime` is for reading — it produces "07:58 AM", which a `type="time"`
+ * input rejects. This is the same instant in the form the control takes.
+ */
+function clockTime(value: string | null): string {
+  if (!value) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Karachi",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(value));
+
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "";
+  return hour && minute ? `${hour}:${minute}` : "";
+}
+
 interface DayRow {
+  id: string;
   profile_id: string;
   work_date: string;
   first_in: string | null;
@@ -148,6 +170,17 @@ export default async function AttendanceLogPage({
    */
   const canSeeEveryone = session.isSuperuser || session.permissions.has("attendance.view.all");
   const canApprove = session.permissions.has("attendance.approve");
+  /*
+   * Correcting a day is `attendance.edit` — the capability that exists for
+   * exactly this and the reason a manager holds it. Whether the correction
+   * takes effect at once or waits for a director is the action's decision, not
+   * this one: the button looks the same either way, and the picker inside it
+   * says which is happening.
+   */
+  const canCorrect =
+    session.isSuperuser ||
+    session.permissions.has("attendance.edit") ||
+    session.permissions.has("attendance.edit.all");
 
   const selectedDepts = params.dept
     ? Array.isArray(params.dept)
@@ -192,7 +225,7 @@ export default async function AttendanceLogPage({
       supabase
         .from("attendance_days")
         .select(
-          "profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual, locked, approved_by, approved_at, hours_are_final",
+          "id, profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual, locked, approved_by, approved_at, hours_are_final",
         )
         .in("profile_id", ids)
         .gte("work_date", from)
@@ -410,6 +443,7 @@ export default async function AttendanceLogPage({
           to={to}
           departmentName={person.department_id ? deptName.get(person.department_id) : undefined}
           canApprove={canApprove}
+          canCorrect={canCorrect}
         />
       ) : (
         <Cohort
@@ -647,6 +681,7 @@ function PersonLog({
   to,
   departmentName,
   canApprove,
+  canCorrect,
 }: {
   t: Dictionary;
   person: {
@@ -665,6 +700,8 @@ function PersonLog({
   to: string;
   departmentName: string | undefined;
   canApprove: boolean;
+  /** Whether a per-day correction control is offered. */
+  canCorrect: boolean;
 }) {
   const dutyHours = Number(person.duty_hours ?? 8);
   const contractor = person.worker_type === "contractor";
@@ -800,6 +837,7 @@ function PersonLog({
                 <th className="px-4 py-3 text-end font-semibold">{t.logs.overtime}</th>
                 <th className="px-4 py-3 text-end font-semibold">{t.common.late}</th>
                 <th className="px-4 py-3 font-semibold">{t.logs.counts}</th>
+                {canCorrect ? <th className="px-4 py-3" /> : null}
               </tr>
             </thead>
             <tbody>
@@ -897,13 +935,31 @@ function PersonLog({
                         </span>
                       )}
                     </td>
+                    {canCorrect ? (
+                      <td className="px-4 py-3 text-end">
+                        <CorrectDayButton
+                          day={{
+                            id: row.id,
+                            workDate: row.work_date,
+                            // The dialog's time inputs want HH:MM on the
+                            // factory's clock; the column stores an instant.
+                            firstIn: clockTime(row.first_in),
+                            lastOut: clockTime(row.last_out),
+                            status: row.status ?? "present",
+                          }}
+                        />
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}
 
               {summary.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td
+                    colSpan={canCorrect ? 9 : 8}
+                    className="px-4 py-10 text-center text-sm text-muted-foreground"
+                  >
                     <Fill template={t.logs.noAttendanceBetween} values={{ from, to }} />
                   </td>
                 </tr>

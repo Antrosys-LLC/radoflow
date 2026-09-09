@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Banknote, ChevronDown, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ApproverPicker } from "@/components/approver-picker";
 import { AskAbout } from "@/components/assistant/ask-about";
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
@@ -82,14 +83,6 @@ function daysThisMonth(): number {
 
 export function PeoplePay({ people }: { people: PayPerson[] }) {
   const t = useDictionary();
-  const grouped = new Map<string, PayPerson[]>();
-  for (const person of people) {
-    const list = grouped.get(person.departmentName) ?? [];
-    list.push(person);
-    grouped.set(person.departmentName, list);
-  }
-
-  const departments = [...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
   if (people.length === 0) {
     return (
@@ -99,11 +92,89 @@ export function PeoplePay({ people }: { people: PayPerson[] }) {
     );
   }
 
+  /*
+   * Contractors are kept apart from employees, not merged into the department
+   * list.
+   *
+   * They are not paid the same way and almost nothing on their row means the
+   * same thing: no duty hours, no overtime, no late penalty, and a "salary"
+   * that is an agreed amount rather than a wage. Mixed into one list, a
+   * department's total silently adds an agreed contract figure to real wages,
+   * and the two arrangements are read as one. Two headed sections make the
+   * distinction impossible to miss, and each keeps its own department grouping
+   * underneath.
+   */
+  const employees = people.filter((person) => person.workerType !== "contractor");
+  const contractors = people.filter((person) => person.workerType === "contractor");
+
   return (
-    <div className="space-y-3">
-      {departments.map(([name, members]) => (
-        <DepartmentGroup key={name} name={name} members={members} />
-      ))}
+    <div className="space-y-5">
+      <PayGroup
+        title={t.rates.employees}
+        hint={t.rates.employeesHint}
+        people={employees}
+        empty={t.rates.noEmployees}
+      />
+      <PayGroup
+        title={t.rates.contractors}
+        hint={t.rates.contractorsHint}
+        people={contractors}
+        empty={t.rates.noContractors}
+        tone="warning"
+      />
+    </div>
+  );
+}
+
+/** One of the two arrangements, with its own departments under it. */
+function PayGroup({
+  title,
+  hint,
+  people,
+  empty,
+  tone,
+}: {
+  title: string;
+  hint: string;
+  people: PayPerson[];
+  empty: string;
+  tone?: "warning";
+}) {
+  const grouped = new Map<string, PayPerson[]>();
+  for (const person of people) {
+    const list = grouped.get(person.departmentName) ?? [];
+    list.push(person);
+    grouped.set(person.departmentName, list);
+  }
+
+  const departments = [...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+  return (
+    <div>
+      <div className="mb-2 flex flex-wrap items-baseline gap-2">
+        <h3
+          className={cn(
+            "text-sm font-bold",
+            tone === "warning" ? "text-warning" : "text-foreground",
+          )}
+        >
+          {title}
+        </h3>
+        <span className="rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-bold text-muted-foreground">
+          <Latin>{people.length}</Latin>
+        </span>
+        <span className="text-xs text-muted-foreground">{hint}</span>
+      </div>
+
+      {departments.length === 0 ? (
+        <Card className="p-6 text-center text-sm text-muted-foreground">{empty}</Card>
+      ) : (
+        <div className="space-y-3">
+          {departments.map(([name, members]) => (
+            <DepartmentGroup key={name} name={name} members={members} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -180,6 +251,7 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
   const form = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
 
+  const [approverId, setApproverId] = useState("");
   const [workerType, setWorkerType] = useState(person.workerType);
   const [salary, setSalary] = useState(String(person.monthlySalary));
   const [dutyHours, setDutyHours] = useState(String(person.dutyHours));
@@ -319,6 +391,7 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
         <div className="space-y-4 bg-secondary/40 px-4 pb-5 pt-1">
           <form ref={form} onSubmit={(event) => event.preventDefault()} className="space-y-3">
             <input type="hidden" name="user_id" value={person.id} />
+            <input type="hidden" name="approver_id" value={approverId} readOnly />
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Field label={t.rates.paidAs}>
@@ -449,6 +522,10 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
                 </span>
               </p>
             ) : null}
+
+            {/* Above the swipe, not below: the person is about to commit,
+                and who it goes to is part of what they are committing to. */}
+            <ApproverPicker value={approverId} onChange={setApproverId} />
 
             <SwipeToConfirm
               label={fill(t.rates.swipeSave, { name: person.fullName.split(" ")[0] ?? "" })}

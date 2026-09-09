@@ -124,6 +124,15 @@ const WORK_MODULES: readonly NavItem[] = [
     description: "The serving counter, and who has eaten",
   },
   {
+    href: "/approvals",
+    labelKey: "approvals",
+    icon: "leave",
+    // Everyone: a manager opens it to watch what they asked for, a director to
+    // decide. The row policy is what limits each of them to their own.
+    requires: [],
+    description: "Changes waiting for a decision, and the ones you asked for",
+  },
+  {
     href: "/reports",
     labelKey: "reports",
     icon: "reports",

@@ -3,7 +3,7 @@
 --
 --   Supabase dashboard -> SQL Editor -> New query -> paste -> Run
 --
--- Why this file exists: four migrations in supabase/migrations/ have never
+-- Why this file exists: five migrations in supabase/migrations/ have never
 -- been applied to the live database. That is what makes the language toggle
 -- fail with
 --
@@ -12,12 +12,13 @@
 -- and it is also why the check-in/check-out gate, the amount-actually-paid
 -- field and the Claude spend screen have nothing to write to.
 --
--- It is the exact content of these four files, in order, made re-runnable:
+-- It is the exact content of these five files, in order, made re-runnable:
 --
 --   20260904090400_attendance_approval.sql
 --   20260906090000_profile_language.sql
 --   20260908090000_calendar_manage_for_managers.sql
 --   20260908100000_checkout_devices_paid_amounts_and_settings.sql
+--   20260909090000_change_requests.sql
 --
 -- The first of those is why the Attendance Log currently fails outright with
 -- "column attendance_days.approved_by does not exist" — found by walking the
@@ -248,6 +249,84 @@ create policy assistant_usage_read on public.assistant_usage
 drop policy if exists assistant_usage_insert on public.assistant_usage;
 create policy assistant_usage_insert on public.assistant_usage
   for insert to authenticated with check (profile_id = auth.uid());
+
+-- ---------------------------------------------------------------------------
+-- 5. Changes that need somebody else to say yes
+--
+-- A request holds the change rather than applying it, so the row it targets
+-- keeps its old value until a CEO approves — nothing wrong reaches a payslip
+-- while it waits. Antrosys never queues: they are who fixes this workflow when
+-- it goes wrong.
+-- ---------------------------------------------------------------------------
+
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'change_kind') then
+    create type public.change_kind as enum (
+      'attendance_correction',
+      'calendar_day',
+      'work_week',
+      'pay_change',
+      'contract_amount'
+    );
+  end if;
+end $$;
+
+create table if not exists public.change_requests (
+  id            uuid primary key default gen_random_uuid(),
+  kind          public.change_kind not null,
+  entity_table  text not null,
+  entity_id     text,
+  payload       jsonb not null,
+  site_id       uuid references public.sites (id) on delete cascade,
+  title         text not null,
+  summary       text,
+  requested_by  uuid not null references public.profiles (id) on delete cascade,
+  assigned_to   uuid references public.profiles (id) on delete set null,
+  status        public.request_status not null default 'pending',
+  decided_by    uuid references public.profiles (id) on delete set null,
+  decided_at    timestamptz,
+  decision_note text,
+  apply_error   text,
+  created_at    timestamptz not null default now()
+);
+
+create index if not exists change_requests_status_idx
+  on public.change_requests (status, assigned_to);
+create index if not exists change_requests_requester_idx
+  on public.change_requests (requested_by, created_at desc);
+create index if not exists change_requests_kind_idx
+  on public.change_requests (kind, status);
+
+alter table public.change_requests enable row level security;
+
+drop policy if exists change_requests_read on public.change_requests;
+create policy change_requests_read on public.change_requests
+  for select to authenticated
+  using (
+    requested_by = auth.uid()
+    or assigned_to = auth.uid()
+    or app.can('payroll.approve', site_id)
+    or app.can('attendance.approve', site_id)
+  );
+
+drop policy if exists change_requests_insert on public.change_requests;
+create policy change_requests_insert on public.change_requests
+  for insert to authenticated
+  with check (requested_by = auth.uid());
+
+drop policy if exists change_requests_decide on public.change_requests;
+create policy change_requests_decide on public.change_requests
+  for update to authenticated
+  using (app.can('payroll.approve', site_id) or app.can('attendance.approve', site_id))
+  with check (app.can('payroll.approve', site_id) or app.can('attendance.approve', site_id));
+
+-- Antrosys is billed as a contract firm at a stated monthly amount. It was
+-- sitting at zero, which the payroll run reads as "charge nothing".
+update public.departments
+   set contract_amount = 35000
+ where name = 'Antrosys'
+   and default_worker_type = 'contractor';
 
 commit;
 

@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 
 import { requireAnyPermission } from "@/lib/auth/session";
+import { SchemaOutOfDate } from "@/components/schema-out-of-date";
+import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
+import { isSchemaOutOfDate } from "@/lib/supabase/schema-error";
 import { pakistanDayStartUtc, todayInPakistan } from "@/lib/time";
 
 import { GateScreen, type GateEntryView } from "./gate-screen";
@@ -41,7 +44,7 @@ export default async function GatePage({
   const from = params.from || today;
   const to = params.to || today;
 
-  const { data: rows } = await supabase
+  const { data: rows, error } = await supabase
     .from("gate_entries")
     .select("*")
     // Bounded by the Pakistan day rather than the database's UTC one — a night
@@ -50,6 +53,12 @@ export default async function GatePage({
     .lt("happened_at", pakistanDayStartUtc(shiftDate(to, 1)))
     .order("happened_at", { ascending: false })
     .limit(500);
+
+  // The register itself arrives with a migration; an empty day and a table
+  // that does not exist look identical once the error is dropped.
+  if (isSchemaOutOfDate(error)) {
+    return <SchemaOutOfDate t={dictionaryFor(session.profile.language)} detail={error?.message} />;
+  }
 
   const entries = rows ?? [];
 

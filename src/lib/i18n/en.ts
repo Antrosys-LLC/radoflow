@@ -156,6 +156,13 @@ const en = {
     // that in every language.
     deniedBody:
       "The {role} role does not include this module. Ask an administrator to grant it — nothing needs reinstalling or updating.",
+    // Not a fault: a migration in the repository has not been run yet, so a
+    // screen is reading a column the database has not got. Worth saying
+    // plainly, because the fix is one file and the generic failure sends
+    // somebody hunting instead.
+    schemaTitle: "The database is missing a recent update",
+    schemaBody:
+      "Nothing is broken and nothing is lost. A pending database update has not been applied yet — ask Antrosys to run supabase/APPLY-PENDING.sql, and this screen will work.",
     backToDashboard: "Back to my dashboard",
   },
   /**

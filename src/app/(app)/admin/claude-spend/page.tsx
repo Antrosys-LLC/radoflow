@@ -6,7 +6,10 @@ import { requireSession } from "@/lib/auth/session";
 import { PAYMENT_TAX_RATE, USD_TO_PKR } from "@/lib/assistant/models";
 import { budgetState, DEFAULT_MONTHLY_LIMIT_PKR } from "@/lib/assistant/budget";
 import { fetchDailySpend } from "@/lib/assistant/spend";
+import { SchemaOutOfDate } from "@/components/schema-out-of-date";
+import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
+import { isSchemaOutOfDate } from "@/lib/supabase/schema-error";
 
 import { SpendScreen, type SpendView } from "./spend-screen";
 
@@ -45,7 +48,7 @@ export default async function ClaudeSpendPage() {
 
   const supabase = await createClient();
 
-  const [report, { data: settings }, { data: usage }] = await Promise.all([
+  const [report, settingsRead, usageRead] = await Promise.all([
     // Thirty days: the longest window the cost endpoint serves in one page,
     // and a month is the unit a bill arrives in.
     fetchDailySpend(30),
@@ -55,6 +58,21 @@ export default async function ClaudeSpendPage() {
       .in("key", ["usd_to_pkr", "tax_percent", "assistant_monthly_limit_pkr"]),
     supabase.from("assistant_usage").select("cost_usd, asked_at"),
   ]);
+
+  /*
+   * Both tables arrive with a migration. Reporting a month's spend as zero
+   * because the table holding it does not exist yet would be worse than
+   * reporting nothing at all.
+   */
+  const schemaError = [settingsRead.error, usageRead.error].find(isSchemaOutOfDate);
+  if (schemaError) {
+    return (
+      <SchemaOutOfDate t={dictionaryFor(session.profile.language)} detail={schemaError.message} />
+    );
+  }
+
+  const settings = settingsRead.data;
+  const usage = usageRead.data;
 
   const settingOf = (key: string, fallback: number): number => {
     const raw = (settings ?? []).find((row) => row.key === key)?.value;

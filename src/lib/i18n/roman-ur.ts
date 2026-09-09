@@ -212,6 +212,9 @@ const roman: Dictionary = {
     deniedTitle: "Aap ke kirdar ke liye dastyab nahi",
     deniedBody:
       "{role} kirdar mein yeh hissa shamil nahi. Kisi muntazim se ijazat dilwayein — kuch dobara nasb ya update karne ki zaroorat nahi.",
+    schemaTitle: "Database mein ek haliya update baqi hai",
+    schemaBody:
+      "Kuch kharab nahi hua aur na kuch zaya hua. Database ki ek update abhi lagu nahi hui — Antrosys se supabase/APPLY-PENDING.sql chalwayein, yeh screen chalne lage gi.",
     backToDashboard: "Apne dashboard par wapas",
   },
   spend: {

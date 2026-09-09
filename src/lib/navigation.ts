@@ -244,5 +244,11 @@ export function landingPathFor(session: Session | null): string {
   if (session.permissions.has("attendance.view.all")) return "/attendance";
   if (session.permissions.has("attendance.view")) return "/attendance";
   if (session.permissions.has("payroll.view")) return "/payroll";
+  /*
+   * A gate supervisor holds one screen. Landing them on their settings — the
+   * fallback below — would mean signing in and then going looking for the only
+   * thing they came to do.
+   */
+  if (session.permissions.has("gate.log")) return "/gate";
   return "/me/settings";
 }

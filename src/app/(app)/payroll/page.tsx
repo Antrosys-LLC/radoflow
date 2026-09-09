@@ -89,9 +89,16 @@ export default async function PayrollPage({
           flaggedDays: (row.flagged_days ?? []) as ItemRow["flaggedDays"],
           reviewNote: row.review_note,
           paidAt: row.paid_at,
-          paidAmount: row.paid_amount === null ? null : Number(row.paid_amount),
-          paidDifference: row.paid_difference === null ? null : Number(row.paid_difference),
-          paidNote: row.paid_note,
+          /*
+           * `== null`, not `=== null`: these three columns arrive with a
+           * migration, and this row is `select("*")`, so on a database that
+           * has not had it run they come back missing rather than null.
+           * `Number(undefined)` is NaN, which reaches the screen as a payment
+           * of "NaN" against somebody's name.
+           */
+          paidAmount: row.paid_amount == null ? null : Number(row.paid_amount),
+          paidDifference: row.paid_difference == null ? null : Number(row.paid_difference),
+          paidNote: row.paid_note ?? null,
         };
       })
       .sort((a, b) => b.net - a.net);

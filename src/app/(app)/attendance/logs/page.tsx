@@ -27,7 +27,9 @@ import {
   type DayType,
   type HourBuckets,
 } from "@/lib/payroll/types";
+import { SchemaOutOfDate } from "@/components/schema-out-of-date";
 import { selectInBatches } from "@/lib/supabase/in-batches";
+import { isSchemaOutOfDate } from "@/lib/supabase/schema-error";
 import { createClient } from "@/lib/supabase/server";
 import { formatHours, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -219,19 +221,35 @@ export default async function AttendanceLogPage({
   const cohort = person ? [person] : scoped;
   const cohortIds = cohort.map((p) => p.id);
 
-  const batched = await selectInBatches<DayRow>(
-    cohortIds,
-    (ids) =>
-      supabase
-        .from("attendance_days")
-        .select(
-          "id, profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual, locked, approved_by, approved_at, hours_are_final",
-        )
-        .in("profile_id", ids)
-        .gte("work_date", from)
-        .lte("work_date", to),
-    `Could not read attendance for ${from} to ${to}`,
-  );
+  /*
+   * The one read on this screen that can fail for a reason the office can act
+   * on: `approved_by` and `approved_at` arrive with a migration, and until it
+   * is run this select names a column the database has not got.
+   *
+   * Caught here rather than left to the error boundary, which in production
+   * can only say "something went wrong" — the message is stripped before it
+   * reaches the browser. Every other failure is re-thrown untouched: a
+   * connection dropping is not something to explain away as a missing update.
+   */
+  let batched: DayRow[];
+  try {
+    batched = await selectInBatches<DayRow>(
+      cohortIds,
+      (ids) =>
+        supabase
+          .from("attendance_days")
+          .select(
+            "id, profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual, locked, approved_by, approved_at, hours_are_final",
+          )
+          .in("profile_id", ids)
+          .gte("work_date", from)
+          .lte("work_date", to),
+      `Could not read attendance for ${from} to ${to}`,
+    );
+  } catch (error) {
+    if (!isSchemaOutOfDate(error)) throw error;
+    return <SchemaOutOfDate t={t} detail={error instanceof Error ? error.message : undefined} />;
+  }
 
   // Each batch comes back ordered within itself; the merged list still needs sorting.
   const days = batched.sort((a, b) => (a.work_date < b.work_date ? 1 : -1));

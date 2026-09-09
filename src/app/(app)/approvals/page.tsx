@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 
 import { isAntrosys } from "@/lib/auth/antrosys";
+import { SchemaOutOfDate } from "@/components/schema-out-of-date";
 import { requireSession } from "@/lib/auth/session";
+import { dictionaryFor } from "@/lib/i18n";
+import { isSchemaOutOfDate } from "@/lib/supabase/schema-error";
 import { createClient } from "@/lib/supabase/server";
 
 import { ApprovalsScreen, type RequestView } from "./approvals-screen";
@@ -30,11 +33,21 @@ export default async function ApprovalsPage() {
   const session = await requireSession();
   const supabase = await createClient();
 
-  const { data: rows } = await supabase
+  const { data: rows, error } = await supabase
     .from("change_requests")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(200);
+
+  /*
+   * `change_requests` arrives with a migration. Until it is run this read
+   * fails, and swallowing it would leave an empty queue — which reads as
+   * "nothing is waiting on you" and is the one wrong answer this screen can
+   * give. Say what is actually the matter instead.
+   */
+  if (isSchemaOutOfDate(error)) {
+    return <SchemaOutOfDate t={dictionaryFor(session.profile.language)} detail={error?.message} />;
+  }
 
   const requests = rows ?? [];
 

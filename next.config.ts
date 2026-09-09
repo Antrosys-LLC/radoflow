@@ -42,9 +42,7 @@ const nextConfig: NextConfig = {
         // Hashed by the build, so they can never go stale — a year is the
         // longest anything is worth caching and these earn it.
         source: "/_next/static/:path*",
-        headers: [
-          { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
-        ],
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
       },
     ];
   },

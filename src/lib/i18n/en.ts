@@ -21,6 +21,7 @@ const en = {
     // The three sidebar section headings, then one entry per module.
     workspace: "Workspace",
     administration: "Administration",
+    antrosys: "Antrosys",
     myRecords: "My Records",
     dashboard: "Dashboard",
     ask: "Ask",
@@ -184,6 +185,17 @@ const en = {
     appSubtitle: "Counted here, per question — narrower than the account statement above",
     appSpend: "Spent",
     appCalls: "Questions answered",
+    // The ceiling, and what is left of it. Above the account statement on
+    // purpose: the statement is what has been spent, this is what may be, and
+    // it is the only figure here that changes what the app does.
+    budgetTitle: "This month's limit",
+    budgetHint:
+      "Every Ask button stops answering once the month reaches this. It resets on the first.",
+    budgetLeft: "{amount} left",
+    budgetSpent: "Nothing left this month",
+    budgetReached:
+      "The limit is reached. Nobody can ask a question until the first, or until the limit is raised below.",
+    limit: "Monthly limit (Rs)",
     settingsTitle: "Rate and tax",
     settingsHint:
       "What one dollar costs in rupees, and the tax the bank adds. Both are used everywhere a dollar figure is shown in rupees.",
@@ -619,9 +631,6 @@ const en = {
     reason: "Reason",
     reasonPlaceholder: "Extra order",
     reasonHint: "Kept with the day, so anyone reading the calendar later knows why.",
-    payMultiplier: "Pay multiplier",
-    payMultiplierHint:
-      "Leave it empty to use the usual rule for this factory. 2 means double pay for the day.",
     // One entry per `day_type` member: the noun the enum stores, and under it
     // what the choice actually does to the day.
     dayType: {
@@ -969,8 +978,6 @@ const en = {
     answerLanguage: "Answer in",
     commonQuestions: "Common questions",
     thinking: "Thinking…",
-    listen: "Listen",
-    readAloud: "Read aloud",
     placeholder: "Type your question…",
     askByVoice: "Ask by voice",
     stopListening: "Stop listening",
@@ -1003,6 +1010,8 @@ const en = {
     // passed through in English instead: it is developer-facing, and an
     // invented sentence around one would hide what actually failed.
     notSignedIn: "Not signed in.",
+    overBudget:
+      "The assistant has reached its spending limit for this month. Ask Antrosys to raise it, or wait until the first.",
     notAllowed: "Not allowed to use the assistant.",
     badRequest: "Invalid request body.",
     emptyQuestion: "Ask a question first.",

@@ -1,12 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { budgetState, DEFAULT_MONTHLY_LIMIT_PKR, monthStart } from "@/lib/assistant/budget";
 import { describeAskContext, readAskContext } from "@/lib/assistant/context";
 import {
   ASK_MODEL,
   costInPkr,
   costInUsd,
+  PAYMENT_TAX_RATE,
   resolveEffort,
+  USD_TO_PKR,
   type UsageTotals,
 } from "@/lib/assistant/models";
 import { buildAssistantTools } from "@/lib/assistant/tools";
@@ -147,6 +150,56 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = await createClient();
+
+  /*
+   * The month's ceiling, checked before a question is sent rather than after.
+   *
+   * Every screen carries an Ask button now and nothing about a question tells
+   * you it is the four hundredth one this hour, so a limit that only warns is
+   * a limit found out about on a statement.
+   *
+   * Read through the caller's own session, which means an ordinary user cannot
+   * see the rows (`assistant_usage` is readable only with `settings.manage`)
+   * and their sum comes back as zero. That is deliberate and safe in the only
+   * direction that matters: the check is a *second* line, and the first is
+   * that the same rows are what the spend screen shows the person who can act
+   * on them. A stricter read would need the service key on a path that
+   * otherwise never touches it.
+   *
+   * A database without the table yet — the migration is still pending — is
+   * treated as "cannot measure, do not block". Refusing every question because
+   * a table is missing would take the assistant away from the whole factory
+   * over a deployment step.
+   */
+  const [{ data: budgetRows }, { data: budgetSettings }] = await Promise.all([
+    supabase
+      .from("assistant_usage")
+      .select("cost_usd, asked_at")
+      .gte("asked_at", monthStart(new Date()).toISOString()),
+    supabase
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["usd_to_pkr", "tax_percent", "assistant_monthly_limit_pkr"]),
+  ]);
+
+  if (budgetRows && budgetRows.length > 0) {
+    const setting = (key: string, fallback: number): number => {
+      const raw = (budgetSettings ?? []).find((row) => row.key === key)?.value;
+      const parsed = typeof raw === "number" ? raw : Number(raw);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+
+    const budget = budgetState(budgetRows, {
+      limitPkr: setting("assistant_monthly_limit_pkr", DEFAULT_MONTHLY_LIMIT_PKR),
+      rate: setting("usd_to_pkr", USD_TO_PKR),
+      taxPercent: setting("tax_percent", PAYMENT_TAX_RATE * 100),
+    });
+
+    if (budget.overBudget) {
+      return NextResponse.json({ error: t.ask.overBudget }, { status: 429 });
+    }
+  }
+
   const { tools, contextNote } = buildAssistantTools(supabase);
 
   const languageInstruction = LANGUAGE_INSTRUCTIONS[language] ?? LANGUAGE_INSTRUCTIONS["en"];

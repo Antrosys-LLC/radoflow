@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Mic, Send, Square, Volume2 } from "lucide-react";
+import { Loader2, Mic, Send, Square } from "lucide-react";
 import { toast } from "sonner";
 
 import { Fill } from "@/components/fill";
@@ -23,6 +23,11 @@ import { LANGUAGE_LABELS, type LanguageCode } from "@/lib/i18n";
  * in, all landing on the same /api/assistant call: tap a preset, type, or
  * speak. Voice always passes through a confirmation step before it is sent,
  * because a misheard word here has no way to be proof-read afterwards.
+ *
+ * Answers are read, not spoken. The browser's own speech synthesis was
+ * offered and has been taken out: on a phone with no Urdu voice installed it
+ * read Urdu text in an English voice, which is worse than silence — and the
+ * answers are one to four sentences, which is quicker to read than to hear.
  */
 
 /**
@@ -187,19 +192,6 @@ export function AssistantConversation({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  function speak(text: string) {
-    if (!("speechSynthesis" in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = SPEECH_LANG[answerLanguage];
-      window.speechSynthesis.speak(utterance);
-    } catch {
-      // Not every device has a matching voice installed — fail silently;
-      // the text answer is still on screen either way.
-    }
-  }
-
   async function ask(question: string) {
     const trimmed = question.trim();
     if (!trimmed || loading) return;
@@ -246,7 +238,6 @@ export function AssistantConversation({
           ...(typeof body.costPkr === "number" ? { costPkr: body.costPkr } : {}),
         },
       ]);
-      speak(body.answer);
     } catch {
       toast.error(t.ask.unreachable);
       setMessages((prev) => prev.slice(0, -1));
@@ -431,17 +422,6 @@ export function AssistantConversation({
                   >
                     <Latin>Rs {message.costPkr.toLocaleString("en-PK")}</Latin>
                   </p>
-                ) : null}
-                {message.role === "assistant" ? (
-                  <button
-                    type="button"
-                    onClick={() => speak(message.text)}
-                    aria-label={t.ask.readAloud}
-                    className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground hover:text-foreground"
-                  >
-                    <Volume2 className="size-3.5" />
-                    {t.ask.listen}
-                  </button>
                 ) : null}
               </div>
             </div>

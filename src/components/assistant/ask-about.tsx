@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MessageCircleQuestion, Sparkles, X } from "lucide-react";
+import { X } from "lucide-react";
+
+import { ClaudeIcon } from "@/components/claude-icon";
 
 import { AssistantConversation, type Preset } from "@/components/assistant/assistant-conversation";
 import { useDictionary } from "@/components/language-provider";
@@ -74,7 +76,7 @@ export function AskAbout({
             : "bg-primary-soft px-3 py-2 text-xs text-primary",
         )}
       >
-        <Sparkles className="size-3.5 shrink-0" aria-hidden />
+        <ClaudeIcon className="size-3.5 shrink-0" />
         {variant === "full" ? t.ask.askClaude : null}
       </button>
 
@@ -99,7 +101,7 @@ export function AskAbout({
             <div className="mb-3 flex shrink-0 items-start justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
-                  <MessageCircleQuestion className="size-4" />
+                  <ClaudeIcon className="size-4" />
                 </span>
                 <div className="min-w-0 leading-tight">
                   <p className="text-sm font-bold text-foreground">{t.ask.askClaude}</p>

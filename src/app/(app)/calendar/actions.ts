@@ -107,19 +107,15 @@ export async function saveCalendarDay(
   if (!dayType) return { ok: false, message: "Choose what kind of day it is." };
 
   /*
-   * Blank means "use the site's rule", which is not the same as zero — zero is
-   * a real answer meaning the day is unpaid. So an empty field has to reach
-   * the column as null rather than being coerced through Number().
+   * No pay multiplier is asked for, and none is stored.
+   *
+   * It was a number the office had to know to type, and nothing ever read it:
+   * the payroll engine prices a day from its *type*, not from a multiplier —
+   * `weekend_working` and work on an `off` day go to the weekend rate,
+   * `holiday` to the holiday rate, both taken from the site's own pay rules.
+   * So a Sunday switched on already pays at the weekend rate on its own, and a
+   * multiplier typed here changed nothing while looking as though it had.
    */
-  const multiplierRaw = String(form.get("rate_multiplier") ?? "").trim();
-  let multiplier: number | null = null;
-  if (multiplierRaw !== "") {
-    const parsed = Number(multiplierRaw);
-    if (!Number.isFinite(parsed) || parsed < 0) {
-      return { ok: false, message: "The pay multiplier must be zero or more." };
-    }
-    multiplier = parsed;
-  }
 
   const supabase = await createClient();
   const { error } = await supabase.from("calendar_days").upsert(
@@ -128,7 +124,6 @@ export async function saveCalendarDay(
       day,
       day_type: dayType,
       reason: reason || null,
-      rate_multiplier: multiplier,
       created_by: session.userId,
       updated_at: new Date().toISOString(),
     },

@@ -63,7 +63,6 @@ export interface CalendarDayRow {
   day: string;
   dayType: DayType;
   reason: string | null;
-  rateMultiplier: number | null;
 }
 
 /**
@@ -241,11 +240,6 @@ export function WorkingCalendar({
                 {row.reason ? (
                   <span className="text-xs text-muted-foreground">
                     <Latin>{row.reason}</Latin>
-                  </span>
-                ) : null}
-                {row.rateMultiplier !== null ? (
-                  <span className="rounded-full bg-primary-soft px-2.5 py-0.5 text-[11px] font-bold text-primary">
-                    <Latin>{`×${row.rateMultiplier}`}</Latin>
                   </span>
                 ) : null}
 
@@ -484,25 +478,6 @@ function ExceptionDialog({
             />
             <span className="mt-1 block text-[11px] text-muted-foreground">
               {t.calendar.reasonHint}
-            </span>
-          </label>
-
-          <label className="block">
-            <span className="text-xs font-bold text-muted-foreground">
-              {t.calendar.payMultiplier}
-            </span>
-            <input
-              type="number"
-              name="rate_multiplier"
-              step="0.25"
-              min="0"
-              defaultValue={row?.rateMultiplier ?? ""}
-              placeholder="2"
-              className={NUMERIC_INPUT}
-              dir="ltr"
-            />
-            <span className="mt-1 block text-[11px] text-muted-foreground">
-              {t.calendar.payMultiplierHint}
             </span>
           </label>
 

@@ -48,7 +48,7 @@ export default async function CalendarPage() {
     supabase.from("work_week").select("site_id, weekday, is_working"),
     supabase
       .from("calendar_days")
-      .select("id, site_id, day, day_type, reason, rate_multiplier")
+      .select("id, site_id, day, day_type, reason")
       .gte("day", from.toISOString().slice(0, 10))
       .order("day"),
   ]);
@@ -67,7 +67,6 @@ export default async function CalendarPage() {
     day: row.day,
     dayType: row.day_type as DayType,
     reason: row.reason,
-    rateMultiplier: row.rate_multiplier === null ? null : Number(row.rate_multiplier),
   }));
 
   return <WorkingCalendar sites={siteRows} weekdays={weekdays} days={days} canManage={canManage} />;

@@ -135,6 +135,7 @@ const roman: Dictionary = {
   nav: {
     workspace: "Kaam",
     administration: "Intezamia",
+    antrosys: "Antrosys",
     myRecords: "Mera Record",
     dashboard: "Dashboard",
     ask: "Poochhein",
@@ -231,6 +232,14 @@ const roman: Dictionary = {
     appSubtitle: "Yahan har sawal ke hisab se gina gaya — upar wale account se kam daira",
     appSpend: "Kharch",
     appCalls: "Jawabat",
+    budgetTitle: "Is mahine ki had",
+    budgetHint:
+      "Mahine ka kharch yahan pohanchte hi har sawal ka button jawab dena band kar deta hai. Pehli tareekh ko dobara shuru.",
+    budgetLeft: "{amount} baqi",
+    budgetSpent: "Is mahine kuch baqi nahi",
+    budgetReached:
+      "Had poori ho chuki hai. Pehli tareekh tak, ya neeche se had barhane tak, koi sawal nahi poocha ja sakta.",
+    limit: "Mahana had (rupay)",
     settingsTitle: "Rate aur tax",
     settingsHint:
       "Ek dollar kitne rupay ka, aur bank kitna tax lagata hai. Jahan bhi dollar rupayon mein dikhaya jata hai, yehi dono lagte hain.",
@@ -507,9 +516,6 @@ const roman: Dictionary = {
     reasonPlaceholder: "Izafi order",
     reasonHint:
       "Din ke sath mehfooz rehti hai, taake baad mein calendar dekhne wale ko wajah maloom ho.",
-    payMultiplier: "Ujrat ka zarb",
-    payMultiplierHint:
-      "Khali chhor dein to is factory ka aam usool lagu ho ga. 2 ka matlab us din dugni ujrat.",
     dayType: {
       workday: "Kaam ka din",
       off: "Chutti",
@@ -699,8 +705,6 @@ const roman: Dictionary = {
     answerLanguage: "Jawab kis zaban mein",
     commonQuestions: "Aam sawalat",
     thinking: "Sochh raha hoon…",
-    listen: "Suno",
-    readAloud: "Parh kar sunayein",
     placeholder: "Sawal likhein…",
     askByVoice: "Bol kar poochhein",
     stopListening: "Sunna band karein",
@@ -713,6 +717,8 @@ const roman: Dictionary = {
     unreachable: "Assistant tak rabta nahi ho saka. Apna internet dekhein.",
     notCaught: "Baat samajh nahi aayi — dobara bolein, ya sawal likh dein.",
     notSignedIn: "Aap sign in nahi hain.",
+    overBudget:
+      "Is mahine ke liye muqarrara kharch ki had poori ho chuki hai. Antrosys se had barhwayein, ya agle mahine ka intezar karein.",
     notAllowed: "Aap ko assistant istemal karne ki ijazat nahi.",
     badRequest: "Darkhwast durust nahi thi.",
     emptyQuestion: "Pehle sawal likhein.",

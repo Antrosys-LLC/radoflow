@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircleQuestion } from "lucide-react";
+import { ClaudeIcon } from "@/components/claude-icon";
 
 import { AssistantConversation } from "@/components/assistant/assistant-conversation";
 import { useDictionary } from "@/components/language-provider";
@@ -20,7 +20,7 @@ export function AssistantClient({ firstName }: { firstName: string }) {
   return (
     <div className="pb-6">
       <Card className="p-4 sm:p-6">
-        <SectionTitle icon={MessageCircleQuestion} title={t.nav.ask} subtitle={t.ask.subtitle} />
+        <SectionTitle icon={ClaudeIcon} title={t.nav.ask} subtitle={t.ask.subtitle} />
         <AssistantConversation firstName={firstName} />
       </Card>
     </div>

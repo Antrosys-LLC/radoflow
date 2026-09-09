@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageCircleQuestion, X } from "lucide-react";
+import { X } from "lucide-react";
+
+import { ClaudeIcon } from "@/components/claude-icon";
 
 import { useDictionary } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
@@ -63,7 +65,7 @@ export function AssistantWidget({
           <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span className="flex size-9 items-center justify-center rounded-2xl bg-primary-soft text-primary">
-                <MessageCircleQuestion className="size-4" />
+                <ClaudeIcon className="size-4" />
               </span>
               <div className="leading-tight">
                 <p className="text-sm font-bold text-foreground">{t.nav.ask}</p>
@@ -97,7 +99,7 @@ export function AssistantWidget({
             bottomOffset,
           )}
         >
-          <MessageCircleQuestion className="size-6" />
+          <ClaudeIcon className="size-6" />
         </button>
       )}
     </>

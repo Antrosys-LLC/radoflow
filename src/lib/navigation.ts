@@ -1,4 +1,5 @@
 import type { NavIconName } from "@/components/nav-icons";
+import { isAntrosys } from "@/lib/auth/antrosys";
 import type { Session } from "@/lib/auth/session";
 import type { Dictionary } from "@/lib/i18n";
 
@@ -138,6 +139,22 @@ const WORK_MODULES: readonly NavItem[] = [
   },
 ];
 
+/**
+ * Antrosys's own. Not the factory's — what the *system* costs to run, which is
+ * an Antrosys operating figure and belongs in front of nobody else.
+ */
+const ANTROSYS_MODULES: readonly NavItem[] = [
+  {
+    href: "/admin/claude-spend",
+    labelKey: "claudeSpend",
+    icon: "assistant",
+    // Empty, because permissions cannot express this: the CEO holds every one
+    // of them. `navigationFor` filters this list on the role instead.
+    requires: [],
+    description: "What the assistant costs, in rupees",
+  },
+];
+
 /** Governance — the Admin/CEO control surface. */
 const GOVERNANCE_MODULES: readonly NavItem[] = [
   {
@@ -153,13 +170,6 @@ const GOVERNANCE_MODULES: readonly NavItem[] = [
     icon: "roles",
     requires: ["access.manage"],
     description: "Create roles and choose what each can do",
-  },
-  {
-    href: "/admin/claude-spend",
-    labelKey: "claudeSpend",
-    icon: "rates",
-    requires: ["settings.manage"],
-    description: "What the assistant costs, in rupees",
   },
   {
     href: "/canteen/settings",
@@ -189,6 +199,8 @@ export function navigationFor(session: Session | null): NavSection[] {
   const sections: NavSection[] = [
     { titleKey: "workspace", items: visible(WORK_MODULES, session) },
     { titleKey: "administration", items: visible(GOVERNANCE_MODULES, session) },
+    // Filtered on the role, not on a permission — see ANTROSYS_MODULES.
+    { titleKey: "antrosys", items: isAntrosys(session) ? [...ANTROSYS_MODULES] : [] },
     { titleKey: "myRecords", items: visible(SELF_MODULES, session) },
   ];
 

@@ -7,7 +7,6 @@ import {
   Fingerprint,
   Gauge,
   LayoutDashboard,
-  MessageCircleQuestion,
   ScrollText,
   Settings2,
   ShieldCheck,
@@ -16,8 +15,9 @@ import {
   UserCog,
   Users,
   Wallet,
-  type LucideIcon,
 } from "lucide-react";
+
+import { ClaudeIcon, type IconComponent } from "@/components/claude-icon";
 
 /**
  * Icon registry for the navigation.
@@ -28,7 +28,7 @@ import {
  */
 export const NAV_ICONS = {
   dashboard: LayoutDashboard,
-  assistant: MessageCircleQuestion,
+  assistant: ClaudeIcon,
   attendance: CalendarClock,
   calendar: CalendarRange,
   devices: Fingerprint,
@@ -42,7 +42,7 @@ export const NAV_ICONS = {
   users: UserCog,
   settings: Settings2,
   profile: UserCircle,
-} as const satisfies Record<string, LucideIcon>;
+} as const satisfies Record<string, IconComponent>;
 
 export type NavIconName = keyof typeof NAV_ICONS;
 

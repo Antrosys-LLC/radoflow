@@ -3,13 +3,16 @@
 import { useActionState, useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
-import { AlertTriangle, Coins, Gauge, Save, Sparkles } from "lucide-react";
+import { AlertTriangle, Coins, Gauge, Save } from "lucide-react";
+
+import { ClaudeIcon } from "@/components/claude-icon";
 import { toast } from "sonner";
 
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
 import { Card, SectionTitle } from "@/components/ui-kit";
+import type { BudgetState } from "@/lib/assistant/budget";
 import { usdToPkr, type DailySpend } from "@/lib/assistant/spend";
 import { formatDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -46,6 +49,8 @@ export interface SpendView {
   appUsd: number;
   appCalls: number;
   canManage: boolean;
+  /** The month's ceiling and what is left of it. */
+  budget: BudgetState;
 }
 
 function rupees(value: number): string {
@@ -66,7 +71,7 @@ export function SpendScreen({ view }: { view: SpendView }) {
   return (
     <div className="space-y-5 pb-6">
       <Card className="p-4 sm:p-6">
-        <SectionTitle icon={Sparkles} title={t.spend.title} subtitle={t.spend.subtitle} />
+        <SectionTitle icon={ClaudeIcon} title={t.spend.title} subtitle={t.spend.subtitle} />
 
         {view.problem ? (
           <div className="flex items-start gap-3 rounded-2xl bg-warning-soft px-4 py-3">
@@ -131,6 +136,63 @@ export function SpendScreen({ view }: { view: SpendView }) {
         )}
       </Card>
 
+      {/*
+       * The ceiling, first, and above the account statement on purpose: the
+       * statement is what has been spent and this is what may be. It is also
+       * the only figure on this screen that changes what the app *does* — over
+       * the line, every Ask button stops answering.
+       */}
+      <Card className="p-4 sm:p-6">
+        <SectionTitle icon={Gauge} title={t.spend.budgetTitle} subtitle={t.spend.budgetHint} />
+
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p
+            className={cn(
+              "text-2xl font-bold tabular-nums",
+              view.budget.overBudget ? "text-danger" : "text-foreground",
+            )}
+          >
+            <Latin>{`${rupees(view.budget.spentPkr)} / ${rupees(view.budget.limitPkr)}`}</Latin>
+          </p>
+          <p className="text-xs font-semibold text-muted-foreground">
+            {view.budget.overBudget ? (
+              t.spend.budgetSpent
+            ) : (
+              <Fill
+                template={t.spend.budgetLeft}
+                values={{ amount: rupees(view.budget.remainingPkr) }}
+              />
+            )}
+          </p>
+        </div>
+
+        {/* A bar rather than a percentage: the question is "how much is
+            left", and a length answers it without being read. */}
+        <div
+          className="mt-2 h-2 w-full overflow-hidden rounded-full bg-secondary"
+          role="img"
+          aria-label={`${Math.round(view.budget.fraction * 100)}%`}
+        >
+          <div
+            className={cn(
+              "h-full rounded-full transition-all",
+              view.budget.overBudget
+                ? "bg-danger"
+                : view.budget.fraction > 0.8
+                  ? "bg-warning"
+                  : "bg-success",
+            )}
+            style={{ width: `${Math.max(2, view.budget.fraction * 100)}%` }}
+          />
+        </div>
+
+        {view.budget.overBudget ? (
+          <p className="mt-3 rounded-2xl bg-danger-soft px-4 py-3 text-sm font-semibold text-danger">
+            {t.spend.budgetReached}
+          </p>
+        ) : null}
+      </Card>
+
       {/* The app's own tally, always available and always narrower than the
           account's: it counts what this factory asked, and nothing else
           billed to the same Anthropic account. Shown beside the statement
@@ -146,7 +208,11 @@ export function SpendScreen({ view }: { view: SpendView }) {
       <Card className="p-4 sm:p-6">
         <SectionTitle icon={Coins} title={t.spend.settingsTitle} subtitle={t.spend.settingsHint} />
         {view.canManage ? (
-          <SettingsForm rate={view.usdToPkrRate} tax={view.taxPercent} />
+          <SettingsForm
+            rate={view.usdToPkrRate}
+            tax={view.taxPercent}
+            limit={view.budget.limitPkr}
+          />
         ) : (
           <p className="text-sm text-muted-foreground">{t.spend.settingsReadOnly}</p>
         )}
@@ -225,7 +291,7 @@ function Ticker({ perSecondPkr, label }: { perSecondPkr: number; label: React.Re
   );
 }
 
-function SettingsForm({ rate, tax }: { rate: number; tax: number }) {
+function SettingsForm({ rate, tax, limit }: { rate: number; tax: number; limit: number }) {
   const t = useDictionary();
   const router = useRouter();
   const [state, action] = useActionState(saveSpendSettings, INITIAL);
@@ -243,7 +309,7 @@ function SettingsForm({ rate, tax }: { rate: number; tax: number }) {
   }, [state]);
 
   return (
-    <form action={action} className="grid gap-4 sm:grid-cols-[1fr_1fr_auto]">
+    <form action={action} className="grid gap-4 sm:grid-cols-[1fr_1fr_1fr_auto]">
       <label className="block">
         <span className="text-xs font-bold text-muted-foreground">{t.spend.rate}</span>
         <input
@@ -253,6 +319,19 @@ function SettingsForm({ rate, tax }: { rate: number; tax: number }) {
           min="1"
           required
           defaultValue={rate}
+          dir="ltr"
+          className={INPUT}
+        />
+      </label>
+      <label className="block">
+        <span className="text-xs font-bold text-muted-foreground">{t.spend.limit}</span>
+        <input
+          name="monthly_limit_pkr"
+          type="number"
+          step="50"
+          min="1"
+          required
+          defaultValue={limit}
           dir="ltr"
           className={INPUT}
         />

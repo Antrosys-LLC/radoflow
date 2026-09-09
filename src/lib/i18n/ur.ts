@@ -130,6 +130,7 @@ const ur: Dictionary = {
   nav: {
     workspace: "کام",
     administration: "انتظامیہ",
+    antrosys: "اینٹروسس",
     myRecords: "میرا ریکارڈ",
     dashboard: "ڈیش بورڈ",
     ask: "پوچھیں",
@@ -224,6 +225,14 @@ const ur: Dictionary = {
     appSubtitle: "یہاں ہر سوال کے حساب سے گنا گیا — اوپر والے اکاؤنٹ سے کم دائرہ",
     appSpend: "خرچ",
     appCalls: "جوابات",
+    budgetTitle: "اس مہینے کی حد",
+    budgetHint:
+      "مہینے کا خرچ یہاں پہنچتے ہی ہر سوال کا بٹن جواب دینا بند کر دیتا ہے۔ پہلی تاریخ کو دوبارہ شروع۔",
+    budgetLeft: "{amount} باقی",
+    budgetSpent: "اس مہینے کچھ باقی نہیں",
+    budgetReached:
+      "حد پوری ہو چکی ہے۔ پہلی تاریخ تک، یا نیچے سے حد بڑھانے تک، کوئی سوال نہیں پوچھا جا سکتا۔",
+    limit: "ماہانہ حد (روپے)",
     settingsTitle: "ریٹ اور ٹیکس",
     settingsHint:
       "ایک ڈالر کتنے روپے کا، اور بینک کتنا ٹیکس لگاتا ہے۔ جہاں بھی ڈالر روپوں میں دکھایا جاتا ہے، یہی دونوں لگتے ہیں۔",
@@ -497,9 +506,6 @@ const ur: Dictionary = {
     reason: "وجہ",
     reasonPlaceholder: "اضافی آرڈر",
     reasonHint: "دن کے ساتھ محفوظ رہتی ہے، تاکہ بعد میں کیلنڈر دیکھنے والے کو وجہ معلوم ہو۔",
-    payMultiplier: "اجرت کا ضرب",
-    payMultiplierHint:
-      "خالی چھوڑ دیں تو اس فیکٹری کا عام اصول لاگو ہو گا۔ 2 کا مطلب اس دن دُگنی اجرت۔",
     dayType: {
       workday: "کام کا دن",
       off: "چھٹی",
@@ -686,8 +692,6 @@ const ur: Dictionary = {
     answerLanguage: "جواب کس زبان میں",
     commonQuestions: "عام سوالات",
     thinking: "سوچ رہا ہوں…",
-    listen: "سنیں",
-    readAloud: "پڑھ کر سنائیں",
     placeholder: "یہاں سوال لکھیں…",
     askByVoice: "بول کر پوچھیں",
     stopListening: "سننا بند کریں",
@@ -700,6 +704,8 @@ const ur: Dictionary = {
     unreachable: "اسسٹنٹ تک رابطہ نہیں ہو سکا۔ اپنا انٹرنیٹ دیکھیں۔",
     notCaught: "بات سمجھ نہیں آئی — دوبارہ بولیں، یا سوال لکھ دیں۔",
     notSignedIn: "آپ سائن اِن نہیں ہیں۔",
+    overBudget:
+      "اس مہینے کے لیے مقررہ خرچ کی حد پوری ہو چکی ہے۔ اینٹروسس سے حد بڑھوائیں، یا اگلے مہینے کا انتظار کریں۔",
     notAllowed: "آپ کو اسسٹنٹ استعمال کرنے کی اجازت نہیں۔",
     badRequest: "درخواست درست نہیں تھی۔",
     emptyQuestion: "پہلے سوال لکھیں۔",

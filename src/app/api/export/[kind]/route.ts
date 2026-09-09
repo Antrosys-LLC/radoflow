@@ -12,7 +12,7 @@ import {
 } from "@/lib/payroll/hours";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
 import { createClient } from "@/lib/supabase/server";
-import { todayInPakistan } from "@/lib/time";
+import { formatDateTime, pakistanDayStartUtc, todayInPakistan } from "@/lib/time";
 
 /**
  * Downloads: the same figures the screens show, as a file.
@@ -35,12 +35,20 @@ const REQUIRED_PERMISSION = {
   payroll: "payroll.view",
   // A payslip is also allowed to its owner; that exception is handled below.
   payslip: "payroll.view",
+  gate: "gate.view",
 } as const;
 
 type Kind = keyof typeof REQUIRED_PERMISSION;
 
 const money = (value: number) => Math.round(value);
 const hours = (value: number) => Math.round(value * 100) / 100;
+
+/** The day after `date`, as `YYYY-MM-DD`. Parsed as UTC, like the rest. */
+function nextDay(date: string): string {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + 1);
+  return parsed.toISOString().slice(0, 10);
+}
 
 function filename(kind: string, extension: string): string {
   return `radoflow-${kind}-${todayInPakistan()}.${extension}`;
@@ -90,6 +98,77 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
   const from = url.searchParams.get("from") || `${today.slice(0, 7)}-01`;
   const to = url.searchParams.get("to") || today;
   const deptFilter = url.searchParams.get("dept") ?? "";
+
+  /*
+   * The gate register, before the people queries below.
+   *
+   * It shares nothing with the other four — no department scope, no payroll
+   * arithmetic — so it answers early rather than loading a staff list it will
+   * not use.
+   */
+  if (kind === "gate") {
+    const { data: entries } = await supabase
+      .from("gate_entries")
+      .select("*")
+      .gte("happened_at", pakistanDayStartUtc(from))
+      .lt("happened_at", pakistanDayStartUtc(nextDay(to)))
+      .order("happened_at", { ascending: true });
+
+    const rows = (entries ?? []).map((entry) => [
+      formatDateTime(entry.happened_at),
+      entry.direction === "out" ? "Out" : "In",
+      entry.kind,
+      entry.subject,
+      entry.party ?? "",
+      entry.purpose ?? "",
+      entry.reference ?? "",
+      entry.quantity ?? "",
+      entry.remarks ?? "",
+    ]);
+
+    if (format === "pdf") {
+      return fileResponse(
+        buildTablePdf({
+          title: "Gate register",
+          subtitle: `${from} to ${to} · ${rows.length} entries`,
+          columns: [
+            { header: "When", width: 90 },
+            { header: "In/Out", width: 40 },
+            { header: "What", width: 50 },
+            { header: "Who or what", width: 120 },
+            { header: "Company", width: 90 },
+            { header: "Purpose", width: 90 },
+            { header: "Reference", width: 70 },
+          ],
+          rows: rows.map((row) => [row[0]!, row[1]!, row[2]!, row[3]!, row[4]!, row[5]!, row[6]!]),
+        }),
+        filename("gate", "pdf"),
+        "application/pdf",
+      );
+    }
+
+    const sheet: Sheet = {
+      name: "Gate register",
+      columns: [
+        { header: "When", width: 20, format: "text" },
+        { header: "In/Out", width: 8, format: "text" },
+        { header: "What", width: 12, format: "text" },
+        { header: "Who or what", width: 26, format: "text" },
+        { header: "Company or destination", width: 22, format: "text" },
+        { header: "Purpose", width: 22, format: "text" },
+        { header: "Reference", width: 16, format: "text" },
+        { header: "Quantity", width: 12, format: "text" },
+        { header: "Remarks", width: 26, format: "text" },
+      ],
+      rows,
+    };
+
+    return fileResponse(
+      buildWorkbook([sheet]),
+      filename("gate", "xlsx"),
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+  }
 
   const { data: departments } = await supabase.from("departments").select("id, name");
   const deptName = new Map((departments ?? []).map((d) => [d.id, d.name]));

@@ -119,6 +119,13 @@ const WORK_MODULES: readonly NavItem[] = [
     description: "Overtime, weekend and late-arrival rules",
   },
   {
+    href: "/gate",
+    labelKey: "gate",
+    icon: "devices",
+    requires: ["gate.log", "gate.view", "gate.manage"],
+    description: "Who and what came through the gate, and when",
+  },
+  {
     href: "/canteen",
     labelKey: "canteen",
     icon: "canteen",

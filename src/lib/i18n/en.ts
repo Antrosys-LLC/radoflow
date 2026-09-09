@@ -32,6 +32,7 @@ const en = {
     devices: "Biometric Devices",
     liveFloor: "Live Floor",
     rates: "Pay Rates",
+    gate: "Gate Register",
     canteen: "Canteen",
     claudeSpend: "Claude Spend",
     canteenSettings: "Canteen Settings",
@@ -308,6 +309,44 @@ const en = {
     month: "Month",
     year: "Year",
     goToDate: "Go to a date",
+  },
+  /**
+   * The gate register.
+   *
+   * Written at the gate as things happen. A supervisor may correct their own
+   * entry for an hour; after that only a director can, which is what makes the
+   * register evidence rather than a draft.
+   */
+  gate: {
+    newEntry: "Write an entry",
+    newEntryHint: "As it happens. You can correct your own for an hour afterwards.",
+    register: "The register",
+    nothingYet: "Nothing has come through the gate in this period.",
+    addEntry: "Add to the register",
+    correctEntry: "Correct this entry",
+    removeEntry: "Remove this entry",
+    minutesLeft: "min left",
+    editedBy: "corrected by",
+    what: "What",
+    direction: "In or out",
+    in: "Coming in",
+    out: "Going out",
+    subject: "Who or what",
+    subjectPlaceholder: "Name, plate, or what the load is",
+    party: "Company or destination",
+    purpose: "Purpose",
+    reference: "Reference",
+    referencePlaceholder: "Plate, CNIC or gate pass",
+    quantity: "Quantity",
+    when: "When it happened",
+    remarks: "Remarks",
+    // One entry per `gate_kind`.
+    kind: {
+      visitor: "Visitor",
+      vehicle: "Vehicle",
+      material: "Material",
+      staff: "Staff",
+    },
   },
   status: {
     payroll: {

@@ -807,6 +807,64 @@ export type Database = {
           },
         ]
       }
+      // HAND-WRITTEN, not generated — added with
+      // 20260911090000_gate_entries.sql, for the same reason as the blocks
+      // above: the local database will not start here. Delete and re-run
+      // `npm run db:types` once one is available.
+      gate_entries: {
+        Row: {
+          created_at: string
+          direction: Database["public"]["Enums"]["gate_direction"]
+          edited_by: string | null
+          happened_at: string
+          id: string
+          kind: Database["public"]["Enums"]["gate_kind"]
+          party: string | null
+          purpose: string | null
+          quantity: string | null
+          recorded_by: string
+          reference: string | null
+          remarks: string | null
+          site_id: string | null
+          subject: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          direction: Database["public"]["Enums"]["gate_direction"]
+          edited_by?: string | null
+          happened_at?: string
+          id?: string
+          kind: Database["public"]["Enums"]["gate_kind"]
+          party?: string | null
+          purpose?: string | null
+          quantity?: string | null
+          recorded_by: string
+          reference?: string | null
+          remarks?: string | null
+          site_id?: string | null
+          subject: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          direction?: Database["public"]["Enums"]["gate_direction"]
+          edited_by?: string | null
+          happened_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["gate_kind"]
+          party?: string | null
+          purpose?: string | null
+          quantity?: string | null
+          recorded_by?: string
+          reference?: string | null
+          remarks?: string | null
+          site_id?: string | null
+          subject?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       late_penalty_rules: {
         Row: {
           basis: Database["public"]["Enums"]["penalty_basis"]
@@ -2709,6 +2767,8 @@ export type Database = {
         | "approved"
         | "paid"
         | "cancelled"
+      gate_direction: "in" | "out"
+      gate_kind: "visitor" | "vehicle" | "material" | "staff"
       penalty_basis: "day" | "month" | "minute"
       permission_effect: "grant" | "deny"
       punch_direction: "in" | "out" | "unknown"
@@ -2891,6 +2951,8 @@ export const Constants = {
         "paid",
         "cancelled",
       ],
+      gate_direction: ["in", "out"],
+      gate_kind: ["visitor", "vehicle", "material", "staff"],
       penalty_basis: ["day", "month", "minute"],
       permission_effect: ["grant", "deny"],
       punch_direction: ["in", "out", "unknown"],

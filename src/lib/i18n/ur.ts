@@ -702,6 +702,17 @@ const ur: Dictionary = {
     testConnection: "رابطہ جانچیں",
     contactingTerminal: "مشین سے رابطہ ہو رہا ہے…",
     syncNow: "ابھی حاضری اتاریں",
+    rosterSync: "اس مشین پر عملہ کی فہرست",
+    rosterSyncNote:
+      "ہر ملازم ہر مشین میں درج ہوتا ہے۔ کسی ایک مشین پر کوئی شخص شامل یا خارج کریں تو وہ خود باقی مشینوں تک پہنچ جاتا ہے — یہ بٹن صرف اس مشین کے لیے ہے جو بدلی گئی ہو یا دیر تک نیٹ ورک سے باہر رہی ہو۔",
+    rosterQueuedCount: "مشین کے لینے کا منتظر",
+    rosterSentCount: "مشین کو دے دیا",
+    rosterDoneCount: "مشین نے تصدیق کی",
+    rosterFailedCount: "مشین نے انکار کیا",
+    rosterPushAll: "پورا عملہ اس مشین پر بھیجیں",
+    rosterQueuing: "عملہ قطار میں لگایا جا رہا ہے…",
+    rosterQueued: "{count} ملازم قطار میں۔ مشین اگلی بار خود لے لے گی۔",
+    rosterFailedNote: "مشین اکثر اس لیے انکار کرتی ہے کہ اس میں مزید فنگر پرنٹ کی گنجائش نہیں بچی۔",
     readingLog: "حاضری کا ریکارڈ پڑھا جا رہا ہے…",
     addIpFirst: "پہلے مشین کا آئی پی ایڈریس درج کریں",
     pushControlsNote:

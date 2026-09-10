@@ -115,10 +115,23 @@ select s.id, l.code, l.name, l.is_paid, l.quota
 -- Biometric terminals
 -- ---------------------------------------------------------------------------
 
-insert into public.devices (site_id, name, model, serial_number, mode, ip_address, port)
+-- The three terminals actually on the wall, with their real serial numbers.
+-- Kept in step with the registration in 20260913090000, which does the same
+-- insert against whatever site exists in a deployed environment — this file
+-- only runs locally, where it is the seed that creates the sites.
+--
+-- Two of them differ only in `direction`, and that column is the entire gate:
+-- one terminal by the door in, one on the way out, each stating what its
+-- punches mean rather than leaving it to be inferred from whether somebody
+-- scanned an even number of times.
+insert into public.devices
+  (site_id, name, model, serial_number, mode, purpose, direction, ip_address, port)
 values
-  ('11111111-1111-1111-1111-111111111111', 'Dyeing — main gate',  'ZKTeco K50', 'K50-DYE-0001', 'push', '192.168.1.201', 4370),
-  ('22222222-2222-2222-2222-222222222222', 'Textile — main gate', 'ZKTeco K50', 'K50-TEX-0001', 'push', '192.168.1.202', 4370);
+  ('11111111-1111-1111-1111-111111111111', 'Main Gate — Check In',  'ZKTeco MB460', 'QWC5254900090', 'push', 'attendance', 'in',   '192.168.1.201', 4370),
+  ('11111111-1111-1111-1111-111111111111', 'Main Gate — Check Out', 'ZKTeco MB460', 'QWC5261300506', 'push', 'attendance', 'out',  '192.168.1.202', 4370),
+  -- Meals, not attendance: a canteen scan becomes a meal claim and never a
+  -- punch, so walking past the counter cannot pay anybody for eating.
+  ('11111111-1111-1111-1111-111111111111', 'Kitchen — Meals',       'ZKTeco MB460', 'QWC5261300445', 'push', 'canteen',    'auto', '192.168.1.203', 4370);
 
 -- ---------------------------------------------------------------------------
 -- Demo accounts

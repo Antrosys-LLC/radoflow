@@ -274,3 +274,42 @@ export async function syncDevice(deviceId: string): Promise<ActionResult> {
     return { ok: false, message };
   }
 }
+
+/**
+ * Queues the whole active roster onto one terminal.
+ *
+ * For a box that has been replaced, or one that has drifted far enough that
+ * reconciling it person by person is slower than starting again — a terminal
+ * that spent a fortnight unplugged, or arrived from the supplier empty.
+ *
+ * Only queues. The terminal collects the work on its own `getrequest` poll,
+ * which is the only way anything is ever written to an ADMS device, so this
+ * returns as soon as the rows exist rather than pretending to wait for four
+ * hundred templates to cross a factory LAN.
+ *
+ * The permission check inside `app.resync_device` is the one that counts —
+ * `requirePermission` here only saves the round trip and gives the refusal a
+ * sentence in the reader's language.
+ */
+export async function pushRosterToDevice(deviceId: string): Promise<ActionResult> {
+  const session = await requirePermission("devices.manage");
+  const t = dictionaryFor(session.profile.language);
+
+  // The user's own client, so the policy inside the function sees who is
+  // asking. The service client would bypass exactly the check that matters.
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("resync_device", { p_device: deviceId });
+
+  if (error) {
+    // Passed through untouched, for the reason given at the top of this file:
+    // a Postgres message is developer-facing and an invented translation
+    // around it would hide what actually failed.
+    return { ok: false, message: error.message };
+  }
+
+  revalidatePath(`/devices/${deviceId}`);
+  revalidatePath("/devices");
+
+  return { ok: true, message: fill(t.devices.rosterQueued, { count: String(data ?? 0) }) };
+}

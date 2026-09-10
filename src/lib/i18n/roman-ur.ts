@@ -717,6 +717,18 @@ const roman: Dictionary = {
     testConnection: "Rabta janchein",
     contactingTerminal: "Machine se rabta ho raha hai…",
     syncNow: "Abhi haazri utarein",
+    rosterSync: "Is machine ka staff record",
+    rosterSyncNote:
+      "Har mulazim har machine mein darj hota hai. Kisi ek machine par naya banda add ya delete karein to woh khud baaqi machinon tak pahunch jata hai — yeh button sirf us machine ke liye hai jo badli gayi ho ya der tak network se bahar rahi ho.",
+    rosterQueuedCount: "Machine ke lene ka intezaar",
+    rosterSentCount: "Machine ko de diya",
+    rosterDoneCount: "Machine ne tasdeeq ki",
+    rosterFailedCount: "Machine ne inkaar kiya",
+    rosterPushAll: "Poora staff is machine par bhejein",
+    rosterQueuing: "Staff qatar mein lagaya ja raha hai…",
+    rosterQueued: "{count} mulazim qatar mein. Machine agli baar khud le legi.",
+    rosterFailedNote:
+      "Machine aksar isliye inkaar karti hai ke us mein mazeed fingerprint ki gunjaish nahi bachi.",
     readingLog: "Haazri ka record parha ja raha hai…",
     addIpFirst: "Pehle machine ka IP address darj karein",
     pushControlsNote:

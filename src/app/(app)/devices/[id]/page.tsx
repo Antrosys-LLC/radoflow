@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 
 import { DeviceDialog } from "../device-dialog";
 import { DeviceControls } from "./device-controls";
+import { RosterSyncButton } from "./roster-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -41,20 +42,39 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
 
   if (!device) notFound();
 
-  const [{ data: sites }, { data: punches }, { data: staff }] = await Promise.all([
-    supabase.from("sites").select("id, name").order("name"),
-    supabase
-      .from("punches")
-      .select("id, device_user_id, profile_id, punched_at, direction, work_date")
-      .eq("device_id", id)
-      .order("punched_at", { ascending: false })
-      .limit(25),
-    supabase
-      .from("employee_directory")
-      .select("id, full_name, employee_code, department_id")
-      .eq("status", "active")
-      .order("full_name"),
-  ]);
+  const [{ data: sites }, { data: punches }, { data: staff }, { data: queued }] = await Promise.all(
+    [
+      supabase.from("sites").select("id, name").order("name"),
+      supabase
+        .from("punches")
+        .select("id, device_user_id, profile_id, punched_at, direction, work_date")
+        .eq("device_id", id)
+        .order("punched_at", { ascending: false })
+        .limit(25),
+      supabase
+        .from("employee_directory")
+        .select("id, full_name, employee_code, department_id")
+        .eq("status", "active")
+        .order("full_name"),
+      /*
+       * Statuses rather than rows. The queue holds one row per person per
+       * terminal, so a factory of four hundred produces twelve hundred of them
+       * and this page has no use for any single one — only for whether the
+       * terminal is keeping up, and whether anything was refused.
+       */
+      supabase.from("device_commands").select("status").eq("device_id", id),
+    ],
+  );
+
+  const rosterCounts = {
+    pending: 0,
+    sent: 0,
+    done: 0,
+    failed: 0,
+  };
+  for (const row of queued ?? []) {
+    rosterCounts[row.status as keyof typeof rosterCounts] += 1;
+  }
 
   const nameById = new Map((staff ?? []).map((s) => [s.id, s]));
 
@@ -175,6 +195,42 @@ export default async function DeviceDetailPage({ params }: { params: Promise<{ i
             </p>
           </div>
         ) : null}
+      </Card>
+
+      {/*
+        The roster, which is a different question from attendance: these
+        numbers say whether this terminal knows who everybody is, not whether
+        anybody has walked past it.
+      */}
+      <Card className="p-4 sm:p-6">
+        <SectionTitle
+          icon={Fingerprint}
+          title={t.devices.rosterSync}
+          subtitle={t.devices.rosterSyncNote}
+        />
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat label={t.devices.rosterQueuedCount} value={String(rosterCounts.pending)} />
+          <Stat label={t.devices.rosterSentCount} value={String(rosterCounts.sent)} />
+          <Stat
+            label={t.devices.rosterDoneCount}
+            value={String(rosterCounts.done)}
+            {...(rosterCounts.done > 0 ? { tone: "good" as const } : {})}
+          />
+          <Stat
+            label={t.devices.rosterFailedCount}
+            value={String(rosterCounts.failed)}
+            {...(rosterCounts.failed > 0 ? { tone: "bad" as const } : {})}
+          />
+        </div>
+
+        {rosterCounts.failed > 0 ? (
+          <p className="mt-4 rounded-2xl bg-danger-soft px-4 py-3 text-sm font-medium text-danger">
+            {t.devices.rosterFailedNote}
+          </p>
+        ) : null}
+
+        {canManage ? <RosterSyncButton deviceId={device.id} /> : null}
       </Card>
 
       <Card className="p-4 sm:p-6">

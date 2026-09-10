@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase/service";
 
+import { resolvePeopleByDeviceUserId } from "@/lib/devices/resolve-people";
 import { parseWallClock, zonedWallClockToUtc } from "@/lib/devices/timezone";
 import type { IclockPunch } from "@/lib/devices/zkteco/iclock";
 
@@ -55,18 +56,21 @@ export async function ingestMealScans(
 
   if (punches.length === 0) return result;
 
-  const [{ data: windowRows }, { data: enrolments }] = await Promise.all([
+  const [{ data: windowRows }, profileByDeviceUser] = await Promise.all([
     supabase
       .from("meal_windows")
       .select("id, code, name, starts_at, ends_at")
       .eq("site_id", device.site_id)
       .eq("is_active", true)
       .order("sort_order"),
-    supabase
-      .from("device_enrollments")
-      .select("device_user_id, profile_id")
-      .eq("device_id", device.id)
-      .in("device_user_id", [...new Set(punches.map((p) => p.deviceUserId))]),
+    /*
+     * Through the shared resolver, so the kitchen terminal recognises somebody
+     * enrolled at the gate. It holds their fingerprint — the command queue put
+     * it there — but it has no enrolment row of its own until it happens to
+     * upload a roster, and without this a new worker's first lunch is refused
+     * as an unknown scan.
+     */
+    resolvePeopleByDeviceUserId(device.id, [...new Set(punches.map((p) => p.deviceUserId))]),
   ]);
 
   const windows: MealWindow[] = (windowRows ?? []).map((row) => ({
@@ -76,10 +80,6 @@ export async function ingestMealScans(
     startsAt: String(row.starts_at),
     endsAt: String(row.ends_at),
   }));
-
-  const profileByDeviceUser = new Map<string, string>(
-    (enrolments ?? []).map((e) => [e.device_user_id as string, e.profile_id as string]),
-  );
 
   /*
    * Oldest first. The 24-hour test compares each scan against the claims
@@ -139,13 +139,8 @@ export async function ingestMealScans(
       const { error } = await supabase.from("meal_claims").insert({
         profile_id: profileId,
         site_id: device.site_id,
-        // The generated types still require a string here — they predate the
-        // migration that dropped the not-null constraint and cannot be
-        // regenerated until it has been applied. `@ts-expect-error` rather
-        // than a cast on purpose: once the types are regenerated this line
-        // stops being an error, and the suppression itself then fails the
-        // build, which is what removes it.
-        // @ts-expect-error meal_window_id is nullable in the database
+        // Null when no window covered the scan. A meal no longer needs one —
+        // see 20260905090000, which made a 03:00 scan a meal in its own right.
         meal_window_id: provisional.window?.id ?? null,
         served_on: provisional.servedOn,
         claimed_at: scannedAtIso,

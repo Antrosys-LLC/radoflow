@@ -947,6 +947,18 @@ const en = {
     testConnection: "Test connection",
     contactingTerminal: "Contacting terminal…",
     syncNow: "Sync attendance now",
+    rosterSync: "Roster on this terminal",
+    rosterSyncNote:
+      "Everyone on the payroll is enrolled on every terminal. A worker added or removed at one is sent to the others automatically — this button is for a terminal that has been replaced, or was off the network long enough to fall behind.",
+    rosterQueuedCount: "Waiting to be collected",
+    rosterSentCount: "Handed over",
+    rosterDoneCount: "Confirmed by the terminal",
+    rosterFailedCount: "Refused by the terminal",
+    rosterPushAll: "Send every worker to this terminal",
+    rosterQueuing: "Queueing the roster…",
+    rosterQueued: "{count} worker(s) queued. The terminal collects them on its next poll.",
+    rosterFailedNote:
+      "A refused instruction usually means the terminal has no room left for more fingerprints.",
     readingLog: "Reading attendance log…",
     addIpFirst: "Add the terminal's IP address first",
     pushControlsNote:

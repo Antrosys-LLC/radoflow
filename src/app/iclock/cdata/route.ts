@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { ingestPunches, recordDeviceContact } from "@/lib/devices/ingest";
+import { applyRosterUpload } from "@/lib/devices/user-sync";
 import { ackResponse, buildHandshakeResponse, parseAttlog } from "@/lib/devices/zkteco/iclock";
 
 /**
@@ -80,11 +81,54 @@ export async function POST(request: NextRequest) {
   }
   if (!secretMatches(readSecret(request))) return unauthorised();
 
-  const table = request.nextUrl.searchParams.get("table") ?? "ATTLOG";
+  const table = (request.nextUrl.searchParams.get("table") ?? "ATTLOG").toUpperCase();
   const body = await request.text();
 
-  // OPERLOG (door/menu events) and ATTPHOTO are acknowledged but not stored;
-  // replying with anything else makes the terminal retry the batch forever.
+  /*
+   * OPERLOG carries roster changes made on the terminal itself — a supervisor
+   * enrolling a new dyer at the gate, or deleting somebody who left. This is
+   * how most people are actually added, so absorbing it is what keeps the
+   * three terminals holding the same list.
+   */
+  if (table === "OPERLOG") {
+    const device = await recordDeviceContact(serialNumber);
+    if (!device) {
+      console.warn(`[iclock] roster upload from unregistered serial ${serialNumber}`);
+      return new NextResponse("Unknown device", { status: 404, headers: TEXT_HEADERS });
+    }
+
+    try {
+      const result = await applyRosterUpload(device, body);
+
+      if (result.matched || result.templatesStored || result.deletions) {
+        console.info(
+          `[iclock] ${serialNumber}: roster — ${result.matched} user(s), ` +
+            `${result.templatesStored} template(s), ${result.deletions} deletion(s)`,
+        );
+      }
+      if (result.unknown.length > 0) {
+        // Enrolled on the hardware but not in RadoFlow. Relayed to the other
+        // terminals so the gate and the kitchen agree, but there is nobody to
+        // attach it to until the office creates the person.
+        console.warn(
+          `[iclock] ${serialNumber}: ${result.unknown.length} PIN(s) not in RadoFlow: ${result.unknown.join(", ")}`,
+        );
+      }
+
+      return new NextResponse(ackResponse(result.matched + result.templatesStored), {
+        status: 200,
+        headers: TEXT_HEADERS,
+      });
+    } catch (error) {
+      console.error(`[iclock] roster upload failed for ${serialNumber}`, error);
+      // Same contract as attendance: a non-OK reply makes the terminal keep
+      // the batch, so an enrolment is retried rather than lost.
+      return new NextResponse("ERROR", { status: 500, headers: TEXT_HEADERS });
+    }
+  }
+
+  // ATTPHOTO and the rest are acknowledged but not stored; replying with
+  // anything else makes the terminal retry the batch forever.
   if (table !== "ATTLOG") {
     return new NextResponse(ackResponse(0), { status: 200, headers: TEXT_HEADERS });
   }

@@ -34,11 +34,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      // HAND-WRITTEN, not generated. Added with the migration
-      // 20260908100000_checkout_devices_paid_amounts_and_settings.sql because
-      // the local database will not start here, so this file cannot be
-      // regenerated against it. Delete this block and re-run
-      // `npm run db:types` once a local database is available.
       app_settings: {
         Row: {
           key: string
@@ -58,46 +53,29 @@ export type Database = {
           updated_by?: string | null
           value?: Json
         }
-        Relationships: []
-      }
-      assistant_usage: {
-        Row: {
-          asked_at: string
-          cache_read: number
-          cache_write: number
-          cost_usd: number
-          id: number
-          input_tokens: number
-          model: string
-          output_tokens: number
-          profile_id: string | null
-          surface: string | null
-        }
-        Insert: {
-          asked_at?: string
-          cache_read?: number
-          cache_write?: number
-          cost_usd?: number
-          id?: number
-          input_tokens?: number
-          model: string
-          output_tokens?: number
-          profile_id?: string | null
-          surface?: string | null
-        }
-        Update: {
-          asked_at?: string
-          cache_read?: number
-          cache_write?: number
-          cost_usd?: number
-          id?: number
-          input_tokens?: number
-          model?: string
-          output_tokens?: number
-          profile_id?: string | null
-          surface?: string | null
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "app_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "app_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       approvals: {
         Row: {
@@ -200,6 +178,67 @@ export type Database = {
           },
         ]
       }
+      assistant_usage: {
+        Row: {
+          asked_at: string
+          cache_read: number
+          cache_write: number
+          cost_usd: number
+          id: number
+          input_tokens: number
+          model: string
+          output_tokens: number
+          profile_id: string | null
+          surface: string | null
+        }
+        Insert: {
+          asked_at?: string
+          cache_read?: number
+          cache_write?: number
+          cost_usd?: number
+          id?: number
+          input_tokens?: number
+          model: string
+          output_tokens?: number
+          profile_id?: string | null
+          surface?: string | null
+        }
+        Update: {
+          asked_at?: string
+          cache_read?: number
+          cache_write?: number
+          cost_usd?: number
+          id?: number
+          input_tokens?: number
+          model?: string
+          output_tokens?: number
+          profile_id?: string | null
+          surface?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assistant_usage_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assistant_usage_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "assistant_usage_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attendance_days: {
         Row: {
           approved_at: string | null
@@ -280,6 +319,20 @@ export type Database = {
           work_date?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "attendance_days_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_days_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
           {
             foreignKeyName: "attendance_days_approved_by_fkey"
             columns: ["approved_by"]
@@ -392,67 +445,6 @@ export type Database = {
           },
         ]
       }
-      // HAND-WRITTEN, not generated — added with
-      // 20260909090000_change_requests.sql for the same reason as the block
-      // above: the local database will not start here. Delete and re-run
-      // `npm run db:types` once one is available.
-      change_requests: {
-        Row: {
-          apply_error: string | null
-          assigned_to: string | null
-          created_at: string
-          decided_at: string | null
-          decided_by: string | null
-          decision_note: string | null
-          entity_id: string | null
-          entity_table: string
-          id: string
-          kind: Database["public"]["Enums"]["change_kind"]
-          payload: Json
-          requested_by: string
-          site_id: string | null
-          status: Database["public"]["Enums"]["request_status"]
-          summary: string | null
-          title: string
-        }
-        Insert: {
-          apply_error?: string | null
-          assigned_to?: string | null
-          created_at?: string
-          decided_at?: string | null
-          decided_by?: string | null
-          decision_note?: string | null
-          entity_id?: string | null
-          entity_table: string
-          id?: string
-          kind: Database["public"]["Enums"]["change_kind"]
-          payload: Json
-          requested_by: string
-          site_id?: string | null
-          status?: Database["public"]["Enums"]["request_status"]
-          summary?: string | null
-          title: string
-        }
-        Update: {
-          apply_error?: string | null
-          assigned_to?: string | null
-          created_at?: string
-          decided_at?: string | null
-          decided_by?: string | null
-          decision_note?: string | null
-          entity_id?: string | null
-          entity_table?: string
-          id?: string
-          kind?: Database["public"]["Enums"]["change_kind"]
-          payload?: Json
-          requested_by?: string
-          site_id?: string | null
-          status?: Database["public"]["Enums"]["request_status"]
-          summary?: string | null
-          title?: string
-        }
-        Relationships: []
-      }
       calendar_days: {
         Row: {
           created_at: string
@@ -511,6 +503,134 @@ export type Database = {
           },
           {
             foreignKeyName: "calendar_days_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      change_requests: {
+        Row: {
+          apply_error: string | null
+          assigned_to: string | null
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          entity_id: string | null
+          entity_table: string
+          id: string
+          kind: Database["public"]["Enums"]["change_kind"]
+          payload: Json
+          requested_by: string
+          site_id: string | null
+          status: Database["public"]["Enums"]["request_status"]
+          summary: string | null
+          title: string
+        }
+        Insert: {
+          apply_error?: string | null
+          assigned_to?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          entity_id?: string | null
+          entity_table: string
+          id?: string
+          kind: Database["public"]["Enums"]["change_kind"]
+          payload: Json
+          requested_by: string
+          site_id?: string | null
+          status?: Database["public"]["Enums"]["request_status"]
+          summary?: string | null
+          title: string
+        }
+        Update: {
+          apply_error?: string | null
+          assigned_to?: string | null
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          entity_id?: string | null
+          entity_table?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["change_kind"]
+          payload?: Json
+          requested_by?: string
+          site_id?: string | null
+          status?: Database["public"]["Enums"]["request_status"]
+          summary?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "change_requests_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "change_requests_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "change_requests_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "change_requests_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "change_requests_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "change_requests_decided_by_fkey"
+            columns: ["decided_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "change_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "change_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "change_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "change_requests_site_id_fkey"
             columns: ["site_id"]
             isOneToOne: false
             referencedRelation: "sites"
@@ -606,6 +726,80 @@ export type Database = {
           },
         ]
       }
+      device_commands: {
+        Row: {
+          body: string
+          completed_at: string | null
+          created_at: string
+          device_id: string
+          id: number
+          kind: string
+          last_error: string | null
+          profile_id: string | null
+          return_code: number | null
+          sent_at: string | null
+          status: Database["public"]["Enums"]["device_command_status"]
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          completed_at?: string | null
+          created_at?: string
+          device_id: string
+          id?: number
+          kind: string
+          last_error?: string | null
+          profile_id?: string | null
+          return_code?: number | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["device_command_status"]
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          completed_at?: string | null
+          created_at?: string
+          device_id?: string
+          id?: number
+          kind?: string
+          last_error?: string | null
+          profile_id?: string | null
+          return_code?: number | null
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["device_command_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_commands_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_commands_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "device_commands_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "device_commands_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       device_enrollments: {
         Row: {
           device_id: string
@@ -661,11 +855,11 @@ export type Database = {
       }
       devices: {
         Row: {
-          direction: Database["public"]["Enums"]["device_direction"]
           auto_sync: boolean
           comm_key: string | null
           consecutive_failures: number
           created_at: string
+          direction: Database["public"]["Enums"]["device_direction"]
           id: string
           ip_address: unknown
           is_active: boolean
@@ -686,11 +880,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
-          direction?: Database["public"]["Enums"]["device_direction"]
           auto_sync?: boolean
           comm_key?: string | null
           consecutive_failures?: number
           created_at?: string
+          direction?: Database["public"]["Enums"]["device_direction"]
           id?: string
           ip_address?: unknown
           is_active?: boolean
@@ -711,11 +905,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
-          direction?: Database["public"]["Enums"]["device_direction"]
           auto_sync?: boolean
           comm_key?: string | null
           consecutive_failures?: number
           created_at?: string
+          direction?: Database["public"]["Enums"]["device_direction"]
           id?: string
           ip_address?: unknown
           is_active?: boolean
@@ -807,10 +1001,6 @@ export type Database = {
           },
         ]
       }
-      // HAND-WRITTEN, not generated — added with
-      // 20260911090000_gate_entries.sql, for the same reason as the blocks
-      // above: the local database will not start here. Delete and re-run
-      // `npm run db:types` once one is available.
       gate_entries: {
         Row: {
           created_at: string
@@ -863,7 +1053,57 @@ export type Database = {
           subject?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "gate_entries_edited_by_fkey"
+            columns: ["edited_by"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_entries_edited_by_fkey"
+            columns: ["edited_by"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "gate_entries_edited_by_fkey"
+            columns: ["edited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_entries_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_entries_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "gate_entries_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "gate_entries_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       late_penalty_rules: {
         Row: {
@@ -1067,7 +1307,7 @@ export type Database = {
           device_id: string | null
           device_user_id: string | null
           id: string
-          meal_window_id: string
+          meal_window_id: string | null
           note: string | null
           profile_id: string
           recorded_by: string | null
@@ -1080,7 +1320,7 @@ export type Database = {
           device_id?: string | null
           device_user_id?: string | null
           id?: string
-          meal_window_id: string
+          meal_window_id?: string | null
           note?: string | null
           profile_id: string
           recorded_by?: string | null
@@ -1093,7 +1333,7 @@ export type Database = {
           device_id?: string | null
           device_user_id?: string | null
           id?: string
-          meal_window_id?: string
+          meal_window_id?: string | null
           note?: string | null
           profile_id?: string
           recorded_by?: string | null
@@ -1512,9 +1752,6 @@ export type Database = {
       }
       payroll_items: {
         Row: {
-          paid_amount: number | null
-          paid_difference: number | null
-          paid_note: string | null
           allowances: number
           base_pay: number
           base_rate: number
@@ -1534,8 +1771,11 @@ export type Database = {
           note: string | null
           ot_hours: number
           ot_pay: number
+          paid_amount: number | null
           paid_at: string | null
           paid_by: string | null
+          paid_difference: number | null
+          paid_note: string | null
           pay_class: Database["public"]["Enums"]["pay_class"]
           period_id: string
           profile_id: string
@@ -1548,8 +1788,6 @@ export type Database = {
           weekend_pay: number
         }
         Insert: {
-          paid_amount?: number | null
-          paid_note?: string | null
           allowances?: number
           base_pay?: number
           base_rate?: number
@@ -1569,8 +1807,11 @@ export type Database = {
           note?: string | null
           ot_hours?: number
           ot_pay?: number
+          paid_amount?: number | null
           paid_at?: string | null
           paid_by?: string | null
+          paid_difference?: number | null
+          paid_note?: string | null
           pay_class: Database["public"]["Enums"]["pay_class"]
           period_id: string
           profile_id: string
@@ -1583,8 +1824,6 @@ export type Database = {
           weekend_pay?: number
         }
         Update: {
-          paid_amount?: number | null
-          paid_note?: string | null
           allowances?: number
           base_pay?: number
           base_rate?: number
@@ -1604,8 +1843,11 @@ export type Database = {
           note?: string | null
           ot_hours?: number
           ot_pay?: number
+          paid_amount?: number | null
           paid_at?: string | null
           paid_by?: string | null
+          paid_difference?: number | null
+          paid_note?: string | null
           pay_class?: Database["public"]["Enums"]["pay_class"]
           period_id?: string
           profile_id?: string
@@ -1905,6 +2147,77 @@ export type Database = {
         }
         Relationships: []
       }
+      person_biometrics: {
+        Row: {
+          bio_type: number
+          created_at: string
+          dialect: string
+          finger_index: number
+          id: string
+          is_duress: boolean
+          payload: string
+          profile_id: string
+          source_device_id: string | null
+          template_size: number | null
+          updated_at: string
+        }
+        Insert: {
+          bio_type?: number
+          created_at?: string
+          dialect: string
+          finger_index?: number
+          id?: string
+          is_duress?: boolean
+          payload: string
+          profile_id: string
+          source_device_id?: string | null
+          template_size?: number | null
+          updated_at?: string
+        }
+        Update: {
+          bio_type?: number
+          created_at?: string
+          dialect?: string
+          finger_index?: number
+          id?: string
+          is_duress?: boolean
+          payload?: string
+          profile_id?: string
+          source_device_id?: string | null
+          template_size?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "person_biometrics_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_biometrics_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "person_biometrics_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_biometrics_source_device_id_fkey"
+            columns: ["source_device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profile_pay_components: {
         Row: {
           amount: number
@@ -1996,6 +2309,7 @@ export type Database = {
           created_at: string
           department_id: string | null
           designation: string | null
+          device_pin: string | null
           duty_hours: number
           email: string | null
           employee_code: string
@@ -2005,6 +2319,7 @@ export type Database = {
           hourly_rate: number
           id: string
           joined_on: string
+          language: string
           left_on: string | null
           manager_id: string | null
           monthly_salary: number
@@ -2030,6 +2345,7 @@ export type Database = {
           created_at?: string
           department_id?: string | null
           designation?: string | null
+          device_pin?: string | null
           duty_hours?: number
           email?: string | null
           employee_code: string
@@ -2039,6 +2355,7 @@ export type Database = {
           hourly_rate?: number
           id: string
           joined_on?: string
+          language?: string
           left_on?: string | null
           manager_id?: string | null
           monthly_salary?: number
@@ -2064,6 +2381,7 @@ export type Database = {
           created_at?: string
           department_id?: string | null
           designation?: string | null
+          device_pin?: string | null
           duty_hours?: number
           email?: string | null
           employee_code?: string
@@ -2073,6 +2391,7 @@ export type Database = {
           hourly_rate?: number
           id?: string
           joined_on?: string
+          language?: string
           left_on?: string | null
           manager_id?: string | null
           monthly_salary?: number
@@ -2711,8 +3030,42 @@ export type Database = {
           },
         ]
       }
+      person_biometric_summary: {
+        Row: {
+          last_enrolled_at: string | null
+          profile_id: string | null
+          template_count: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "person_biometrics_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "employee_directory"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "person_biometrics_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "live_attendance"
+            referencedColumns: ["profile_id"]
+          },
+          {
+            foreignKeyName: "person_biometrics_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      fan_out_removal_from_device: {
+        Args: { p_except: string; p_pin: string }
+        Returns: undefined
+      }
       my_permissions: { Args: never; Returns: string[] }
       my_roles: {
         Args: never
@@ -2724,6 +3077,16 @@ export type Database = {
         }[]
       }
       permissions_of: { Args: { p_user: string }; Returns: string[] }
+      queue_device_command: {
+        Args: {
+          p_body: string
+          p_device: string
+          p_kind: string
+          p_profile?: string
+        }
+        Returns: number
+      }
+      resync_device: { Args: { p_device: string }; Returns: number }
       session_bootstrap: { Args: never; Returns: Json }
     }
     Enums: {
@@ -2735,25 +3098,28 @@ export type Database = {
         | "off"
         | "partial"
         | "pending"
-      component_calc: "fixed" | "percent" | "slab" | "formula"
-      component_kind: "earning" | "deduction" | "tax"
-      device_direction: "auto" | "in" | "out"
       change_kind:
         | "attendance_correction"
         | "calendar_day"
         | "work_week"
         | "pay_change"
         | "contract_amount"
+      component_calc: "fixed" | "percent" | "slab" | "formula"
+      component_kind: "earning" | "deduction" | "tax"
       day_type:
         | "workday"
         | "off"
         | "holiday"
         | "weekend_working"
         | "special_working"
+      device_command_status: "pending" | "sent" | "done" | "failed"
+      device_direction: "auto" | "in" | "out"
       device_mode: "push" | "pull"
       device_purpose: "attendance" | "canteen"
       device_status: "online" | "offline" | "unknown" | "disabled"
       employment_status: "active" | "suspended" | "terminated"
+      gate_direction: "in" | "out"
+      gate_kind: "visitor" | "vehicle" | "material" | "staff"
       meal_scan_outcome:
         | "served"
         | "duplicate"
@@ -2767,8 +3133,6 @@ export type Database = {
         | "approved"
         | "paid"
         | "cancelled"
-      gate_direction: "in" | "out"
-      gate_kind: "visitor" | "vehicle" | "material" | "staff"
       penalty_basis: "day" | "month" | "minute"
       permission_effect: "grant" | "deny"
       punch_direction: "in" | "out" | "unknown"
@@ -2915,9 +3279,6 @@ export const Constants = {
         "partial",
         "pending",
       ],
-      component_calc: ["fixed", "percent", "slab", "formula"],
-      component_kind: ["earning", "deduction", "tax"],
-      device_direction: ["auto", "in", "out"],
       change_kind: [
         "attendance_correction",
         "calendar_day",
@@ -2925,6 +3286,8 @@ export const Constants = {
         "pay_change",
         "contract_amount",
       ],
+      component_calc: ["fixed", "percent", "slab", "formula"],
+      component_kind: ["earning", "deduction", "tax"],
       day_type: [
         "workday",
         "off",
@@ -2932,10 +3295,14 @@ export const Constants = {
         "weekend_working",
         "special_working",
       ],
+      device_command_status: ["pending", "sent", "done", "failed"],
+      device_direction: ["auto", "in", "out"],
       device_mode: ["push", "pull"],
       device_purpose: ["attendance", "canteen"],
       device_status: ["online", "offline", "unknown", "disabled"],
       employment_status: ["active", "suspended", "terminated"],
+      gate_direction: ["in", "out"],
+      gate_kind: ["visitor", "vehicle", "material", "staff"],
       meal_scan_outcome: [
         "served",
         "duplicate",
@@ -2951,8 +3318,6 @@ export const Constants = {
         "paid",
         "cancelled",
       ],
-      gate_direction: ["in", "out"],
-      gate_kind: ["visitor", "vehicle", "material", "staff"],
       penalty_basis: ["day", "month", "minute"],
       permission_effect: ["grant", "deny"],
       punch_direction: ["in", "out", "unknown"],

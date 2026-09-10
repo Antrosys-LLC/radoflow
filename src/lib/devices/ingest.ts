@@ -9,6 +9,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import type { Json } from "@/lib/supabase/database.types";
 import type { DayType } from "@/lib/payroll/types";
 
+import { resolvePeopleByDeviceUserId } from "./resolve-people";
 import { toWallClockString, workDateFromWallClock, zonedWallClockToUtc } from "./timezone";
 import type { IclockPunch } from "./zkteco/iclock";
 import { directionFromState, type DeviceAttendanceRecord } from "./zkteco/protocol";
@@ -127,17 +128,9 @@ export async function ingestPunches(
     return { accepted: 0, duplicates: 0, unmapped: [], recomputedDays: 0 };
   }
 
-  // Resolve the terminal's enrolment numbers to people in one round trip.
+  // Resolve the terminal's enrolment numbers to people.
   const deviceUserIds = [...new Set(punches.map((p) => p.deviceUserId))];
-  const { data: enrolments } = await supabase
-    .from("device_enrollments")
-    .select("device_user_id, profile_id")
-    .eq("device_id", device.id)
-    .in("device_user_id", deviceUserIds);
-
-  const profileByDeviceUser = new Map<string, string>(
-    (enrolments ?? []).map((e) => [e.device_user_id as string, e.profile_id as string]),
-  );
+  const profileByDeviceUser = await resolvePeopleByDeviceUserId(device.id, deviceUserIds);
 
   const unmapped = deviceUserIds.filter((id) => !profileByDeviceUser.has(id));
 

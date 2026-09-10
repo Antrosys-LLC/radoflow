@@ -101,7 +101,20 @@ export function buildHandshakeResponse(options: IclockHandshakeOptions): string 
     `Delay=${delay}`,
     "TransTimes=00:00;14:00",
     "TransInterval=" + String(transInterval),
-    "TransFlag=1111000000",
+    /*
+     * Which record types the terminal is permitted to upload, one digit per
+     * type, in firmware order:
+     *
+     *   attendance, operation log, attendance photo, new user, changed user,
+     *   new fingerprint, changed fingerprint, user photo, face, work code
+     *
+     * All ten are on. The four in the middle are the ones that matter: with
+     * them off — this was `1111000000` — a terminal never tells us that
+     * somebody was enrolled on it, so a worker added at the gate exists only
+     * at the gate and cannot get lunch or clock out. Turning them on is what
+     * makes the three terminals converge.
+     */
+    "TransFlag=1111111111",
     "TimeZone=5",
     "Realtime=1",
     "Encrypt=0",

@@ -86,6 +86,13 @@ two on their own. Rules worth knowing before touching that path:
   attendance and unpaid payroll lines are records of work that happened, and a
   supervisor pressing DELETE on a wall-mounted box is not a decision about
   employment.
+- **Only active staff are ever pushed to a terminal.** The check lives in
+  `app.push_person_to_device`, the one point every enrolment passes through, so
+  the triggers and the resync button inherit it and no future caller has to
+  remember. Suspending or terminating somebody withdraws them from all three
+  boxes; making them active again puts them back. Their templates survive a
+  suspension — reinstatement is a status change, not four hundred re-scans —
+  and that is only safe because nothing can push a non-active person.
 
 Setup and troubleshooting: [TERMINALS-THREE-MACHINE-SETUP.md](TERMINALS-THREE-MACHINE-SETUP.md).
 

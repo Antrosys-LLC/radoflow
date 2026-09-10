@@ -14,7 +14,7 @@ one of them silently invisible.
 
 ---
 
-## Two settings you gave that have to change
+## Two corrections to the settings as first written
 
 **The gateway cannot be `0.0.0.0`.** That is the single most common reason a
 terminal looks perfectly configured and never delivers a punch. With no
@@ -24,7 +24,7 @@ healthy screen while the day's attendance piles up in its buffer.
 
 Set **Gateway** to the factory router, almost certainly `192.168.1.1`.
 
-**The addresses you wrote were `192.186.1.x`.** Confirmed as `192.168.1.x`;
+**The addresses were written as `192.186.1.x`.** Confirmed as `192.168.1.x`;
 the table above is what to enter.
 
 ---
@@ -86,21 +86,25 @@ sudo tee /etc/radoflow-relay.env >/dev/null <<'EOF'
 RELAY_UPSTREAM=https://radoflow-production.up.railway.app
 RELAY_SECRET=<the same value as DEVICE_INGEST_SECRET on Railway>
 RELAY_PORT=8080
-RELAY_ALLOWED_IPS=<the factory's PUBLIC ip>
+RELAY_ALLOWED_IPS=182.191.119.76
 EOF
 sudo chmod 600 /etc/radoflow-relay.env
 sudo systemctl start rado-relay
 ```
 
-`RELAY_ALLOWED_IPS` is the factory's **public** address — what
-`ifconfig.me` reports from a machine on the factory network. It is not
-`192.168.1.x`; a LAN address there matches nothing and blocks every punch.
+`182.191.119.76` is the factory's public static IP — the address the VPS sees
+the connection arriving from. It is not one of the `192.168.1.x` addresses
+above; a LAN address there matches nothing and blocks every punch.
+
+Because it is static, this allowlist will keep working. If the ISP ever moves
+you onto a dynamic address, every punch stops the day it changes — check with
+`curl ifconfig.me` from a machine on the factory network.
 
 Confirm the port is open only to the factory:
 
 ```bash
 sudo ufw allow 22/tcp
-sudo ufw allow from <factory public ip> to any port 8080 proto tcp
+sudo ufw allow from 182.191.119.76 to any port 8080 proto tcp
 sudo ufw enable
 ```
 
@@ -164,12 +168,25 @@ line are records of work that happened, and a supervisor pressing DELETE on a
 wall-mounted box — which asks for no confirmation — is not a decision about
 somebody's employment. Marking them terminated stays an office action.
 
-> **Worth deciding on separately:** marking somebody *terminated* or
-> *suspended* in RadoFlow does not currently pull them off the terminals, so
-> they can still open the gate until somebody deletes them on a device. The
-> resync button already excludes non-active staff, so a rebuilt terminal drops
-> them — but nothing removes them from a terminal that is already running. Say
-> the word and that becomes automatic.
+### Suspending or terminating somebody in RadoFlow
+
+Marking a person *suspended* or *terminated* withdraws them from all three
+terminals straight away. Nothing has to be done at a device. Making them
+*active* again puts them back, fingerprints and all — their templates are
+kept through a suspension, so reinstating somebody is a status change rather
+than a queue at the enrolment terminal.
+
+The two are treated the same on the hardware. They mean different things to
+the office and to payroll, but neither is somebody who should be opening the
+gate this afternoon.
+
+Nothing can push a non-active person to a terminal — not the resync button,
+and not an edit to their name or employee code. That last one mattered: before
+this, correcting the spelling of a terminated worker's name would have pushed
+a fresh user record and handed them the gate back.
+
+Anyone already marked terminated when this was deployed was withdrawn once, by
+the migration.
 
 ---
 

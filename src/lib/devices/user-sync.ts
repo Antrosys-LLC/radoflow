@@ -1,12 +1,9 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import type { Json } from "@/lib/supabase/database.types";
 
-import {
-  parseOperlog,
-  withPin,
-  type DeviceBiometricRecord,
-  type DeviceUserRecord,
-} from "./zkteco/userinfo";
 import type { DeviceRecord } from "./ingest";
+import { chunk, planRosterUpload, type KnownProfile } from "./roster-plan";
+import { parseOperlog, type CommandResult } from "./zkteco/userinfo";
 
 /**
  * Keeping three terminals holding the same roster.
@@ -17,13 +14,22 @@ import type { DeviceRecord } from "./ingest";
  * live in application code: reading what a terminal uploaded about its own
  * users, and handing the queued instructions back out when a terminal asks.
  *
- * The direction of travel is worth holding on to. A terminal is a replica, not
- * an original. It is authoritative about exactly one thing — the template it
- * just captured, since it owns the sensor — and about nothing else.
+ * Three properties matter more than anything else here, all learned on the day
+ * the terminals went live:
+ *
+ *   - An upload must finish well inside the relay's thirty seconds. A terminal
+ *     reads a timeout as a failure and resends the whole batch.
+ *   - Processing the same upload twice must change nothing.
+ *   - A terminal is only ever sent what it lacks. What each terminal reports
+ *     is recorded as its inventory, and the queue refuses a user or a finger
+ *     the target already holds.
  */
 
 /** How many instructions a terminal is handed in one poll. */
 const COMMANDS_PER_POLL = 12;
+
+/** Rows per bulk write. Templates are ~1.5 KB each, so this keeps a request well under a megabyte. */
+const WRITE_CHUNK = 100;
 
 /**
  * A terminal reports the outcome of each instruction, and `0` means it worked.
@@ -41,7 +47,8 @@ export interface RosterUploadResult {
   /** Users enrolled on the hardware that RadoFlow has never heard of. */
   unknown: string[];
   templatesStored: number;
-  templatesRelayed: number;
+  /** Instructions newly queued for other terminals; repeats and slots they hold are not counted. */
+  relaysQueued: number;
   deletions: number;
   skipped: number;
 }
@@ -52,16 +59,8 @@ export interface RosterUploadResult {
  * Everything here keys off `profiles.device_pin`, the one enrolment number a
  * person carries on all three boxes. A PIN that resolves to somebody is stored
  * centrally and fanned out by the database triggers. A PIN that resolves to
- * nobody is relayed to the other terminals as-is and reported, which is the
- * distinction worth understanding:
- *
- *   - Stored, when we know who it is. The template becomes RadoFlow's copy, so
- *     a terminal that dies can be repopulated without re-scanning the factory.
- *   - Relayed, when we do not. The three boxes still converge — which is what
- *     the gate supervisor needs at six in the morning — but there is nothing
- *     to attach the finger to, so nothing is kept. Once the office creates the
- *     person with that number, the profile trigger pushes a proper record and
- *     the next upload from any terminal stores the template for real.
+ * nobody is relayed to the other terminals as-is and reported. In both cases
+ * the queue sends a terminal only the slots it is missing.
  */
 export async function applyRosterUpload(
   device: DeviceRecord,
@@ -83,291 +82,180 @@ export async function applyRosterUpload(
       matched: 0,
       unknown: [],
       templatesStored: 0,
-      templatesRelayed: 0,
+      relaysQueued: 0,
       deletions: 0,
       skipped: parsed.skipped,
     };
   }
 
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, device_pin")
-    .in("device_pin", pins);
+  const [profileChunks, { data: targets, error: targetsError }] = await Promise.all([
+    // In slices, because the PIN list travels in the URL.
+    Promise.all(
+      chunk(pins, 300).map((slice) =>
+        supabase
+          .from("profiles")
+          .select("id, device_pin, device_privilege, device_card")
+          .in("device_pin", slice),
+      ),
+    ),
+    // Every other push-mode terminal. A pull-mode box never polls for relays,
+    // and switching every terminal to pull is how fan-out is paused.
+    supabase.from("devices").select("id").eq("is_active", true).eq("mode", "push"),
+  ]);
 
-  const profileByPin = new Map<string, string>(
-    (profiles ?? []).map((row) => [row.device_pin as string, row.id as string]),
-  );
+  if (targetsError) throw new Error(`Could not list terminals: ${targetsError.message}`);
 
-  const unknown = new Set<string>();
-  let matched = 0;
-  let templatesStored = 0;
-  let templatesRelayed = 0;
-  let deletions = 0;
-
-  /*
-   * The enrolment row is what lets a punch from this terminal find its owner.
-   *
-   * Written even though the PIN is now canonical, because ingestion resolves
-   * punches through `device_enrollments` and a person enrolled on a box that
-   * has no row there would punch into the void — the upload still succeeds, so
-   * the loss is silent. That is the exact failure scripts/fix-terminal-ids.ts
-   * was written to clean up after.
-   */
-  for (const user of parsed.users) {
-    const profileId = profileByPin.get(user.deviceUserId);
-
-    if (!profileId) {
-      unknown.add(user.deviceUserId);
-      await relayUnknownUser(device, user);
-      continue;
+  const profilesByPin = new Map<string, KnownProfile>();
+  for (const { data, error } of profileChunks) {
+    if (error) throw new Error(`Could not look up enrolment numbers: ${error.message}`);
+    for (const row of data ?? []) {
+      if (!row.device_pin) continue;
+      profilesByPin.set(row.device_pin, {
+        id: row.id,
+        devicePin: row.device_pin,
+        privilege: row.device_privilege,
+        card: row.device_card,
+      });
     }
-
-    matched += 1;
-    await supabase.from("device_enrollments").upsert(
-      {
-        device_id: device.id,
-        device_user_id: user.deviceUserId,
-        profile_id: profileId,
-      },
-      { onConflict: "device_id,device_user_id" },
-    );
   }
 
-  for (const template of parsed.biometrics) {
-    const profileId = profileByPin.get(template.deviceUserId);
+  const plan = planRosterUpload(
+    parsed,
+    device.id,
+    profilesByPin,
+    (targets ?? []).map((t) => t.id),
+  );
 
-    if (!profileId) {
-      unknown.add(template.deviceUserId);
-      await relayUnknownTemplate(device, template);
-      templatesRelayed += 1;
-      continue;
-    }
+  const reportedAt = new Date().toISOString();
 
-    /*
-     * Storing this row is what triggers the fan-out; nothing here queues a
-     * command directly. `source_device_id` tells the trigger which box already
-     * has the template, and leaving it out would queue the terminal its own
-     * scan back — which it would apply, re-upload, and trigger again.
-     */
-    const { error } = await supabase.from("person_biometrics").upsert(
-      {
-        profile_id: profileId,
-        bio_type: template.bioType,
-        finger_index: template.fingerIndex,
-        dialect: template.dialect,
-        payload: template.payload,
-        template_size: template.templateSize,
-        is_duress: template.isDuress,
-        source_device_id: device.id,
-      },
-      { onConflict: "profile_id,bio_type,finger_index" },
-    );
+  /*
+   * The writes are independent of one another, so they go together. Any
+   * failure fails the request, which makes the terminal resend — safe, because
+   * nothing below does anything the second time that it did the first.
+   *
+   * The inventory is written in this batch, before any relay is queued, so a
+   * record can never be relayed back to this terminal in the gap.
+   */
+  const results = await Promise.all([
+    ...chunk(plan.enrollments, 500).map((rows) =>
+      supabase.from("device_enrollments").upsert(rows, { onConflict: "device_id,device_user_id" }),
+    ),
+    ...chunk(plan.templates, WRITE_CHUNK).map((rows) =>
+      supabase
+        .from("person_biometrics")
+        .upsert(rows, { onConflict: "profile_id,bio_type,finger_index" }),
+    ),
+    ...chunk(plan.inventory, WRITE_CHUNK).map((rows) =>
+      supabase.from("device_inventory").upsert(
+        rows.map((r) => ({ ...r, reported_at: reportedAt })),
+        { onConflict: "device_id,pin,record_type,bio_type,finger_index" },
+      ),
+    ),
+    ...plan.identityUpdates.map((u) =>
+      supabase
+        .from("profiles")
+        .update({ device_privilege: u.privilege, device_card: u.card })
+        .eq("id", u.profileId),
+    ),
+  ]);
 
-    if (error) {
-      console.error(
-        `[sync] could not store template for PIN ${template.deviceUserId}:`,
-        error.message,
-      );
-      continue;
-    }
+  const failure = results.find((r) => r.error);
+  if (failure?.error) throw new Error(`Could not store roster upload: ${failure.error.message}`);
 
-    templatesStored += 1;
+  let relaysQueued = 0;
+  for (const rows of chunk(plan.relays, 500)) {
+    const { data, error } = await supabase.rpc("queue_device_commands", {
+      p_commands: rows as unknown as Json,
+    });
+    // An enrolment that silently fails to reach the other terminals looks
+    // exactly like one that worked.
+    if (error) throw new Error(`Could not queue relays for the other terminals: ${error.message}`);
+    relaysQueued += data ?? 0;
   }
 
   /*
    * A deletion performed on the terminal itself.
    *
-   * Only the hardware is cleared, never the RadoFlow record. Deleting a
-   * profile would take that person's attendance history and their unpaid
-   * payroll lines with it, on the strength of a supervisor pressing DELETE on
-   * a wall-mounted box with no confirmation step. Removing their access
-   * everywhere is the part that has to happen immediately; whether they are
-   * still an employee is an office decision, made on a screen that can ask.
+   * Only the hardware, the stored templates and the inventory are cleared,
+   * never the RadoFlow record. Deleting a profile would take that person's
+   * attendance history and their unpaid payroll lines with it, on the strength
+   * of a supervisor pressing DELETE on a wall-mounted box with no confirmation.
+   *
+   * Last, so an upload that enrols and deletes the same person ends with them
+   * deleted, which is the order the supervisor did it in.
    */
-  for (const removal of parsed.deletions) {
+  for (const pin of plan.deletions) {
     const { error } = await supabase.rpc("fan_out_removal_from_device", {
-      p_pin: removal.deviceUserId,
+      p_pin: pin,
       p_except: device.id,
     });
-
-    /*
-     * Thrown, not logged and stepped over.
-     *
-     * A deletion that fails quietly is the worst outcome this file can
-     * produce: the supervisor watched the name disappear from the terminal in
-     * front of them and has every reason to believe it is gone everywhere.
-     * Failing the request makes the terminal keep the batch and retry, and
-     * puts the reason in the log.
-     */
     if (error) {
-      throw new Error(
-        `Could not remove PIN ${removal.deviceUserId} from the other terminals: ${error.message}`,
-      );
+      throw new Error(`Could not remove PIN ${pin} from the other terminals: ${error.message}`);
     }
-
     await supabase
       .from("device_enrollments")
       .delete()
       .eq("device_id", device.id)
-      .eq("device_user_id", removal.deviceUserId);
-    deletions += 1;
+      .eq("device_user_id", pin);
   }
 
   return {
-    matched,
-    unknown: [...unknown],
-    templatesStored,
-    templatesRelayed,
-    deletions,
+    matched: plan.matchedUsers,
+    unknown: plan.unknown,
+    templatesStored: plan.templates.length,
+    relaysQueued,
+    deletions: plan.deletions.length,
     skipped: parsed.skipped,
   };
 }
 
 /**
- * Queues a user RadoFlow does not know onto the other terminals.
- *
- * Bypasses the database fan-out, which is keyed to a profile. The queue itself
- * is not — `device_commands.profile_id` is nullable exactly for this — so the
- * three boxes converge on somebody the office has not entered yet, which is
- * the normal state of affairs for the first hour of a new worker's first day.
- */
-async function relayUnknownUser(source: DeviceRecord, user: DeviceUserRecord): Promise<void> {
-  const body = [
-    `PIN=${user.deviceUserId}`,
-    `Name=${user.name.replace(/[\t\r\n]/g, " ").slice(0, 24)}`,
-    `Pri=${user.privilege}`,
-    "Passwd=",
-    `Card=${user.cardNumber ?? ""}`,
-    "Grp=1",
-    "TZ=0000000000000000",
-    "Verify=-1",
-  ].join("\t");
-
-  await queueToOtherDevices(source, "user.update", `DATA UPDATE USERINFO ${body}`);
-}
-
-async function relayUnknownTemplate(
-  source: DeviceRecord,
-  template: DeviceBiometricRecord,
-): Promise<void> {
-  const verb = template.dialect === "fp" ? "DATA UPDATE FINGERTMP" : "DATA UPDATE BIODATA";
-  await queueToOtherDevices(
-    source,
-    "biometric.update",
-    `${verb} ${withPin(template.payload, template.deviceUserId)}`,
-  );
-}
-
-/**
- * Every other push-mode terminal, which is the definition of "all of them" for
- * a mailbox — a pull-mode box never polls, so a row queued for one would sit
- * unread forever.
- */
-async function queueToOtherDevices(
-  source: DeviceRecord,
-  kind: string,
-  body: string,
-): Promise<void> {
-  const supabase = createServiceClient();
-
-  const { data: targets } = await supabase
-    .from("devices")
-    .select("id")
-    .eq("is_active", true)
-    .eq("mode", "push")
-    .neq("id", source.id);
-
-  const results = await Promise.all(
-    (targets ?? []).map((target) =>
-      // p_profile is left out rather than passed as null: this is a person
-      // the hardware knows and RadoFlow does not, so there is no profile to
-      // name and the column's default says so.
-      supabase.rpc("queue_device_command", {
-        p_device: target.id,
-        p_kind: kind,
-        p_body: body,
-      }),
-    ),
-  );
-
-  // Same reasoning as a failed deletion: an enrolment that silently fails to
-  // reach the other terminals looks exactly like one that worked.
-  const failure = results.find((result) => result.error);
-  if (failure?.error) {
-    throw new Error(`Could not queue ${kind} for the other terminals: ${failure.error.message}`);
-  }
-}
-
-/**
  * Hands a terminal the instructions waiting for it.
  *
- * Each is stamped `sent` as it goes out, so a terminal that collects a batch
- * and then loses power does not receive it twice on the next poll. The cost of
- * that choice is that such a batch is never retried automatically — it sits at
- * `sent` where the devices screen shows it, and a resync re-queues it. That is
- * the right way round: every instruction here is an upsert or a delete, so a
- * repeat is harmless, but a silent repeat of an unbounded number of them is
- * how a terminal ends up spending its morning applying yesterday's queue
- * instead of reading fingers.
+ * The claim happens in one statement in the database: rows handed over five
+ * minutes ago with no result are offered again, rows handed over three times
+ * are abandoned, and two overlapping polls from the same terminal take
+ * different rows rather than the same twelve.
  */
 export async function claimCommands(deviceId: string): Promise<string[]> {
   const supabase = createServiceClient();
 
-  const { data: pending, error } = await supabase
-    .from("device_commands")
-    .select("id, body")
-    .eq("device_id", deviceId)
-    .eq("status", "pending")
-    .order("id", { ascending: true })
-    .limit(COMMANDS_PER_POLL);
+  const { data, error } = await supabase.rpc("claim_device_commands", {
+    p_device: deviceId,
+    p_limit: COMMANDS_PER_POLL,
+  });
 
   if (error) {
-    console.error("[sync] could not read command queue:", error.message);
-    return [];
-  }
-  if (!pending || pending.length === 0) return [];
-
-  const ids = pending.map((row) => row.id as number);
-
-  const { data: claimed, error: claimError } = await supabase
-    .from("device_commands")
-    .update({ status: "sent", sent_at: new Date().toISOString() })
-    .in("id", ids)
-    /*
-     * Re-asserting `pending` is what makes this safe against a terminal that
-     * polls again before the previous reply has been written. Two overlapping
-     * polls both read the same rows; only the first update matches, and the
-     * second is handed nothing rather than a duplicate batch.
-     */
-    .eq("status", "pending")
-    .select("id, body");
-
-  if (claimError) {
-    console.error("[sync] could not claim commands:", claimError.message);
+    console.error("[sync] could not claim commands:", error.message);
     return [];
   }
 
-  return (claimed ?? []).map((row) => `C:${row.id}:${row.body as string}`);
+  return (data ?? [])
+    .slice()
+    .sort((a, b) => a.command_id - b.command_id)
+    .map((row) => `C:${row.command_id}:${row.command_body}`);
 }
 
 /**
  * Records what the terminal made of each instruction.
  *
  * Scoped to the device that reported, so one terminal cannot close out
- * another's queue by posting an id it happened to guess. The protocol offers
- * no authentication beyond a serial number in a query string, and an
- * instruction marked done that never ran is a worker who cannot get through
- * the gate and a screen insisting he can.
+ * another's queue by posting an id it happened to guess. A confirmed delivery
+ * is added to the terminal's inventory by a trigger on the row.
+ *
+ * The line is kept verbatim either way. A result with no readable code is
+ * still a result — the kitchen's first hour of them went unrecognised, and
+ * without the text there was no telling why.
  */
 export async function recordCommandResults(
   deviceId: string,
-  results: readonly { id: number | null; returnCode: number | null }[],
+  results: readonly CommandResult[],
 ): Promise<void> {
   const supabase = createServiceClient();
 
   await Promise.all(
     results
-      .filter((result): result is { id: number; returnCode: number | null } => result.id !== null)
+      .filter((result): result is CommandResult & { id: number } => result.id !== null)
       .map((result) => {
         const ok = result.returnCode === RETURN_OK;
         return supabase
@@ -375,6 +263,7 @@ export async function recordCommandResults(
           .update({
             status: ok ? "done" : "failed",
             return_code: result.returnCode,
+            result_raw: result.raw,
             completed_at: new Date().toISOString(),
             last_error: ok ? null : `Terminal returned ${result.returnCode ?? "no code"}`,
           })
@@ -382,4 +271,38 @@ export async function recordCommandResults(
           .eq("device_id", deviceId);
       }),
   );
+}
+
+/** How much of an upload is kept. Enough to see its shape; the data itself lives elsewhere. */
+const EXCERPT_BYTES = 16_000;
+
+/**
+ * Keeps what a terminal actually sent.
+ *
+ * Never throws: a diagnostic write failing must not turn a successful upload
+ * into a failed one, because the terminal would resend it.
+ */
+export async function recordDeviceUpload(entry: {
+  deviceId: string | null;
+  serialNumber: string | null;
+  endpoint: "cdata" | "devicecmd";
+  table: string | null;
+  statusCode: number;
+  body: string;
+}): Promise<void> {
+  try {
+    const supabase = createServiceClient();
+    const { error } = await supabase.from("device_uploads").insert({
+      device_id: entry.deviceId,
+      serial_number: entry.serialNumber,
+      endpoint: entry.endpoint,
+      table_name: entry.table,
+      status_code: entry.statusCode,
+      line_count: entry.body ? entry.body.split(/\r?\n/).filter(Boolean).length : 0,
+      body_excerpt: entry.body.slice(0, EXCERPT_BYTES),
+    });
+    if (error) console.error("[iclock] could not record upload:", error.message);
+  } catch (error) {
+    console.error("[iclock] could not record upload:", error);
+  }
 }

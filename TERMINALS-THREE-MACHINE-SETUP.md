@@ -72,6 +72,25 @@ paths — it filled in two endpoints (`/iclock/getrequest` and
 `/iclock/devicecmd`) that the relay was already passing through and the server
 was answering with a bare `OK`.
 
+### The quick way
+
+`scripts/configure-relay.sh` does everything in this step: settings, service,
+firewall, and a check that the VPS can reach Railway. From the repo on your PC:
+
+```bash
+scp scripts/rado-relay.mjs scripts/configure-relay.sh root@148.230.66.172:/opt/radoflow/
+```
+
+```bash
+ssh root@148.230.66.172 "bash /opt/radoflow/configure-relay.sh"
+```
+
+It keeps the `RELAY_SECRET` already on the VPS rather than setting a new one,
+and opens 80 and 443 before enabling the firewall so radofactory.online stays
+up. The manual steps below are what it does.
+
+### By hand
+
 Redeploy it as it stands:
 
 ```bash
@@ -189,6 +208,36 @@ Anyone already marked terminated when this was deployed was withdrawn once, by
 the migration.
 
 ---
+
+## Nothing on a terminal is ever overwritten by another terminal
+
+Each terminal is sent only what it does not already have. RadoFlow keeps an
+inventory of every user and every finger on each box, and a finger a terminal
+already holds is never sent to it again — even if another terminal has a
+different scan of the same finger. The same goes for a user record copied from
+another terminal.
+
+Changes made in RadoFlow itself — a name, a terminal admin, a card — are the
+exception, and do update the terminals.
+
+## Merging the three rosters
+
+To make all three hold everyone, each terminal first reports its full roster,
+then the gaps are filled in a stated order of precedence:
+
+1. The check-in gate's records go to the other two, wherever they are missing.
+2. Then the check-out gate's, wherever still missing.
+3. Then the kitchen's.
+
+Nothing already on a terminal is replaced, suspended and terminated staff are
+not copied, and running the merge again adds nothing.
+
+## Pausing sync
+
+If the terminals ever start trading far more instructions than expected, set
+all three to **Pull** mode on the Biometric Devices screen. That stops every
+copy and relay immediately with no deploy. Punches and meals keep recording.
+Set them back to **Push** to resume.
 
 ## When somebody is enrolled who is not in RadoFlow yet
 

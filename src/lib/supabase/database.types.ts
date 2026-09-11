@@ -728,7 +728,9 @@ export type Database = {
       }
       device_commands: {
         Row: {
+          attempts: number
           body: string
+          body_hash: string | null
           completed_at: string | null
           created_at: string
           device_id: string
@@ -736,13 +738,16 @@ export type Database = {
           kind: string
           last_error: string | null
           profile_id: string | null
+          result_raw: string | null
           return_code: number | null
           sent_at: string | null
           status: Database["public"]["Enums"]["device_command_status"]
           updated_at: string
         }
         Insert: {
+          attempts?: number
           body: string
+          body_hash?: string | null
           completed_at?: string | null
           created_at?: string
           device_id: string
@@ -750,13 +755,16 @@ export type Database = {
           kind: string
           last_error?: string | null
           profile_id?: string | null
+          result_raw?: string | null
           return_code?: number | null
           sent_at?: string | null
           status?: Database["public"]["Enums"]["device_command_status"]
           updated_at?: string
         }
         Update: {
+          attempts?: number
           body?: string
+          body_hash?: string | null
           completed_at?: string | null
           created_at?: string
           device_id?: string
@@ -764,6 +772,7 @@ export type Database = {
           kind?: string
           last_error?: string | null
           profile_id?: string | null
+          result_raw?: string | null
           return_code?: number | null
           sent_at?: string | null
           status?: Database["public"]["Enums"]["device_command_status"]
@@ -849,6 +858,88 @@ export type Database = {
             columns: ["profile_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_inventory: {
+        Row: {
+          bio_type: number
+          command_body: string
+          device_id: string
+          finger_index: number
+          pin: string
+          record_type: string
+          reported_at: string
+        }
+        Insert: {
+          bio_type?: number
+          command_body: string
+          device_id: string
+          finger_index?: number
+          pin: string
+          record_type: string
+          reported_at?: string
+        }
+        Update: {
+          bio_type?: number
+          command_body?: string
+          device_id?: string
+          finger_index?: number
+          pin?: string
+          record_type?: string
+          reported_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_inventory_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      device_uploads: {
+        Row: {
+          body_excerpt: string | null
+          created_at: string
+          device_id: string | null
+          endpoint: string
+          id: number
+          line_count: number | null
+          serial_number: string | null
+          status_code: number | null
+          table_name: string | null
+        }
+        Insert: {
+          body_excerpt?: string | null
+          created_at?: string
+          device_id?: string | null
+          endpoint: string
+          id?: number
+          line_count?: number | null
+          serial_number?: string | null
+          status_code?: number | null
+          table_name?: string | null
+        }
+        Update: {
+          body_excerpt?: string | null
+          created_at?: string
+          device_id?: string | null
+          endpoint?: string
+          id?: number
+          line_count?: number | null
+          serial_number?: string | null
+          status_code?: number | null
+          table_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "device_uploads_device_id_fkey"
+            columns: ["device_id"]
+            isOneToOne: false
+            referencedRelation: "devices"
             referencedColumns: ["id"]
           },
         ]
@@ -2309,7 +2400,9 @@ export type Database = {
           created_at: string
           department_id: string | null
           designation: string | null
+          device_card: string | null
           device_pin: string | null
+          device_privilege: number
           duty_hours: number
           email: string | null
           employee_code: string
@@ -2345,7 +2438,9 @@ export type Database = {
           created_at?: string
           department_id?: string | null
           designation?: string | null
+          device_card?: string | null
           device_pin?: string | null
+          device_privilege?: number
           duty_hours?: number
           email?: string | null
           employee_code: string
@@ -2381,7 +2476,9 @@ export type Database = {
           created_at?: string
           department_id?: string | null
           designation?: string | null
+          device_card?: string | null
           device_pin?: string | null
+          device_privilege?: number
           duty_hours?: number
           email?: string | null
           employee_code?: string
@@ -3062,6 +3159,13 @@ export type Database = {
       }
     }
     Functions: {
+      claim_device_commands: {
+        Args: { p_device: string; p_limit?: number }
+        Returns: {
+          command_body: string
+          command_id: number
+        }[]
+      }
       fan_out_removal_from_device: {
         Args: { p_except: string; p_pin: string }
         Returns: undefined
@@ -3085,6 +3189,15 @@ export type Database = {
           p_profile?: string
         }
         Returns: number
+      }
+      queue_device_commands: { Args: { p_commands: Json }; Returns: number }
+      reconcile_rosters: {
+        Args: { p_order: string[] }
+        Returns: {
+          target_device: string
+          templates_queued: number
+          users_queued: number
+        }[]
       }
       resync_device: { Args: { p_device: string }; Returns: number }
       session_bootstrap: { Args: never; Returns: Json }

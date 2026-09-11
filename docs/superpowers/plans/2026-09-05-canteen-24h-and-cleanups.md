@@ -448,30 +448,6 @@ git commit -m "feat: record a canteen meal even when no window is running"
 - Consumes: nothing
 - Produces: nothing
 
-- [ ] **Step 1: Remove the Digitalize Register module**
-
-```bash
-git rm -r "src/app/(app)/admin/registers"
-```
-
-Then delete its entry from `src/lib/navigation.ts` — the object whose `href` is
-`/admin/registers` (around line 132), including its `requires: ["registers.import"]`.
-
-Check for other references before moving on:
-
-```bash
-grep -rn "admin/registers\|registers.import\|registers-client" src/ --include=*.ts --include=*.tsx
-```
-
-Anything that turns up outside the deleted directory must be cleaned up too. If
-`registers` is a key in `src/components/nav-icons.tsx`, remove it there as well.
-
-**Do not write a migration removing the `registers.import` permission.**
-Deleting a permission row cascades to `role_permissions` and to any
-`user_permission_overrides` naming it, and re-inserting the row later does not
-bring those grants back. A permission nothing checks is inert; a deleted one
-takes history with it.
-
 - [ ] **Step 2: Remove the Employee enrolment mapping panel**
 
 ```bash

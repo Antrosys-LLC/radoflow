@@ -15,9 +15,13 @@ import {
   type ScatterPoint,
   type Slice,
 } from "@/components/charts";
+import { AskAbout } from "@/components/assistant/ask-about";
 import { ExportButtons } from "@/components/export-buttons";
+import { Fill } from "@/components/fill";
+import { Latin } from "@/components/latin";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requirePermission } from "@/lib/auth/session";
+import { dictionaryFor } from "@/lib/i18n";
 import { dailyHourTotals } from "@/lib/attendance/daily-hours";
 import {
   countWorkingDays,
@@ -27,6 +31,7 @@ import {
   splitDayHours,
 } from "@/lib/payroll/hours";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
+import { selectInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
 import { formatHours, todayInPakistan } from "@/lib/time";
 
@@ -54,7 +59,8 @@ export default async function ReportsPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string; dept?: string }>;
 }) {
-  await requirePermission("reports.view");
+  const session = await requirePermission("reports.view");
+  const t = dictionaryFor(session.profile.language);
   const params = await searchParams;
   const supabase = await createClient();
 
@@ -76,29 +82,41 @@ export default async function ReportsPage({
   const everyone = staff ?? [];
   const people = params.dept ? everyone.filter((p) => p.department_id === params.dept) : everyone;
 
-  const [{ data: days }, { data: punches }] = await Promise.all([
-    people.length > 0
-      ? supabase
+  /*
+   * Both reads, batched by id and run concurrently.
+   *
+   * Batched because PostgREST takes its filters in the URI: four hundred
+   * profile ids is a fifteen-kilobyte request line, which is slow at best and
+   * rejected at worst — and a rejected read hands back no rows, which this
+   * screen would draw as a factory that did no work all month. That is the
+   * exact failure `selectInBatches` exists to prevent, and this screen was the
+   * one place still building the long URI by hand.
+   */
+  const profileIds = people.map((person) => person.id);
+
+  const [days, punches] = await Promise.all([
+    selectInBatches(
+      profileIds,
+      (batch) =>
+        supabase
           .from("attendance_days")
           .select("profile_id, work_date, regular_hours, day_type, status, hours_are_final")
-          .in(
-            "profile_id",
-            people.map((p) => p.id),
-          )
+          .in("profile_id", batch)
           .gte("work_date", from)
-          .lte("work_date", to)
-      : Promise.resolve({ data: [] }),
-    people.length > 0
-      ? supabase
+          .lte("work_date", to),
+      `Could not read attendance for ${from} to ${to}`,
+    ),
+    selectInBatches(
+      profileIds,
+      (batch) =>
+        supabase
           .from("punches")
           .select("work_date, direction, profile_id")
-          .in(
-            "profile_id",
-            people.map((p) => p.id),
-          )
+          .in("profile_id", batch)
           .gte("work_date", from)
-          .lte("work_date", to)
-      : Promise.resolve({ data: [] }),
+          .lte("work_date", to),
+      `Could not read punches for ${from} to ${to}`,
+    ),
   ]);
 
   const rule = DEFAULT_PAY_RULE;
@@ -108,7 +126,7 @@ export default async function ReportsPage({
   const dutyOf = new Map(people.map((p) => [p.id, Number(p.duty_hours ?? 8)]));
   const byPerson = new Map<string, AttendanceDay[]>();
 
-  for (const row of days ?? []) {
+  for (const row of days) {
     const list = byPerson.get(row.profile_id) ?? [];
     list.push({
       workDate: row.work_date,
@@ -176,16 +194,16 @@ export default async function ReportsPage({
   });
 
   const factory = totals.reduce(
-    (acc, t) => ({
-      workingDays: acc.workingDays + t.workingDays,
-      duty: acc.duty + t.duty,
-      overtime: acc.overtime + t.overtime,
-      earned: acc.earned + t.earned,
+    (acc, row) => ({
+      workingDays: acc.workingDays + row.workingDays,
+      duty: acc.duty + row.duty,
+      overtime: acc.overtime + row.overtime,
+      earned: acc.earned + row.earned,
     }),
     { workingDays: 0, duty: 0, overtime: 0, earned: 0 },
   );
 
-  const attended = new Set((days ?? []).map((d) => d.profile_id)).size;
+  const attended = new Set(days.map((d) => d.profile_id)).size;
 
   // ---- Per day, for the two trends ---------------------------------------
   // Shared with the dashboard so the two screens cannot disagree about a month.
@@ -201,7 +219,7 @@ export default async function ReportsPage({
   );
 
   const punchTotals = new Map<string, { checkIns: number; checkOuts: number }>();
-  for (const punch of punches ?? []) {
+  for (const punch of punches) {
     const entry = punchTotals.get(punch.work_date) ?? { checkIns: 0, checkOuts: 0 };
     /*
      * Most K50 units are configured without dedicated in/out keys, so a punch
@@ -225,12 +243,14 @@ export default async function ReportsPage({
 
   // ---- Per department -----------------------------------------------------
   const deptTotals = new Map<string, { hours: number; overtime: number; earned: number }>();
-  for (const t of totals) {
-    const name = t.departmentId ? (deptName.get(t.departmentId) ?? "Unassigned") : "Unassigned";
+  for (const person of totals) {
+    const name = person.departmentId
+      ? (deptName.get(person.departmentId) ?? t.common.unassigned)
+      : t.common.unassigned;
     const entry = deptTotals.get(name) ?? { hours: 0, overtime: 0, earned: 0 };
-    entry.hours += t.duty + t.overtime;
-    entry.overtime += t.overtime;
-    entry.earned += t.earned;
+    entry.hours += person.duty + person.overtime;
+    entry.overtime += person.overtime;
+    entry.earned += person.earned;
     deptTotals.set(name, entry);
   }
 
@@ -246,19 +266,25 @@ export default async function ReportsPage({
   }));
 
   const overtimeLeaders: RankedItem[] = totals
-    .filter((t) => t.overtime > 0)
-    .map((t) => ({ label: t.name, value: Math.round(t.overtime * 100) / 100 }));
+    .filter((row) => row.overtime > 0)
+    .map((row) => ({ label: row.name, value: Math.round(row.overtime * 100) / 100 }));
 
   const earners: RankedItem[] = totals
-    .filter((t) => t.earned > 0)
-    .map((t) => ({ label: t.name, value: Math.round(t.earned), display: `Rs ${money(t.earned)}` }));
+    .filter((row) => row.earned > 0)
+    .map((row) => ({
+      label: row.name,
+      value: Math.round(row.earned),
+      display: `Rs ${money(row.earned)}`,
+    }));
 
   // Headcount by department, as shares — the question a pie actually answers.
   const headcountByDept: Slice[] = [...deptTotals.keys()].map((label) => ({
     label,
     value: totals.filter(
-      (t) =>
-        (t.departmentId ? (deptName.get(t.departmentId) ?? "Unassigned") : "Unassigned") === label,
+      (row) =>
+        (row.departmentId
+          ? (deptName.get(row.departmentId) ?? t.common.unassigned)
+          : t.common.unassigned) === label,
     ).length,
   }));
 
@@ -272,11 +298,11 @@ export default async function ReportsPage({
    * most, which is what a donut can carry without becoming a colour quiz.
    */
   const arrangements: Slice[] = [
-    { label: "8h duty, with overtime", value: 0 },
-    { label: "12h duty", value: 0 },
-    { label: "No overtime", value: 0 },
-    { label: "Contractors", value: 0 },
-    { label: "Not paid from attendance", value: 0 },
+    { label: t.reports.arrangement.standard, value: 0 },
+    { label: t.reports.arrangement.twelveHour, value: 0 },
+    { label: t.reports.arrangement.noOvertime, value: 0 },
+    { label: t.reports.arrangement.contractors, value: 0 },
+    { label: t.reports.arrangement.notFromAttendance, value: 0 },
   ];
 
   for (const person of people) {
@@ -295,12 +321,14 @@ export default async function ReportsPage({
    * and the two look identical on a table of averages.
    */
   const scatter: ScatterPoint[] = totals
-    .filter((t) => !t.contractor)
-    .map((t) => ({
-      label: t.name,
-      x: Math.round((t.duty + t.overtime) * 10) / 10,
-      y: Math.round(t.earned),
-      group: t.departmentId ? (deptName.get(t.departmentId) ?? "Unassigned") : "Unassigned",
+    .filter((row) => !row.contractor)
+    .map((row) => ({
+      label: row.name,
+      x: Math.round((row.duty + row.overtime) * 10) / 10,
+      y: Math.round(row.earned),
+      group: row.departmentId
+        ? (deptName.get(row.departmentId) ?? t.common.unassigned)
+        : t.common.unassigned,
     }));
 
   const overtimeByDept: Slice[] = [...deptTotals.entries()]
@@ -309,27 +337,56 @@ export default async function ReportsPage({
 
   const exportParams = { from, to, dept: params.dept };
 
-  const scopeLabel = params.dept ? (deptName.get(params.dept) ?? "Department") : "Whole factory";
+  // A department name as the office typed it, or the whole factory. Either
+  // way it lands in the heading through `<Fill>`, which wraps it — a
+  // department called "Dyeing 2" must not be reordered inside an Urdu title.
+  const scopeLabel = params.dept
+    ? (deptName.get(params.dept) ?? t.common.department)
+    : t.reports.wholeFactory;
 
   return (
     <div className="space-y-5 pb-6">
       <Card className="p-4 sm:p-6">
         <SectionTitle
           icon={BarChart3}
-          title={`Reports · ${scopeLabel}`}
-          subtitle={`${from} to ${to} — every figure derived from the same calculations the payroll run uses.`}
-          action={<ExportButtons kind="payroll" params={exportParams} />}
+          title={<Fill template={t.reports.title} values={{ scope: scopeLabel }} />}
+          subtitle={<Fill template={t.reports.periodHint} values={{ from, to }} />}
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              {/* The headline figures, handed over with the question. Asking
+                  "why is overtime up" against a screen the assistant cannot
+                  see was the gap this closes. */}
+              <AskAbout
+                label={`${scopeLabel} · ${from} – ${to}`}
+                context={{
+                  surface: "reports",
+                  subject: `${scopeLabel}, ${from} to ${to}`,
+                  facts: {
+                    people: people.length,
+                    withAttendance: attended,
+                    workingDays: factory.workingDays,
+                    dutyHours: Math.round(factory.duty * 10) / 10,
+                    overtimeHours: Math.round(factory.overtime * 10) / 10,
+                    earnedRs: Math.round(factory.earned),
+                  },
+                }}
+              />
+              <ExportButtons kind="payroll" params={exportParams} />
+            </div>
+          }
         />
 
         <form className="grid gap-3 sm:grid-cols-[1fr_10rem_10rem_auto]">
           <label className="block">
-            <span className="text-xs font-semibold text-muted-foreground">Department</span>
+            <span className="text-xs font-semibold text-muted-foreground">
+              {t.common.department}
+            </span>
             <select
               name="dept"
               defaultValue={params.dept ?? ""}
               className="mt-1 w-full rounded-2xl border border-input bg-background px-4 py-2.5 text-sm outline-none focus:border-primary"
             >
-              <option value="">Whole factory</option>
+              <option value="">{t.reports.wholeFactory}</option>
               {(departments ?? []).map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -338,7 +395,7 @@ export default async function ReportsPage({
             </select>
           </label>
           <label className="block">
-            <span className="text-xs font-semibold text-muted-foreground">From</span>
+            <span className="text-xs font-semibold text-muted-foreground">{t.reports.from}</span>
             <input
               type="date"
               name="from"
@@ -347,7 +404,7 @@ export default async function ReportsPage({
             />
           </label>
           <label className="block">
-            <span className="text-xs font-semibold text-muted-foreground">To</span>
+            <span className="text-xs font-semibold text-muted-foreground">{t.reports.to}</span>
             <input
               type="date"
               name="to"
@@ -359,7 +416,7 @@ export default async function ReportsPage({
             type="submit"
             className="mt-[1.35rem] h-[2.7rem] rounded-2xl bg-charcoal px-5 text-sm font-bold text-charcoal-foreground transition-opacity hover:opacity-90"
           >
-            Show
+            {t.common.show}
           </button>
         </form>
       </Card>
@@ -369,33 +426,33 @@ export default async function ReportsPage({
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Tile
           icon={Users}
-          label="People"
+          label={t.reports.people}
           value={String(people.length)}
-          hint={`${attended} with attendance`}
+          hint={<Fill template={t.reports.peopleHint} values={{ count: attended }} />}
         />
         <Tile
           icon={Clock}
-          label="Working days"
+          label={t.reports.workingDays}
           value={String(factory.workingDays)}
-          hint="Attended, not Sunday"
+          hint={t.reports.workingDaysHint}
         />
         <Tile
           icon={Clock}
-          label="Hours worked"
+          label={t.reports.hoursWorked}
           value={formatHours(factory.duty + factory.overtime)}
-          hint="Duty and overtime"
+          hint={t.reports.hoursWorkedHint}
         />
         <Tile
           icon={TrendingUp}
-          label="Overtime"
+          label={t.reports.overtime}
           value={formatHours(factory.overtime)}
-          hint="Max 4h a working day"
+          hint={t.reports.overtimeHint}
         />
         <Tile
           icon={Banknote}
-          label="Earned"
+          label={t.reports.earned}
           value={`Rs ${money(factory.earned)}`}
-          hint="Before deductions"
+          hint={t.reports.earnedHint}
         />
       </div>
 
@@ -403,78 +460,78 @@ export default async function ReportsPage({
         <div className="space-y-4">
           <DailyHours
             data={dailyHours}
-            title="Hours worked each day"
-            subtitle="Duty hours and overtime across everyone in scope. Sundays show as overtime only."
+            title={t.reports.dailyHours}
+            subtitle={t.reports.dailyHoursHint}
           />
 
           <PunchTrend
             data={punchTrend}
-            title="Check-ins and check-outs"
-            subtitle="A day where the two disagree has missed punches — and a missed punch is a wrong payslip."
+            title={t.reports.punches}
+            subtitle={t.reports.punchesHint}
           />
 
           <div className="grid gap-4 lg:grid-cols-2">
             <RankedBars
               data={hoursByDept}
-              title="Hours by department"
-              subtitle="Duty and overtime combined."
-              unit="Hours"
+              title={t.reports.hoursByDept}
+              subtitle={t.reports.hoursByDeptHint}
+              unit={t.reports.unitHours}
             />
             <RankedBars
               data={costByDept}
-              title="Earned by department"
-              subtitle="Base pay plus overtime, before deductions."
-              unit="Rupees"
+              title={t.reports.earnedByDept}
+              subtitle={t.reports.earnedByDeptHint}
+              unit={t.reports.unitRupees}
             />
             <RankedBars
               data={overtimeLeaders}
-              title="Most overtime"
-              subtitle="The people working past their duty hours."
-              unit="Hours"
+              title={t.reports.mostOvertime}
+              subtitle={t.reports.mostOvertimeHint}
+              unit={t.reports.unitHours}
             />
             <RankedBars
               data={earners}
-              title="Highest earners this period"
-              subtitle="Contractors show their agreed amount."
-              unit="Rupees"
+              title={t.reports.topEarners}
+              subtitle={t.reports.topEarnersHint}
+              unit={t.reports.unitRupees}
             />
 
             <DonutChart
               data={headcountByDept}
-              title="Headcount by department"
-              subtitle="Click a slice to drop it and see the rest re-proportion."
-              unit="people"
+              title={t.reports.headcount}
+              subtitle={t.reports.headcountHint}
+              unit={t.reports.unitPeople}
             />
 
             <DonutChart
               data={arrangements}
-              title="How people are paid"
-              subtitle="Every arrangement on the floor, as a share of the workforce."
-              unit="people"
+              title={t.reports.arrangements}
+              subtitle={t.reports.arrangementsHint}
+              unit={t.reports.unitPeople}
             />
 
             <DonutChart
               data={salaryByDept}
-              title="Wage bill by department"
-              subtitle="Earned this period, before deductions."
-              unit="rupees"
+              title={t.reports.wageBill}
+              subtitle={t.reports.wageBillHint}
+              unit={t.reports.unitRupeesLower}
               format="money"
             />
 
             <RadialArea
               data={overtimeByDept}
-              title="Overtime by department"
-              subtitle="The six departments working the most hours past duty."
+              title={t.reports.overtimeByDept}
+              subtitle={t.reports.overtimeByDeptHint}
               format="hours"
             />
           </div>
 
           <ScatterPlot
             data={scatter}
-            title="Earnings against hours worked"
-            subtitle="One dot per employee. A high dot with few hours is someone no terminal is tracking — or someone not turning up."
-            xLabel="hours"
-            yLabel="earned"
+            title={t.reports.earningsAgainstHours}
+            subtitle={t.reports.earningsAgainstHoursHint}
+            xLabel={t.reports.axisHours}
+            yLabel={t.reports.axisEarned}
             formatY="money"
             formatX="hours"
           />
@@ -492,8 +549,9 @@ function Tile({
 }: {
   icon: typeof Clock;
   label: string;
+  /** Always digits, so it is wrapped rather than translated. */
   value: string;
-  hint: string;
+  hint: React.ReactNode;
 }) {
   return (
     <Card className="p-4">
@@ -501,7 +559,9 @@ function Tile({
         <Icon className="size-4" />
         <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
       </div>
-      <p className="mt-2 text-2xl font-bold tabular-nums text-foreground">{value}</p>
+      <p className="mt-2 text-2xl font-bold tabular-nums text-foreground">
+        <Latin>{value}</Latin>
+      </p>
       <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
     </Card>
   );

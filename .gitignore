@@ -13,6 +13,8 @@ node_modules
 
 # Next.js
 .next/
+# Verification builds (NEXT_DIST_DIR), so they never touch the dev cache.
+.next-check/
 out/
 next-env.d.ts
 tsconfig.tsbuildinfo

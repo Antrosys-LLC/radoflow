@@ -5,11 +5,25 @@ import { useRouter } from "next/navigation";
 import { Banknote, ChevronDown, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ApproverPicker } from "@/components/approver-picker";
+import { AskAbout } from "@/components/assistant/ask-about";
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
+import { Latin } from "@/components/latin";
 import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { Card } from "@/components/ui-kit";
 import { addUserComponent, removeUserComponent, updateUserPay } from "@/lib/pay/actions";
-import { trackingValueOf } from "@/lib/people/tracking";
+import { deriveRates } from "@/lib/pay/derived";
+import { trackingValueOf, type TrackingChoice } from "@/lib/people/tracking";
 import { cn } from "@/lib/utils";
+
+/**
+ * The plain-string sibling of `<Fill>`, for the places a sentence has to be a
+ * string: an `aria-label`, and the label the swipe control takes.
+ */
+function fill(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_match, key: string) => String(values[key] ?? ""));
+}
 
 /**
  * Everyone's pay, department by department.
@@ -68,6 +82,64 @@ function daysThisMonth(): number {
 }
 
 export function PeoplePay({ people }: { people: PayPerson[] }) {
+  const t = useDictionary();
+
+  if (people.length === 0) {
+    return (
+      <Card className="p-8 text-center text-sm text-muted-foreground">
+        {t.common.nobodyMatches}
+      </Card>
+    );
+  }
+
+  /*
+   * Contractors are kept apart from employees, not merged into the department
+   * list.
+   *
+   * They are not paid the same way and almost nothing on their row means the
+   * same thing: no duty hours, no overtime, no late penalty, and a "salary"
+   * that is an agreed amount rather than a wage. Mixed into one list, a
+   * department's total silently adds an agreed contract figure to real wages,
+   * and the two arrangements are read as one. Two headed sections make the
+   * distinction impossible to miss, and each keeps its own department grouping
+   * underneath.
+   */
+  const employees = people.filter((person) => person.workerType !== "contractor");
+  const contractors = people.filter((person) => person.workerType === "contractor");
+
+  return (
+    <div className="space-y-5">
+      <PayGroup
+        title={t.rates.employees}
+        hint={t.rates.employeesHint}
+        people={employees}
+        empty={t.rates.noEmployees}
+      />
+      <PayGroup
+        title={t.rates.contractors}
+        hint={t.rates.contractorsHint}
+        people={contractors}
+        empty={t.rates.noContractors}
+        tone="warning"
+      />
+    </div>
+  );
+}
+
+/** One of the two arrangements, with its own departments under it. */
+function PayGroup({
+  title,
+  hint,
+  people,
+  empty,
+  tone,
+}: {
+  title: string;
+  hint: string;
+  people: PayPerson[];
+  empty: string;
+  tone?: "warning";
+}) {
   const grouped = new Map<string, PayPerson[]>();
   for (const person of people) {
     const list = grouped.get(person.departmentName) ?? [];
@@ -77,24 +149,38 @@ export function PeoplePay({ people }: { people: PayPerson[] }) {
 
   const departments = [...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
-  if (people.length === 0) {
-    return (
-      <Card className="p-8 text-center text-sm text-muted-foreground">
-        Nobody matches this search.
-      </Card>
-    );
-  }
-
   return (
-    <div className="space-y-3">
-      {departments.map(([name, members]) => (
-        <DepartmentGroup key={name} name={name} members={members} />
-      ))}
+    <div>
+      <div className="mb-2 flex flex-wrap items-baseline gap-2">
+        <h3
+          className={cn(
+            "text-sm font-bold",
+            tone === "warning" ? "text-warning" : "text-foreground",
+          )}
+        >
+          {title}
+        </h3>
+        <span className="rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-bold text-muted-foreground">
+          <Latin>{people.length}</Latin>
+        </span>
+        <span className="text-xs text-muted-foreground">{hint}</span>
+      </div>
+
+      {departments.length === 0 ? (
+        <Card className="p-6 text-center text-sm text-muted-foreground">{empty}</Card>
+      ) : (
+        <div className="space-y-3">
+          {departments.map(([name, members]) => (
+            <DepartmentGroup key={name} name={name} members={members} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function DepartmentGroup({ name, members }: { name: string; members: PayPerson[] }) {
+  const t = useDictionary();
   // Collapsed by default past a handful: thirty-four departments open at once
   // is a page nobody can read.
   const [open, setOpen] = useState(members.length <= 6);
@@ -121,19 +207,29 @@ function DepartmentGroup({ name, members }: { name: string; members: PayPerson[]
             !open && "-rotate-90",
           )}
         />
-        <span className="text-sm font-bold text-foreground">{name}</span>
-        <span className="rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-bold text-muted-foreground">
-          {members.length}
+        {/* A department name, as the office typed it. */}
+        <span className="text-sm font-bold text-foreground">
+          <Latin>{name}</Latin>
         </span>
-        <span className="ml-auto text-right text-xs text-muted-foreground">
+        <span className="rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-bold text-muted-foreground">
+          <Latin>{members.length}</Latin>
+        </span>
+        <span className="ms-auto text-end text-xs text-muted-foreground">
           {monthly > 0 ? (
-            <span className="font-semibold text-foreground">Rs {money(monthly)}</span>
+            <span className="font-semibold text-foreground">
+              <Latin>{`Rs ${money(monthly)}`}</Latin>
+            </span>
           ) : null}
           {monthly > 0 && contracted > 0 ? " · " : null}
           {contracted > 0 ? (
-            <span className="text-warning">Rs {money(contracted)} contract</span>
+            <span className="text-warning">
+              <Fill
+                template={t.rates.contractSuffix}
+                values={{ amount: `Rs ${money(contracted)}` }}
+              />
+            </span>
           ) : null}
-          <span className="ml-1 opacity-70">/ month</span>
+          <span className="ms-1 opacity-70">{t.rates.perMonth}</span>
         </span>
       </button>
 
@@ -149,24 +245,42 @@ function DepartmentGroup({ name, members }: { name: string; members: PayPerson[]
 }
 
 function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
+  const t = useDictionary();
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
 
+  const [approverId, setApproverId] = useState("");
   const [workerType, setWorkerType] = useState(person.workerType);
   const [salary, setSalary] = useState(String(person.monthlySalary));
   const [dutyHours, setDutyHours] = useState(String(person.dutyHours));
 
   const isContractor = workerType === "contractor";
   const monthly = Number(salary) || 0;
-  const perDay = monthly / days;
-  const perOtHour = perDay / 8;
 
-  const trackingValue = trackingValueOf({
-    requires_attendance: person.requiresAttendance,
-    payroll_exempt: person.payrollExempt,
-  });
+  /*
+   * The same arithmetic payroll runs, shown while the figures are being typed.
+   * A monthly figure is what gets agreed; an hour and a minute of it are what
+   * get argued about, so all four are on screen at once.
+   */
+  const noAttendance = dutyHours === "none";
+  const rates = deriveRates(monthly, noAttendance ? 8 : Number(dutyHours) || 8);
+  const perDay = rates.perDay;
+  const perOtHour = rates.perOvertimeHour;
+
+  /*
+   * Held in state rather than left uncontrolled, because the duty select can
+   * force it: "no attendance needed" and `salary_only` are one arrangement
+   * said two ways, and two controls that can disagree about it would let the
+   * form submit a contradiction.
+   */
+  const [tracking, setTracking] = useState(
+    trackingValueOf({
+      requires_attendance: person.requiresAttendance,
+      payroll_exempt: person.payrollExempt,
+    }),
+  );
 
   const deductions = person.components
     .filter((c) => c.kind !== "earning")
@@ -197,39 +311,71 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
         className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-left transition-colors hover:bg-secondary/40"
       >
         <div className="min-w-[10rem] flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">{person.fullName}</p>
+          {/* A name, an employee code and a CNIC. All three are Latin in
+              every language: a CNIC reordered is a different CNIC. */}
+          <p className="truncate text-sm font-semibold text-foreground">
+            <Latin>{person.fullName}</Latin>
+          </p>
           <p className="truncate text-xs text-muted-foreground">
-            {person.employeeCode}
-            {person.cnic ? <span className="ml-2 font-mono">{person.cnic}</span> : null}
+            <Latin>{person.employeeCode}</Latin>
+            {person.cnic ? (
+              <span className="ms-2 font-mono">
+                <Latin>{person.cnic}</Latin>
+              </span>
+            ) : null}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {isContractor ? (
-            <Tag tone="warning">Contract</Tag>
+            <Tag tone="warning">{t.rates.tagContract}</Tag>
           ) : (
             <>
-              <Tag>{person.dutyHours}h duty</Tag>
+              <Tag>
+                <Fill template={t.rates.tagDuty} values={{ hours: person.dutyHours }} />
+              </Tag>
               {person.sundayPolicy !== "off" ? (
                 <Tag tone={person.sundayPolicy === "compulsory" ? "danger" : "muted"}>
-                  Sun {person.sundayPolicy}
+                  {/* The policy was rendering as the enum member — a badge
+                      reading "Sun adjust_in_leave" is a column name. */}
+                  <Fill
+                    template={t.rates.tagSunday}
+                    values={{ policy: t.status.sundayPolicy[person.sundayPolicy] }}
+                  />
                 </Tag>
               ) : null}
-              {!person.requiresAttendance ? <Tag tone="muted">Not from attendance</Tag> : null}
-              {person.flexibleHours ? <Tag tone="muted">Flexible</Tag> : null}
-              {!person.overtimeEligible ? <Tag tone="muted">No overtime</Tag> : null}
+              {!person.requiresAttendance ? (
+                <Tag tone="muted">{t.rates.tagNotFromAttendance}</Tag>
+              ) : null}
+              {person.flexibleHours ? <Tag tone="muted">{t.rates.tagFlexible}</Tag> : null}
+              {!person.overtimeEligible ? <Tag tone="muted">{t.rates.tagNoOvertime}</Tag> : null}
             </>
           )}
-          {deductions > 0 ? <Tag tone="danger">−{money(deductions)}</Tag> : null}
-          {allowances > 0 ? <Tag tone="success">+{money(allowances)}</Tag> : null}
+          {deductions > 0 ? (
+            <Tag tone="danger">
+              <Latin>{`−${money(deductions)}`}</Latin>
+            </Tag>
+          ) : null}
+          {allowances > 0 ? (
+            <Tag tone="success">
+              <Latin>{`+${money(allowances)}`}</Latin>
+            </Tag>
+          ) : null}
         </div>
 
-        <div className="ml-auto text-right">
+        <div className="ms-auto text-end">
           <p className="text-sm font-bold tabular-nums text-foreground">
-            Rs {money(person.monthlySalary)}
+            <Latin>{`Rs ${money(person.monthlySalary)}`}</Latin>
           </p>
           <p className="text-[11px] text-muted-foreground">
-            {isContractor ? "agreed, flat" : `Rs ${money2(person.monthlySalary / days)} a day`}
+            {isContractor ? (
+              t.rates.agreedFlat
+            ) : (
+              <Fill
+                template={t.rates.perDayShort}
+                values={{ amount: `Rs ${money2(person.monthlySalary / days)}` }}
+              />
+            )}
           </p>
         </div>
 
@@ -245,21 +391,22 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
         <div className="space-y-4 bg-secondary/40 px-4 pb-5 pt-1">
           <form ref={form} onSubmit={(event) => event.preventDefault()} className="space-y-3">
             <input type="hidden" name="user_id" value={person.id} />
+            <input type="hidden" name="approver_id" value={approverId} readOnly />
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Paid as">
+              <Field label={t.rates.paidAs}>
                 <select
                   name="worker_type"
                   value={workerType}
                   onChange={(event) => setWorkerType(event.target.value as PayPerson["workerType"])}
                   className={INPUT}
                 >
-                  <option value="employee">Employee</option>
-                  <option value="contractor">Contractor</option>
+                  <option value="employee">{t.status.workerType.employee}</option>
+                  <option value="contractor">{t.status.workerType.contractor}</option>
                 </select>
               </Field>
 
-              <Field label={isContractor ? "Agreed amount" : "Monthly salary"}>
+              <Field label={isContractor ? t.rates.agreedAmount : t.rates.monthlySalary}>
                 <input
                   name="monthly_salary"
                   type="number"
@@ -271,7 +418,7 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
                 />
               </Field>
 
-              <Field label="Salary covers">
+              <Field label={t.rates.salaryCovers}>
                 <select
                   name="duty_hours"
                   value={dutyHours}
@@ -279,34 +426,35 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
                   disabled={isContractor}
                   className={cn(INPUT, isContractor && "opacity-50")}
                 >
-                  <option value="8">8 hours</option>
-                  <option value="12">12 hours</option>
+                  <option value="8">{t.rates.hours8}</option>
+                  <option value="12">{t.rates.hours12}</option>
+                  <option value="none">{t.rates.noAttendanceNeeded}</option>
                 </select>
               </Field>
 
-              <Field label="Sunday">
+              <Field label={t.rates.sunday}>
                 <select
                   name="sunday_policy"
                   defaultValue={person.sundayPolicy}
                   disabled={isContractor}
                   className={cn(INPUT, isContractor && "opacity-50")}
                 >
-                  <option value="off">Off</option>
-                  <option value="optional">Optional</option>
-                  <option value="compulsory">Compulsory</option>
-                  <option value="adjust_in_leave">Adjust in leave — not paid</option>
+                  <option value="off">{t.status.sundayPolicy.off}</option>
+                  <option value="optional">{t.status.sundayPolicy.optional}</option>
+                  <option value="compulsory">{t.status.sundayPolicy.compulsory}</option>
+                  <option value="adjust_in_leave">{t.status.sundayPolicy.adjust_in_leave}</option>
                 </select>
               </Field>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field label="Pay class">
+              <Field label={t.rates.payClass}>
                 <select name="pay_class" defaultValue={person.payClass} className={INPUT}>
-                  <option value="monthly">Monthly</option>
-                  <option value="hourly">Hourly</option>
+                  <option value="monthly">{t.status.payClass.monthly}</option>
+                  <option value="hourly">{t.status.payClass.hourly}</option>
                 </select>
               </Field>
-              <Field label="Hourly rate">
+              <Field label={t.rates.hourlyRate}>
                 <input
                   name="hourly_rate"
                   type="number"
@@ -316,14 +464,20 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
                   className={INPUT}
                 />
               </Field>
-              <Field label="Attendance and pay">
-                <select name="tracking" defaultValue={trackingValue} className={INPUT}>
-                  <option value="tracked">Tracked — attendance and salary</option>
-                  <option value="salary_only">Salary only — no attendance kept</option>
-                  <option value="exempt">Neither — owner</option>
+              <Field label={t.rates.tracking}>
+                <select
+                  name="tracking"
+                  value={noAttendance ? "salary_only" : tracking}
+                  onChange={(event) => setTracking(event.target.value as TrackingChoice)}
+                  disabled={noAttendance}
+                  className={cn(INPUT, noAttendance && "opacity-50")}
+                >
+                  <option value="tracked">{t.rates.trackingTracked}</option>
+                  <option value="salary_only">{t.rates.trackingSalaryOnly}</option>
+                  <option value="exempt">{t.rates.trackingExempt}</option>
                 </select>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  An owner draws nothing through this system and appears on no payroll run.
+                  {noAttendance ? t.rates.noAttendanceHint : t.rates.trackingHint}
                 </p>
               </Field>
               <label className="flex items-center gap-2 self-end pb-2 text-xs font-semibold text-foreground">
@@ -333,35 +487,82 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
                   defaultChecked={person.overtimeEligible}
                   className="size-4 rounded border-input"
                 />
-                Earns overtime
+                {t.rates.earnsOvertime}
               </label>
             </div>
 
             {isContractor ? (
               <p className="rounded-xl bg-warning-soft px-3 py-2 text-xs text-warning">
-                Nothing is calculated. The agreed amount is paid in full — no proration for days
-                missed, no overtime, no late penalty.
+                {t.rates.contractorNote}
               </p>
             ) : monthly > 0 ? (
+              // Five figures in one line. Written as a single template
+              // rather than assembled in JSX: Urdu puts the division and the
+              // "a day" the other way round, and a sentence glued together
+              // out of fragments cannot be reordered by a translator.
               <p className="rounded-xl bg-card px-3 py-2 text-xs text-muted-foreground">
-                <strong className="text-foreground">Rs {money2(perDay)}</strong> a day
-                <span className="opacity-70">
-                  {" "}
-                  ({money(monthly)} ÷ {days})
-                </span>{" "}
-                · <strong className="text-foreground">Rs {money2(perOtHour)}</strong> an overtime
-                hour <span className="opacity-70">(÷ 8)</span> · overtime beyond {dutyHours}h,
-                capped at 4h a working day, uncapped on Sundays.
+                <Fill
+                  template={t.rates.dailyBreakdown}
+                  values={{
+                    perDay: `Rs ${money2(perDay)}`,
+                    salary: money(monthly),
+                    days,
+                    perHour: `Rs ${money2(perOtHour)}`,
+                    duty: noAttendance ? 8 : dutyHours,
+                  }}
+                />
+                <span className="mt-1 block">
+                  <Fill
+                    template={t.rates.hourlyBreakdown}
+                    values={{
+                      perHour: `Rs ${money2(rates.perHour)}`,
+                      perMinute: `Rs ${rates.perMinute.toFixed(2)}`,
+                    }}
+                  />
+                </span>
               </p>
             ) : null}
 
+            {/* Above the swipe, not below: the person is about to commit,
+                and who it goes to is part of what they are committing to. */}
+            <ApproverPicker value={approverId} onChange={setApproverId} />
+
             <SwipeToConfirm
-              label={`Swipe to save ${person.fullName.split(" ")[0]}'s pay`}
-              confirmedLabel="Saving…"
+              label={fill(t.rates.swipeSave, { name: person.fullName.split(" ")[0] ?? "" })}
+              confirmedLabel={t.common.saving}
               pending={pending}
               onConfirm={save}
             />
           </form>
+
+          {/* Under the figures, not above them: the question people ask
+              here — "what does this come to an hour" — is one they ask after
+              reading the numbers, not instead of. */}
+          <div className="flex justify-end">
+            <AskAbout
+              label={person.fullName}
+              context={{
+                surface: "pay",
+                subject: `${person.fullName} (${person.employeeCode}), ${person.departmentName}`,
+                facts: {
+                  paidAs: person.workerType,
+                  payClass: person.payClass,
+                  monthlySalaryRs: person.monthlySalary,
+                  hourlyRateRs: person.hourlyRate,
+                  perDayRs: rates.perDay,
+                  perHourRs: rates.perHour,
+                  perMinuteRs: rates.perMinute,
+                  perOvertimeHourRs: rates.perOvertimeHour,
+                  dutyHours: person.dutyHours,
+                  sundayPolicy: person.sundayPolicy,
+                  earnsOvertime: person.overtimeEligible,
+                  attendanceKept: person.requiresAttendance,
+                  allowancesRs: allowances,
+                  deductionsRs: deductions,
+                },
+              }}
+            />
+          </div>
 
           <Components person={person} />
         </div>
@@ -372,6 +573,7 @@ function PersonPayRow({ person, days }: { person: PayPerson; days: number }) {
 
 /** The individual allowances and deductions following one person. */
 function Components({ person }: { person: PayPerson }) {
+  const t = useDictionary();
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
@@ -401,7 +603,7 @@ function Components({ person }: { person: PayPerson }) {
   return (
     <div className="rounded-2xl bg-card p-3">
       <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-        Allowances &amp; deductions
+        {t.rates.componentsTitle}
       </p>
 
       {person.components.length > 0 ? (
@@ -411,8 +613,9 @@ function Components({ person }: { person: PayPerson }) {
               key={component.id}
               className="flex items-center gap-3 rounded-xl bg-secondary px-3 py-2"
             >
+              {/* The line's name is whatever the office typed on it. */}
               <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                {component.label}
+                <Latin>{component.label}</Latin>
               </span>
               <span
                 className={cn(
@@ -420,12 +623,12 @@ function Components({ person }: { person: PayPerson }) {
                   component.kind === "earning" ? "text-success" : "text-danger",
                 )}
               >
-                {component.kind === "earning" ? "+" : "−"} Rs {money(component.amount)}
+                <Latin>{`${component.kind === "earning" ? "+" : "−"} Rs ${money(component.amount)}`}</Latin>
               </span>
               <button
                 type="button"
                 disabled={pending}
-                aria-label={`Remove ${component.label}`}
+                aria-label={fill(t.rates.removeLine, { name: component.label })}
                 onClick={() =>
                   startTransition(async () => {
                     const result = await removeUserComponent(component.id);
@@ -442,7 +645,7 @@ function Components({ person }: { person: PayPerson }) {
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-xs text-muted-foreground">Nothing attached yet.</p>
+        <p className="mt-2 text-xs text-muted-foreground">{t.rates.nothingAttached}</p>
       )}
 
       <form ref={form} onSubmit={(event) => event.preventDefault()} className="mt-3 space-y-2">
@@ -452,8 +655,8 @@ function Components({ person }: { person: PayPerson }) {
             name="label"
             value={label}
             onChange={(event) => setLabel(event.target.value)}
-            placeholder="Advance recovery"
-            aria-label="Name"
+            placeholder={t.rates.componentNamePlaceholder}
+            aria-label={t.rates.lineName}
             className={INPUT}
           />
           <input
@@ -463,20 +666,20 @@ function Components({ person }: { person: PayPerson }) {
             step="0.01"
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
-            placeholder="Amount"
-            aria-label="Amount"
+            placeholder={t.rates.amount}
+            aria-label={t.rates.amount}
             className={INPUT}
           />
-          <select name="kind" defaultValue="deduction" aria-label="Kind" className={INPUT}>
-            <option value="deduction">Deduction</option>
-            <option value="earning">Allowance</option>
+          <select name="kind" defaultValue="deduction" aria-label={t.rates.kind} className={INPUT}>
+            <option value="deduction">{t.rates.deduction}</option>
+            <option value="earning">{t.rates.allowance}</option>
           </select>
         </div>
 
         {ready ? (
           <SwipeToConfirm
-            label="Swipe to attach this line"
-            confirmedLabel="Attaching…"
+            label={t.rates.swipeAttach}
+            confirmedLabel={t.rates.attaching}
             pending={pending}
             onConfirm={add}
           />

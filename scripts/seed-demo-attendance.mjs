@@ -19,10 +19,21 @@
  *   node scripts/seed-demo-attendance.mjs 2026-09-01 2026-09-03 --dry-run
  *   node scripts/seed-demo-attendance.mjs 2026-09-01 2026-09-03 --remove
  *   node scripts/seed-demo-attendance.mjs 2026-09-01 2026-09-03 --prepare-staff
+ *   node scripts/seed-demo-attendance.mjs 2026-09-01 2026-09-09 --absent=20-25
  *
  * `--prepare-staff` first puts every active employee on the attendance roll
  * with their site's shift, which the live floor view requires before it will
  * show anybody at all.
+ *
+ * `--absent=` takes a number or a range. A range varies the figure day to day
+ * the way a real week does — a factory does not lose exactly twenty people
+ * every morning — while staying deterministic, so the same run twice produces
+ * the same week.
+ *
+ * `--complete-today` writes today as a finished day rather than a shift in
+ * progress. For a demo whose pay period ends today that is the difference
+ * between a payroll that prices nine days and one that prices eight and
+ * leaves every person an apparent day short.
  */
 
 import { existsSync } from "node:fs";
@@ -44,11 +55,32 @@ const prepareStaff = process.argv.includes("--prepare-staff");
 // Rewrite days this script wrote before, so the mix can be changed after the fact.
 const reshape = process.argv.includes("--reshape");
 
+// Today is a shift in progress unless the caller says otherwise. See the note
+// on `--complete-today` above.
+const completeToday = process.argv.includes("--complete-today");
+
+/**
+ * How many people are counted absent, as a low/high pair.
+ *
+ * `--absent=20` is the pair (20, 20); `--absent=20-25` is a band the day's own
+ * hash picks from. Written as a pair either way so the caller below has one
+ * shape to deal with rather than two.
+ */
 const absentArg = process.argv.find((a) => a.startsWith("--absent="));
-const absentCount = absentArg ? Number(absentArg.split("=")[1]) : 20;
-if (!Number.isInteger(absentCount) || absentCount < 0) {
-  console.error("--absent= must be a whole number of people, e.g. --absent=20");
+const absentRange = parseAbsentRange(absentArg ? absentArg.split("=")[1] : "20");
+if (!absentRange) {
+  console.error("--absent= must be a count or a range, e.g. --absent=20 or --absent=20-25");
   process.exit(1);
+}
+
+function parseAbsentRange(raw) {
+  const match = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(String(raw).trim());
+  if (!match) return null;
+  const first = Number(match[1]);
+  const second = match[2] === undefined ? first : Number(match[2]);
+  // Written either way round — "25-20" is the same band as "20-25", and
+  // rejecting one of them would be pedantry at the command line.
+  return { low: Math.min(first, second), high: Math.max(first, second) };
 }
 
 if (!url || !serviceKey) {
@@ -172,6 +204,18 @@ function dayFor(person, workDate, shiftStart, graceMinutes, absentToday, isToday
  * but stable: the same people are absent on the same day every run, and a
  * different set is absent on each day of the range.
  */
+/**
+ * How many are absent on this date, somewhere inside the requested band.
+ *
+ * Hashed off the date rather than drawn from `Math.random`, for the same
+ * reason as everything else here: a screenshot taken this afternoon still
+ * matches the data tomorrow morning.
+ */
+function absentCountFor(workDate, { low, high }) {
+  if (high === low) return low;
+  return low + (Math.floor(spread("absent-count", workDate) * 1000) % (high - low + 1));
+}
+
 function absentFor(staff, workDate, count) {
   return new Set(
     staff
@@ -323,7 +367,9 @@ for (let offset = 0; ; offset += PAGE) {
 }
 
 // Who is counted absent, per day — everyone else on the roll is present.
-const absentByDate = new Map(dates.map((d) => [d, absentFor(staff, d, absentCount)]));
+const absentByDate = new Map(
+  dates.map((d) => [d, absentFor(staff, d, absentCountFor(d, absentRange))]),
+);
 const todayInPakistan = new Date(Date.now() + 5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 const rows = [];
@@ -348,7 +394,7 @@ for (const person of staff) {
         shiftStart,
         grace,
         absentByDate.get(workDate),
-        workDate === todayInPakistan,
+        !completeToday && workDate === todayInPakistan,
       ),
     });
   }
@@ -359,7 +405,19 @@ const counts = rows.reduce((tally, row) => {
   return tally;
 }, {});
 
+const absentBand =
+  absentRange.low === absentRange.high
+    ? `${absentRange.low}`
+    : `${absentRange.low} to ${absentRange.high}`;
+
 console.log(`${staff.length} active employees, ${dates.length} date(s): ${from} to ${to}`);
+console.log(
+  `Absent per working day: ${absentBand} — ` +
+    dates
+      .filter((d) => !isSunday(d))
+      .map((d) => `${d.slice(8)}:${absentByDate.get(d).size}`)
+      .join(" "),
+);
 console.log(`${taken.size} day(s) already recorded and left alone.`);
 console.log(`${rows.length} row(s) to write:`, counts);
 

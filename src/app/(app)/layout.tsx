@@ -1,8 +1,14 @@
 import type { ReactNode } from "react";
 
 import { AppShell } from "@/components/app-shell";
+import { CapabilitiesProvider } from "@/components/capabilities";
 import { LanguageProvider } from "@/components/language-provider";
+import { cookies } from "next/headers";
+
 import { requireSession } from "@/lib/auth/session";
+import { createClient } from "@/lib/supabase/server";
+import { canUseAssistant } from "@/lib/auth/antrosys";
+import { resolveThemeChoice, THEME_COOKIE } from "@/lib/theme";
 
 /**
  * Nothing in this group can be prerendered: every route reads the session
@@ -18,7 +24,21 @@ export const dynamic = "force-dynamic";
  * can never render a page with an empty shell.
  */
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const session = await requireSession();
+  const [session, store] = await Promise.all([requireSession(), cookies()]);
+
+  /*
+   * Requests waiting on this person, for the badge.
+   *
+   * A `head` count rather than a read: the number is all the menu needs, and
+   * this runs on every navigation. The row policy already limits it to what
+   * they may see, so an ordinary employee counts nothing.
+   */
+  const supabase = await createClient();
+  const { count: pendingApprovals } = await supabase
+    .from("change_requests")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending");
+  const theme = resolveThemeChoice(store.get(THEME_COOKIE)?.value);
 
   /*
    * The provider is seeded here rather than in the root layout because this is
@@ -28,7 +48,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
    */
   return (
     <LanguageProvider language={session.profile.language}>
-      <AppShell session={session}>{children}</AppShell>
+      <CapabilitiesProvider value={{ assistant: canUseAssistant(session) }}>
+        <AppShell session={session} theme={theme} pendingApprovals={pendingApprovals ?? 0}>
+          {children}
+        </AppShell>
+      </CapabilitiesProvider>
     </LanguageProvider>
   );
 }

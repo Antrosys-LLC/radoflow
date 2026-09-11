@@ -1,7 +1,9 @@
 import { cache } from "react";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { resolveLanguage, type LanguageCode } from "@/lib/i18n";
+import { LANGUAGE_COOKIE, preferredLanguage } from "@/lib/i18n/cookie";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -186,7 +188,13 @@ const loadSession = cache(async (): Promise<Session | typeof ACCESS_CHANGED | nu
       departmentId: row.department_id,
       payClass: row.pay_class,
       requiresAttendance: row.requires_attendance,
-      language: resolveLanguage(row.language),
+      /*
+       * The cookie first, then the column. Somebody who tapped the language
+       * switch on this device chose more recently than a column default — and
+       * on a database whose `language` column has not been migrated yet, the
+       * cookie is the only place that choice exists at all.
+       */
+      language: preferredLanguage((await cookies()).get(LANGUAGE_COOKIE)?.value, row.language),
     },
     roles,
     permissions: new Set(payload.permissions ?? []),

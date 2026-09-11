@@ -28,25 +28,12 @@ describe("the effort ladder", () => {
     expect(DEFAULT_EFFORT).toBe("high");
   });
 
-  it("gives every level a label a factory office can read", () => {
-    for (const level of EFFORT_LEVELS) {
-      expect(level.label.length).toBeGreaterThan(0);
-    }
-  });
-
   /*
-   * The compact widget gives five dial buttons ~56px each on a 360px phone;
-   * measuring the real labels in the real font showed three of five need
-   * 64-66px and overflow. `short` is the fix, and this is the constraint the
-   * layout depends on — without it, the next added level silently reintroduces
-   * the overflow.
+   * The words each level is shown by — its label, its hint and the short form
+   * the compact dial needs — are in the three dictionaries under `ask.effort`,
+   * not here. `src/lib/i18n/index.test.ts` is what checks them, including the
+   * length constraint the compact dial's layout depends on.
    */
-  it("gives every level a short form that fits the compact dial", () => {
-    for (const level of EFFORT_LEVELS) {
-      expect(level.short.length).toBeGreaterThan(0);
-      expect(level.short.length).toBeLessThanOrEqual(4);
-    }
-  });
 });
 
 describe("resolveEffort", () => {

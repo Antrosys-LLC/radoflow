@@ -14,7 +14,7 @@ npm test
 
 - `src/lib/payroll/` — rates, overtime, late penalties, net pay
 - `src/lib/attendance/compute.ts` — turning punches into worked hours
-- `src/lib/devices/zkteco/` — the K50 wire protocol
+- `src/lib/devices/zkteco/` — the K50 and MB460 wire protocols
 
 Rules worth knowing before editing:
 
@@ -51,6 +51,51 @@ Rules worth knowing before editing:
 The reasoning behind the pay model is in
 `docs/superpowers/specs/2026-08-25-duty-hours-and-salary-formula-design.md`.
 
+## The terminals hold one roster between them
+
+Three MB460s are on the wall — a check-in gate, a check-out gate and the
+kitchen counter — and a person enrolled on any one of them reaches the other
+two on their own. Rules worth knowing before touching that path:
+
+- **A terminal is a replica, not an original.** It is authoritative about one
+  thing only: the template it just captured, because it owns the sensor.
+  RadoFlow holds the master copy in `person_biometrics`, which is what makes a
+  replaced terminal recoverable without re-scanning the factory.
+- **The fan-out lives in database triggers**, not in the route that received
+  the upload — there are three ways a person can change (a terminal push, the
+  on-site agent's pull, an office edit) and a trigger covers all three by
+  construction. See `app.fan_out_person` in `20260913090000`.
+- **`source_device_id` is how the loop is broken.** A template is never queued
+  back to the terminal that captured it; that box would apply it, re-upload it,
+  and trigger the fan-out again.
+- **Templates are replayed byte for byte**, in the dialect the enrolling
+  terminal spoke (`FP` or `BIODATA`). Never re-serialise one from parsed
+  fields — a firmware field this code has not heard of would be dropped, and
+  the receiving terminal accepts a corrupted template without complaining.
+- **A person's enrolment number is `profiles.device_pin`, and it is the same
+  on every terminal.** A terminal stores the user id as a number; anything else
+  is silently truncated, which is how `RD-2070` became `2070` and dropped its
+  punches. `scripts/fix-terminal-ids.ts` exists because of that.
+- **What a punch means comes from the terminal, not the record.** The MB460 has
+  no in/out keys and stamps every record state 0, so `devices.direction`
+  overrides it — which door the box is bolted beside is a fact about the
+  installation. `devices.purpose = 'canteen'` branches earlier still: a kitchen
+  scan becomes a meal claim and never an attendance punch, or walking past the
+  lunch counter would pay somebody for eating.
+- **A deletion on a terminal clears the hardware, never the person.** Their
+  attendance and unpaid payroll lines are records of work that happened, and a
+  supervisor pressing DELETE on a wall-mounted box is not a decision about
+  employment.
+- **Only active staff are ever pushed to a terminal.** The check lives in
+  `app.push_person_to_device`, the one point every enrolment passes through, so
+  the triggers and the resync button inherit it and no future caller has to
+  remember. Suspending or terminating somebody withdraws them from all three
+  boxes; making them active again puts them back. Their templates survive a
+  suspension — reinstatement is a status change, not four hundred re-scans —
+  and that is only safe because nothing can push a non-active person.
+
+Setup and troubleshooting: [TERMINALS-THREE-MACHINE-SETUP.md](TERMINALS-THREE-MACHINE-SETUP.md).
+
 ## Access changes force a re-login
 
 Permissions are resolved once per request from the session. Changing someone's
@@ -84,3 +129,13 @@ against production.
 See [DEPLOYMENT.md](DEPLOYMENT.md) and [TERMINALS-SETUP.md](TERMINALS-SETUP.md) — particularly the note on why a clean build
 can still return "Internal Server Error", and why the biometric terminals
 cannot be polled from a cloud host.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

@@ -1,10 +1,22 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { ASK_MODEL, costInPkr, resolveEffort, type UsageTotals } from "@/lib/assistant/models";
+import { budgetState, DEFAULT_MONTHLY_LIMIT_PKR, monthStart } from "@/lib/assistant/budget";
+import { describeAskContext, readAskContext } from "@/lib/assistant/context";
+import {
+  ASK_MODEL,
+  costInPkr,
+  costInUsd,
+  PAYMENT_TAX_RATE,
+  resolveEffort,
+  USD_TO_PKR,
+  type UsageTotals,
+} from "@/lib/assistant/models";
 import { buildAssistantTools } from "@/lib/assistant/tools";
+import { canUseAssistant } from "@/lib/auth/antrosys";
 import { getSession } from "@/lib/auth/session";
 import { requireAnthropicEnv } from "@/lib/env";
+import { dictionaryFor, resolveLanguage } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -78,17 +90,41 @@ function readHistory(value: unknown): Anthropic.Beta.BetaMessageParam[] {
 
 export async function POST(request: NextRequest) {
   const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  /*
+   * Two languages are in play and they are not the same one. Everything this
+   * route *says about itself* — a refusal, a failure — is interface text and
+   * is read in the caller's own profile language, like the screen around the
+   * toast it lands in. The one exception is the stand-in for an empty answer
+   * further down, which is read in the language the answer was asked for.
+   *
+   * Nobody signed in has a profile to read, so that case is English.
+   */
+  if (!session) {
+    return NextResponse.json({ error: dictionaryFor("en").ask.notSignedIn }, { status: 401 });
+  }
+  const t = dictionaryFor(session.profile.language);
 
-  if (!session.isSuperuser && !session.permissions.has("assistant.ask")) {
-    return NextResponse.json({ error: "Not allowed to use the assistant." }, { status: 403 });
+  /*
+   * The role, not the permission. Every question costs money against a monthly
+   * ceiling, and the two roles that answer for that spend are the two that may
+   * ask — see lib/auth/antrosys.ts. Checked here as well as in the interface,
+   * because a hidden button is not a closed door.
+   */
+  if (!canUseAssistant(session)) {
+    return NextResponse.json({ error: t.ask.notAllowed }, { status: 403 });
   }
 
-  let body: { question?: unknown; language?: unknown; history?: unknown; effort?: unknown };
+  let body: {
+    question?: unknown;
+    language?: unknown;
+    history?: unknown;
+    effort?: unknown;
+    context?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    return NextResponse.json({ error: t.ask.badRequest }, { status: 400 });
   }
 
   const question = typeof body.question === "string" ? body.question.trim() : "";
@@ -96,29 +132,94 @@ export async function POST(request: NextRequest) {
   const effort = resolveEffort(body.effort);
 
   if (!question) {
-    return NextResponse.json({ error: "Ask a question first." }, { status: 400 });
+    return NextResponse.json({ error: t.ask.emptyQuestion }, { status: 400 });
   }
   if (question.length > MAX_QUESTION_LENGTH) {
-    return NextResponse.json({ error: "That question is too long." }, { status: 400 });
+    return NextResponse.json({ error: t.ask.questionTooLong }, { status: 400 });
   }
 
   const history = readHistory(body.history);
+  /*
+   * What the person is looking at, when they asked from a record rather than
+   * from the floating widget. Validated rather than trusted — it arrives from
+   * the browser exactly as the question does. See lib/assistant/context.ts.
+   */
+  const context = readAskContext(body.context);
 
   let apiKey: string;
   try {
     apiKey = requireAnthropicEnv();
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Assistant is not configured." },
+      { error: error instanceof Error ? error.message : t.ask.notConfigured },
       { status: 503 },
     );
   }
 
   const supabase = await createClient();
+
+  /*
+   * The month's ceiling, checked before a question is sent rather than after.
+   *
+   * Every screen carries an Ask button now and nothing about a question tells
+   * you it is the four hundredth one this hour, so a limit that only warns is
+   * a limit found out about on a statement.
+   *
+   * Read through the caller's own session, which means an ordinary user cannot
+   * see the rows (`assistant_usage` is readable only with `settings.manage`)
+   * and their sum comes back as zero. That is deliberate and safe in the only
+   * direction that matters: the check is a *second* line, and the first is
+   * that the same rows are what the spend screen shows the person who can act
+   * on them. A stricter read would need the service key on a path that
+   * otherwise never touches it.
+   *
+   * A database without the table yet — the migration is still pending — is
+   * treated as "cannot measure, do not block". Refusing every question because
+   * a table is missing would take the assistant away from the whole factory
+   * over a deployment step.
+   */
+  const [{ data: budgetRows }, { data: budgetSettings }] = await Promise.all([
+    supabase
+      .from("assistant_usage")
+      .select("cost_usd, asked_at")
+      .gte("asked_at", monthStart(new Date()).toISOString()),
+    supabase
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["usd_to_pkr", "tax_percent", "assistant_monthly_limit_pkr"]),
+  ]);
+
+  if (budgetRows && budgetRows.length > 0) {
+    const setting = (key: string, fallback: number): number => {
+      const raw = (budgetSettings ?? []).find((row) => row.key === key)?.value;
+      const parsed = typeof raw === "number" ? raw : Number(raw);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+    };
+
+    const budget = budgetState(budgetRows, {
+      limitPkr: setting("assistant_monthly_limit_pkr", DEFAULT_MONTHLY_LIMIT_PKR),
+      rate: setting("usd_to_pkr", USD_TO_PKR),
+      taxPercent: setting("tax_percent", PAYMENT_TAX_RATE * 100),
+    });
+
+    if (budget.overBudget) {
+      return NextResponse.json({ error: t.ask.overBudget }, { status: 429 });
+    }
+  }
+
   const { tools, contextNote } = buildAssistantTools(supabase);
 
   const languageInstruction = LANGUAGE_INSTRUCTIONS[language] ?? LANGUAGE_INSTRUCTIONS["en"];
-  const system = `${SYSTEM_PROMPT_BASE}\n\n${contextNote}\n\n${languageInstruction}`;
+
+  /*
+   * The screen's own context goes last, after the general instructions and
+   * the tool note: it is the most specific thing the model is told, and the
+   * thing a question asked from a record is most likely to be about.
+   */
+  const screenContext = describeAskContext(context);
+  const system = [SYSTEM_PROMPT_BASE, contextNote, languageInstruction, screenContext]
+    .filter(Boolean)
+    .join("\n\n");
 
   const client = new Anthropic({ apiKey });
 
@@ -171,21 +272,51 @@ export async function POST(request: NextRequest) {
       .join("\n")
       .trim();
 
+    /*
+     * One row per call, with the tokens it actually used.
+     *
+     * The Anthropic console reports account spend with a delay and knows
+     * nothing about who asked or from which screen. This is the app's own
+     * record, so a bill can be checked rather than believed and the cost can
+     * be attributed to a person and a screen. The dollar figure is stored
+     * rather than the rupee one: the rate and the tax are settings the office
+     * changes, and a stored dollar amount can be re-priced later where a
+     * stored rupee amount cannot.
+     */
+    await supabase.from("assistant_usage").insert({
+      profile_id: session.userId,
+      surface: context?.surface ?? "general",
+      model: ASK_MODEL,
+      input_tokens: totals.input,
+      output_tokens: totals.output,
+      cache_read: totals.cacheRead,
+      cache_write: totals.cacheWrite,
+      cost_usd: costInUsd(totals),
+    });
+
     await supabase.from("audit_log").insert({
       actor_id: session.userId,
       action: "assistant.ask",
       entity_type: "assistant_query",
       note: question.slice(0, 500),
-      after: { language, effort, cost_pkr: costInPkr(totals), answer: text.slice(0, 2000) },
+      after: {
+        language,
+        effort,
+        surface: context?.surface ?? "general",
+        cost_pkr: costInPkr(totals),
+        answer: text.slice(0, 2000),
+      },
     });
 
     return NextResponse.json({
-      answer: text || "I couldn't work out an answer to that.",
+      // An answer, not a message about this route — so it is read in the
+      // language the answer was asked for, not the reader's interface language.
+      answer: text || dictionaryFor(resolveLanguage(language)).ask.noAnswerText,
       costPkr: costInPkr(totals),
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "The assistant could not answer that." },
+      { error: error instanceof Error ? error.message : t.ask.couldNotAnswer },
       { status: 502 },
     );
   }

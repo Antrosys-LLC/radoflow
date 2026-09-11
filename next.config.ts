@@ -2,10 +2,65 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+
+  /*
+   * Where the build lands. `.next` unless something asks for elsewhere.
+   *
+   * `next dev` and `next build` both write here, and a production build run
+   * while a dev server is using the same folder leaves the dev server serving
+   * client chunks from a module graph that no longer matches the source. What
+   * that looks like from the floor is a screen that renders on the server and
+   * then dies on hydration reading a dictionary key that is right there in the
+   * file — which is exactly what happened once, and cost an evening.
+   *
+   * So: a verification build runs `NEXT_DIST_DIR=.next-check next build` and
+   * leaves the dev cache alone. Deployment sets nothing and gets `.next`.
+   */
+  distDir: process.env["NEXT_DIST_DIR"] ?? ".next",
   // typedRoutes is off deliberately: most links here are built from database
   // ids (`/devices/${id}`), which the literal route union cannot express
   // without a cast at every call site — noise that hides real mistakes.
   typedRoutes: false,
+
+  /*
+   * Icon and chart imports, tree-shaken per file.
+   *
+   * `lucide-react` ships a thousand-odd icon modules and a barrel that
+   * re-exports every one of them. A page importing four icons pulls the whole
+   * barrel into its module graph without this, which is the single largest
+   * avoidable cost in this app's client bundles. `recharts` and `date-fns`
+   * have the same shape.
+   */
+  experimental: {
+    optimizePackageImports: ["lucide-react", "recharts", "date-fns"],
+  },
+
+  /*
+   * The terminals push punches to /iclock/* over plain HTTP from the factory
+   * LAN and are not browsers — but every *browser* response should carry the
+   * headers below. Set here rather than in middleware so they apply to static
+   * assets too, which middleware never sees.
+   */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          // A payslip or an attendance register has no business in a frame on
+          // somebody else's page.
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
+      {
+        // Hashed by the build, so they can never go stale — a year is the
+        // longest anything is worth caching and these earn it.
+        source: "/_next/static/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -6,13 +6,28 @@ import { useFormStatus } from "react-dom";
 import { Banknote, KeyRound, Pencil, Plus, Search, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { ApproverPicker } from "@/components/approver-picker";
+import { AskAbout } from "@/components/assistant/ask-about";
 import { CnicInput, PasswordInput } from "@/components/credential-inputs";
+import { BulkBar } from "./bulk-bar";
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
+import { Latin } from "@/components/latin";
 import { matchesPerson } from "@/lib/people/match";
 import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { cn } from "@/lib/utils";
+
+/**
+ * The plain-string sibling of `<Fill>`, for the places a sentence has to be a
+ * string: an `aria-label`, a placeholder, and the label a swipe control takes.
+ */
+function fill(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_match, key: string) => String(values[key] ?? ""));
+}
 import { addUserComponent, removeUserComponent, updateUserPay } from "@/lib/pay/actions";
-import { trackingValueOf } from "@/lib/people/tracking";
+import { deriveRates } from "@/lib/pay/derived";
+import { trackingValueOf, type TrackingChoice } from "@/lib/people/tracking";
 import {
   createUser,
   setUserOverride,
@@ -99,6 +114,7 @@ export function UsersManager({
   permissions: PermissionOption[];
   canManageAccess: boolean;
 }) {
+  const t = useDictionary();
   const [showAdd, setShowAdd] = useState(false);
   const [tuning, setTuning] = useState<UserRow | null>(null);
   const [paying, setPaying] = useState<UserRow | null>(null);
@@ -113,6 +129,22 @@ export function UsersManager({
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
+  /*
+   * Held as a set of ids rather than a flag on each row: the list is filtered
+   * client-side, and a selection that lived on the rows would silently empty
+   * itself the moment somebody typed in the search box.
+   */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  function toggleSelected(id: string) {
+    setSelected((was) => {
+      const next = new Set(was);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const shown = users.filter((user) => {
     if (roleFilter && user.roleId !== roleFilter) return false;
     if (statusFilter === "active" && user.status !== "active") return false;
@@ -121,13 +153,17 @@ export function UsersManager({
     return matchesPerson(user, query);
   });
 
+  // Only what is on screen can be selected in one go — "select all" over a
+  // hidden remainder is how the wrong forty people get suspended.
+  const allShownSelected = shown.length > 0 && shown.every((user) => selected.has(user.id));
+
   return (
     <div className="space-y-5">
       <Card className="p-4 sm:p-6">
         <SectionTitle
           icon={UserPlus}
-          title={`User accounts · ${users.length}`}
-          subtitle="Every person who can sign in. The employee code is also their K50 fingerprint ID."
+          title={<Fill template={t.users.title} values={{ count: users.length }} />}
+          subtitle={t.users.hint}
           action={
             <button
               type="button"
@@ -135,7 +171,7 @@ export function UsersManager({
               className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5"
             >
               <Plus className="size-4" />
-              Add user
+              {t.users.addUser}
             </button>
           }
         />
@@ -147,8 +183,8 @@ export function UsersManager({
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by name, employee code or CNIC"
-              aria-label="Search people"
+              placeholder={t.rates.searchPlaceholder}
+              aria-label={t.users.searchPeople}
               className="w-full rounded-2xl border border-input bg-background py-2.5 pl-10 pr-4 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/30"
             />
           </div>
@@ -156,10 +192,10 @@ export function UsersManager({
           <select
             value={roleFilter}
             onChange={(event) => setRoleFilter(event.target.value)}
-            aria-label="Filter by role"
+            aria-label={t.users.role}
             className="rounded-2xl border border-input bg-background px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary"
           >
-            <option value="">Every role</option>
+            <option value="">{t.users.everyRole}</option>
             {roles.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
@@ -170,20 +206,35 @@ export function UsersManager({
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
-            aria-label="Filter by status"
+            aria-label={t.common.status}
             className="rounded-2xl border border-input bg-background px-3 py-2.5 text-sm font-semibold outline-none focus:border-primary"
           >
-            <option value="">Any status</option>
-            <option value="active">Active</option>
-            <option value="suspended">Suspended</option>
-            <option value="no-cnic">Cannot sign in — no CNIC</option>
+            <option value="">{t.users.anyStatus}</option>
+            <option value="active">{t.status.employment.active}</option>
+            <option value="suspended">{t.status.employment.suspended}</option>
+            <option value="no-cnic">{t.users.cannotSignIn}</option>
           </select>
 
           {shown.length !== users.length ? (
             <span className="text-xs text-muted-foreground">
-              Showing {shown.length} of {users.length}
+              <Fill
+                template={t.common.showingOfTotal}
+                values={{ showing: shown.length, total: users.length }}
+              />
             </span>
           ) : null}
+
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-secondary px-3 py-2 text-xs font-semibold text-foreground">
+            <input
+              type="checkbox"
+              checked={allShownSelected}
+              onChange={() =>
+                setSelected(allShownSelected ? new Set() : new Set(shown.map((u) => u.id)))
+              }
+              className="size-4 rounded border-input"
+            />
+            {t.users.selectAllShown}
+          </label>
         </div>
 
         <div className="grid gap-2 lg:grid-cols-2">
@@ -193,6 +244,8 @@ export function UsersManager({
               user={user}
               roles={roles}
               canManageAccess={canManageAccess}
+              selected={selected.has(user.id)}
+              onSelect={() => toggleSelected(user.id)}
               onTune={() => setTuning(user)}
               onPay={() => setPaying(user)}
               onEdit={() => setEditing(user)}
@@ -202,8 +255,20 @@ export function UsersManager({
 
         {shown.length === 0 ? (
           <p className="rounded-2xl bg-secondary px-4 py-8 text-center text-sm text-muted-foreground">
-            Nobody matches these filters.
+            {t.common.nobodyMatches}
           </p>
+        ) : null}
+
+        {selected.size > 0 ? (
+          <BulkBar
+            selected={[...selected]}
+            roles={roles}
+            departments={departments}
+            shifts={shifts}
+            canManageAccess={canManageAccess}
+            onDone={() => setSelected(new Set())}
+            onClear={() => setSelected(new Set())}
+          />
         ) : null}
       </Card>
 
@@ -241,6 +306,8 @@ function UserCard({
   user,
   roles,
   canManageAccess,
+  selected,
+  onSelect,
   onTune,
   onPay,
   onEdit,
@@ -248,10 +315,13 @@ function UserCard({
   user: UserRow;
   roles: Option[];
   canManageAccess: boolean;
+  selected: boolean;
+  onSelect: () => void;
   onTune: () => void;
   onPay: () => void;
   onEdit: () => void;
 }) {
+  const t = useDictionary();
   const [state, formAction] = useActionState(setUserRole, INITIAL);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -266,6 +336,13 @@ function UserCard({
   const roleChanged = roleId !== (user.roleId ?? "");
 
   const [confirmingStatus, setConfirmingStatus] = useState(false);
+  /*
+   * Typed at the moment of the change, never held. Suspending somebody takes
+   * them off the floor and off the payroll, and a session cookie on an
+   * unattended office machine is not evidence that whoever is sitting there
+   * meant to do it.
+   */
+  const [statusPassword, setStatusPassword] = useState("");
 
   useEffect(() => {
     if (!state.message) return;
@@ -286,29 +363,50 @@ function UserCard({
   const canAdminister = canManageAccess || !user.isSuperuser;
 
   return (
-    <div className={cn("rounded-2xl bg-secondary p-4", suspended && "opacity-60")}>
+    <div
+      className={cn(
+        "rounded-2xl bg-secondary p-4 transition-all",
+        suspended && "opacity-60",
+        selected && "ring-2 ring-primary",
+      )}
+    >
       <div className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onSelect}
+          aria-label={fill(t.users.selectPerson, { name: user.full_name })}
+          className="mt-1 size-4 shrink-0 rounded border-input"
+        />
         <Avatar name={user.full_name} />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-foreground">{user.full_name}</p>
+          {/* Name, employee code and CNIC — all three Latin in every
+              language, because a reordered CNIC is a different CNIC. */}
+          <p className="truncate text-sm font-bold text-foreground">
+            <Latin>{user.full_name}</Latin>
+          </p>
           <p className="truncate text-xs text-muted-foreground">
-            {user.employee_code} ·{" "}
+            <Latin>{user.employee_code}</Latin> ·{" "}
             {user.cnic ? (
-              <span className="font-mono">{user.cnic}</span>
+              <span className="font-mono">
+                <Latin>{user.cnic}</Latin>
+              </span>
             ) : (
-              <span className="font-semibold text-danger">No CNIC — cannot sign in</span>
+              <span className="font-semibold text-danger">{t.users.noCnic}</span>
             )}
           </p>
           {user.overrides.length > 0 ? (
             <p className="mt-1 text-[11px] font-bold text-primary">
-              {user.overrides.length} custom access change
-              {user.overrides.length === 1 ? "" : "s"}
+              <Fill
+                template={t.users.customAccessCount}
+                values={{ count: user.overrides.length }}
+              />
             </p>
           ) : null}
         </div>
         {suspended ? (
           <span className="rounded-full bg-danger-soft px-2.5 py-1 text-[10px] font-bold uppercase text-danger">
-            Suspended
+            {t.status.employment.suspended}
           </span>
         ) : null}
       </div>
@@ -320,7 +418,7 @@ function UserCard({
           className="inline-flex items-center gap-1.5 rounded-xl bg-card px-3 py-2 text-xs font-semibold text-foreground transition-all hover:text-primary"
         >
           <Pencil className="size-3.5" />
-          Edit profile
+          {t.users.editProfile}
         </button>
 
         {canManageAccess ? (
@@ -330,10 +428,10 @@ function UserCard({
             <select
               value={roleId}
               onChange={(event) => setRoleId(event.target.value)}
-              aria-label={`Role for ${user.full_name}`}
+              aria-label={fill(t.roles.whatCanDo, { role: user.full_name })}
               className="rounded-xl border border-input bg-card px-3 py-2 text-xs font-semibold outline-none focus:border-primary"
             >
-              <option value="">No role</option>
+              <option value="">{t.users.noRole}</option>
               {roles.map((role) => (
                 <option key={role.id} value={role.id}>
                   {role.name}
@@ -343,7 +441,7 @@ function UserCard({
           </form>
         ) : (
           <span className="rounded-full bg-card px-3 py-1.5 text-xs font-bold text-foreground">
-            {user.roleName}
+            <Latin>{user.roleName}</Latin>
           </span>
         )}
 
@@ -354,7 +452,7 @@ function UserCard({
             className="inline-flex items-center gap-1.5 rounded-xl bg-card px-3 py-2 text-xs font-semibold text-foreground transition-all hover:text-primary"
           >
             <KeyRound className="size-3.5" />
-            Custom access
+            {t.users.customAccess}
           </button>
         ) : null}
 
@@ -364,8 +462,33 @@ function UserCard({
           className="inline-flex items-center gap-1.5 rounded-xl bg-card px-3 py-2 text-xs font-semibold text-foreground transition-all hover:text-primary"
         >
           <Banknote className="size-3.5" />
-          Pay &amp; duty
+          {t.users.payAndDuty}
         </button>
+
+        {/* Attached to the person rather than to a screen: "how many days was
+            he absent last month" is a question about him, and the assistant
+            can go and look once it knows which "him". */}
+        <AskAbout
+          variant="icon"
+          label={user.full_name}
+          context={{
+            surface: "person",
+            subject: `${user.full_name} (${user.employee_code})`,
+            facts: {
+              employeeCode: user.employee_code,
+              role: user.roleName,
+              status: user.status,
+              paidAs: user.workerType,
+              payClass: user.payClass,
+              monthlySalaryRs: user.monthlySalary,
+              hourlyRateRs: user.hourlyRate,
+              dutyHours: user.dutyHours,
+              sundayPolicy: user.sundayPolicy,
+              earnsOvertime: user.overtimeEligible,
+              attendanceKept: user.requiresAttendance,
+            },
+          }}
+        />
 
         {canAdminister ? <PasswordReset userId={user.id} name={user.full_name} /> : null}
 
@@ -376,7 +499,7 @@ function UserCard({
             onClick={() => setConfirmingStatus(true)}
             className="ml-auto rounded-xl px-3 py-2 text-xs font-semibold text-muted-foreground transition-all hover:text-danger disabled:opacity-50"
           >
-            {suspended ? "Reactivate" : "Suspend"}
+            {suspended ? t.users.reactivate : t.users.suspend}
           </button>
         ) : null}
       </div>
@@ -387,29 +510,43 @@ function UserCard({
       {roleChanged ? (
         <div className="mt-3">
           <SwipeToConfirm
-            label={`Swipe to set ${user.full_name.split(" ")[0]}'s role`}
-            confirmedLabel="Updating role…"
+            label={fill(t.users.swipeSetRole, { name: user.full_name.split(" ")[0] ?? "" })}
+            confirmedLabel={t.users.updatingRole}
             onConfirm={() => roleForm.current?.requestSubmit()}
           />
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
-            They will be signed out and must sign in again for this to take effect.
-          </p>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">{t.users.signOutWarning}</p>
         </div>
       ) : null}
 
       {confirmingStatus ? (
-        <div className="mt-3">
+        <div className="mt-3 space-y-2">
+          <PasswordInput
+            value={statusPassword}
+            onChange={setStatusPassword}
+            autoComplete="current-password"
+            placeholder={t.users.confirmWithPassword}
+            className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs outline-none focus:border-primary"
+          />
+          <p className="text-[11px] text-muted-foreground">{t.users.passwordWhySuspend}</p>
           <SwipeToConfirm
             tone={suspended ? "default" : "danger"}
-            label={suspended ? "Swipe to reactivate" : "Swipe to suspend"}
-            confirmedLabel={suspended ? "Reactivating…" : "Suspending…"}
-            pending={pending}
+            label={suspended ? t.users.swipeReactivate : t.users.swipeSuspend}
+            confirmedLabel={suspended ? t.users.reactivating : t.users.suspending}
+            pending={pending || statusPassword.length === 0}
             onConfirm={() =>
               startTransition(async () => {
-                const result = await setUserStatus(user.id, suspended ? "active" : "suspended");
-                if (result.ok) toast.success(result.message);
-                else toast.error(result.message);
-                setConfirmingStatus(false);
+                const result = await setUserStatus(
+                  user.id,
+                  suspended ? "active" : "suspended",
+                  statusPassword,
+                );
+                if (result.ok) {
+                  toast.success(result.message);
+                  setConfirmingStatus(false);
+                  setStatusPassword("");
+                } else {
+                  toast.error(result.message);
+                }
                 router.refresh();
               })
             }
@@ -419,7 +556,7 @@ function UserCard({
             onClick={() => setConfirmingStatus(false)}
             className="mt-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
           >
-            Cancel
+            {t.common.cancel}
           </button>
         </div>
       ) : null}
@@ -436,13 +573,16 @@ function UserCard({
  * password afterwards is to set another.
  */
 function PasswordReset({ userId, name }: { userId: string; name: string }) {
+  const t = useDictionary();
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
+  // The operator's own, to prove it is still them. Never held between uses.
+  const [mine, setMine] = useState("");
   const [pending, startTransition] = useTransition();
 
   const save = () =>
     startTransition(async () => {
-      const result = await setUserPassword(userId, value);
+      const result = await setUserPassword(userId, value, mine);
       if (!result.ok) {
         toast.error(result.message);
         return;
@@ -451,6 +591,7 @@ function PasswordReset({ userId, name }: { userId: string; name: string }) {
       // recoverable, only replaceable.
       toast.success(result.message, { duration: Infinity, closeButton: true });
       setValue("");
+      setMine("");
       setOpen(false);
     });
 
@@ -462,7 +603,7 @@ function PasswordReset({ userId, name }: { userId: string; name: string }) {
         className="inline-flex items-center gap-1.5 rounded-xl bg-card px-3 py-2 text-xs font-semibold text-foreground transition-all hover:text-primary"
       >
         <KeyRound className="size-3.5" />
-        Set password
+        {t.users.setPassword}
       </button>
     );
   }
@@ -476,7 +617,7 @@ function PasswordReset({ userId, name }: { userId: string; name: string }) {
             minLength={8}
             value={value}
             onChange={setValue}
-            placeholder={`New password for ${name}`}
+            placeholder={fill(t.users.newPasswordFor, { name })}
             className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs outline-none focus:border-primary"
           />
         </div>
@@ -484,25 +625,36 @@ function PasswordReset({ userId, name }: { userId: string; name: string }) {
           type="button"
           onClick={() => {
             setValue("");
+            setMine("");
             setOpen(false);
           }}
           className="rounded-xl px-2 py-2 text-xs font-semibold text-muted-foreground transition-all hover:text-foreground"
         >
-          Cancel
+          {t.common.cancel}
         </button>
       </div>
 
       {/* Locking someone out of their own account is worth a deliberate
           gesture, the same as changing their role or their pay. */}
       {value.length >= 8 ? (
-        <SwipeToConfirm
-          label={`Swipe to set ${name.split(" ")[0]}'s password`}
-          confirmedLabel="Setting password…"
-          pending={pending}
-          onConfirm={save}
-        />
+        <>
+          <PasswordInput
+            value={mine}
+            onChange={setMine}
+            autoComplete="current-password"
+            placeholder={t.users.confirmWithPassword}
+            className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs outline-none focus:border-primary"
+          />
+          <p className="text-[11px] text-muted-foreground">{t.users.passwordWhyReset}</p>
+          <SwipeToConfirm
+            label={fill(t.users.swipeSetPassword, { name: name.split(" ")[0] ?? "" })}
+            confirmedLabel={t.users.settingPassword}
+            pending={pending || mine.length === 0}
+            onConfirm={save}
+          />
+        </>
       ) : (
-        <p className="text-[11px] text-muted-foreground">At least 8 characters.</p>
+        <p className="text-[11px] text-muted-foreground">{t.users.atLeast8}</p>
       )}
     </div>
   );
@@ -524,6 +676,7 @@ function AddUserDialog({
   shifts: Option[];
   onClose: () => void;
 }) {
+  const t = useDictionary();
   const [state, formAction] = useActionState(createUser, INITIAL);
   const [payClass, setPayClass] = useState("hourly");
   const router = useRouter();
@@ -555,16 +708,13 @@ function AddUserDialog({
       <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-card p-6 shadow-[0_18px_40px_rgb(0_0_0/0.18)]">
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-lg font-bold tracking-tight text-foreground">Add a user</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              The employee code is used as their ZKTeco K50 fingerprint ID — enrol them on the
-              terminal with the same number and punches link automatically.
-            </p>
+            <h2 className="text-lg font-bold tracking-tight text-foreground">{t.users.addTitle}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t.users.addHint}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t.common.close}
             className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground"
           >
             <X className="size-4" />
@@ -573,40 +723,49 @@ function AddUserDialog({
 
         <form action={formAction} className="mt-5 space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Full name">
-              <input name="full_name" required className={INPUT} placeholder="Imran Sheikh" />
+            <Field label={t.users.fullName}>
+              <input
+                name="full_name"
+                required
+                className={INPUT}
+                placeholder={t.users.fullNamePlaceholder}
+              />
             </Field>
-            <Field label="Employee code / K50 ID">
+            <Field label={t.users.employeeCode}>
               <input name="employee_code" required className={INPUT} placeholder="RD-1043" />
             </Field>
-            <Field label="CNIC (sign-in)">
+            <Field label={t.users.cnic}>
               <CnicInput required className={INPUT} />
             </Field>
-            <Field label="Temporary password">
+            <Field label={t.users.tempPassword}>
               <PasswordInput
                 autoComplete="new-password"
                 required
                 minLength={8}
-                placeholder="At least 8 characters"
+                placeholder={t.users.passwordPlaceholder}
                 className={INPUT}
               />
             </Field>
-            <Field label="Email (optional)">
+            <Field label={t.users.email}>
               <input name="email" type="email" className={INPUT} placeholder="name@radoflow.test" />
             </Field>
-            <Field label="Phone">
+            <Field label={t.users.phone}>
               <input name="phone" type="tel" className={INPUT} placeholder="+92 300 1234567" />
             </Field>
-            <Field label="Designation">
-              <input name="designation" className={INPUT} placeholder="Loom Operator" />
+            <Field label={t.users.designation}>
+              <input
+                name="designation"
+                className={INPUT}
+                placeholder={t.users.designationPlaceholder}
+              />
             </Field>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {canManageAccess ? (
-              <Field label="Role">
+              <Field label={t.users.role}>
                 <select name="role_id" defaultValue="" className={INPUT}>
-                  <option value="">No role</option>
+                  <option value="">{t.users.noRole}</option>
                   {roles.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.name}
@@ -615,15 +774,15 @@ function AddUserDialog({
                 </select>
               </Field>
             ) : (
-              <Field label="Role">
+              <Field label={t.users.role}>
                 <p className="rounded-xl bg-secondary px-3 py-2.5 text-xs text-muted-foreground">
-                  Assigned by someone who manages access.
+                  {t.users.roleAssignedElsewhere}
                 </p>
               </Field>
             )}
-            <Field label="Factory">
+            <Field label={t.common.site}>
               <select name="site_id" defaultValue="" className={INPUT}>
-                <option value="">Unassigned</option>
+                <option value="">{t.common.unassigned}</option>
                 {sites.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -631,7 +790,7 @@ function AddUserDialog({
                 ))}
               </select>
             </Field>
-            <Field label="Department">
+            <Field label={t.common.department}>
               <select
                 name="department_id"
                 value={departmentId}
@@ -642,82 +801,82 @@ function AddUserDialog({
                 }}
                 className={INPUT}
               >
-                <option value="">Unassigned</option>
+                <option value="">{t.common.unassigned}</option>
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.name}
-                    {d.defaultWorkerType === "contractor" ? " (contractors)" : ""}
+                    {/* The department name is a row; only the marker that it
+                        is a contracted one is interface text. */}
+                    {d.defaultWorkerType === "contractor"
+                      ? fill(t.users.contractorDepartment, { name: d.name })
+                      : d.name}
                   </option>
                 ))}
               </select>
             </Field>
-            <Field label="Shift">
+            <Field label={t.users.shift}>
               <select name="shift_id" defaultValue="" className={INPUT}>
-                <option value="">No shift — must complete duty hours</option>
+                <option value="">{t.users.noShift}</option>
                 {shifts.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Someone with no shift is never marked late and their clock-out is never rounded.
-                Their hours and overtime are still counted from the punches.
-              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{t.users.noShiftHint}</p>
             </Field>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Paid as">
+            <Field label={t.users.paidAs}>
               <select
                 name="worker_type"
                 value={workerType}
                 onChange={(event) => setWorkerType(event.target.value as "employee" | "contractor")}
                 className={INPUT}
               >
-                <option value="employee">Employee</option>
-                <option value="contractor">Contractor — flat amount</option>
+                <option value="employee">{t.status.workerType.employee}</option>
+                <option value="contractor">{t.users.contractorFlat}</option>
               </select>
             </Field>
-            <Field label="Salary covers">
+            <Field label={t.users.salaryCovers}>
               <select
                 name="duty_hours"
                 defaultValue="8"
                 disabled={isContractor}
                 className={cn(INPUT, isContractor && "opacity-50")}
               >
-                <option value="8">8 hours — beyond is overtime</option>
-                <option value="12">12 hours — all duty, no overtime</option>
+                <option value="8">{t.users.hours8Overtime}</option>
+                <option value="12">{t.users.hours12NoOvertime}</option>
               </select>
             </Field>
-            <Field label="Sunday">
+            <Field label={t.users.sunday}>
               <select
                 name="sunday_policy"
                 defaultValue="off"
                 disabled={isContractor}
                 className={cn(INPUT, isContractor && "opacity-50")}
               >
-                <option value="off">Off</option>
-                <option value="optional">Optional</option>
-                <option value="compulsory">Compulsory</option>
+                <option value="off">{t.status.sundayPolicy.off}</option>
+                <option value="optional">{t.status.sundayPolicy.optional}</option>
+                <option value="compulsory">{t.status.sundayPolicy.compulsory}</option>
               </select>
             </Field>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Pay type">
+            <Field label={t.users.payType}>
               <select
                 name="pay_class"
                 value={payClass}
                 onChange={(e) => setPayClass(e.target.value)}
                 className={INPUT}
               >
-                <option value="hourly">Hourly wage</option>
-                <option value="monthly">Monthly salary</option>
+                <option value="hourly">{t.users.hourlyWage}</option>
+                <option value="monthly">{t.users.monthlySalaryOption}</option>
               </select>
             </Field>
             {payClass === "monthly" ? (
-              <Field label="Monthly salary (₨)">
+              <Field label={t.users.monthlySalaryField}>
                 <input
                   name="monthly_salary"
                   type="number"
@@ -727,7 +886,7 @@ function AddUserDialog({
                 />
               </Field>
             ) : (
-              <Field label="Hourly rate (₨)">
+              <Field label={t.users.hourlyRateField}>
                 <input
                   name="hourly_rate"
                   type="number"
@@ -739,15 +898,13 @@ function AddUserDialog({
             )}
           </div>
 
-          <Field label="Attendance and pay">
+          <Field label={t.users.tracking}>
             <select name="tracking" defaultValue="tracked" className={INPUT}>
-              <option value="tracked">Tracked — attendance and salary</option>
-              <option value="salary_only">Salary only — no attendance kept</option>
-              <option value="exempt">Neither — owner</option>
+              <option value="tracked">{t.users.trackingTracked}</option>
+              <option value="salary_only">{t.users.trackingSalaryOnly}</option>
+              <option value="exempt">{t.users.trackingExempt}</option>
             </select>
-            <p className="mt-1 text-xs text-muted-foreground">
-              An owner draws nothing through this system and appears on no payroll run.
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{t.users.trackingHint}</p>
           </Field>
 
           <CreateUserButton />
@@ -776,6 +933,7 @@ function EditProfileDialog({
   shifts: Option[];
   onClose: () => void;
 }) {
+  const t = useDictionary();
   const [state, formAction] = useActionState(updateUserProfile, INITIAL);
   const router = useRouter();
 
@@ -797,17 +955,14 @@ function EditProfileDialog({
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-bold tracking-tight text-foreground">
-              Edit profile · {user.full_name}
+              <Fill template={t.users.editTitle} values={{ name: user.full_name }} />
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Name, employee code, contact details and placement. Pay, duty terms and access are
-              changed from their own buttons on the card.
-            </p>
+            <p className="mt-1 text-sm text-muted-foreground">{t.users.editHint}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t.common.close}
             className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground"
           >
             <X className="size-4" />
@@ -818,16 +973,16 @@ function EditProfileDialog({
           <input type="hidden" name="user_id" value={user.id} />
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Full name">
+            <Field label={t.users.fullName}>
               <input
                 name="full_name"
                 required
                 defaultValue={user.full_name}
                 className={INPUT}
-                placeholder="Imran Sheikh"
+                placeholder={t.users.fullNamePlaceholder}
               />
             </Field>
-            <Field label="Employee code / K50 ID">
+            <Field label={t.users.employeeCode}>
               <input
                 name="employee_code"
                 required
@@ -836,10 +991,10 @@ function EditProfileDialog({
                 placeholder="RD-1043"
               />
             </Field>
-            <Field label="CNIC (sign-in)">
+            <Field label={t.users.cnic}>
               <CnicInput defaultValue={user.cnic ?? ""} className={INPUT} />
             </Field>
-            <Field label="Email (optional)">
+            <Field label={t.users.email}>
               <input
                 name="email"
                 type="email"
@@ -848,7 +1003,7 @@ function EditProfileDialog({
                 placeholder="name@radoflow.test"
               />
             </Field>
-            <Field label="Phone">
+            <Field label={t.users.phone}>
               <input
                 name="phone"
                 type="tel"
@@ -857,20 +1012,20 @@ function EditProfileDialog({
                 placeholder="+92 300 1234567"
               />
             </Field>
-            <Field label="Designation">
+            <Field label={t.users.designation}>
               <input
                 name="designation"
                 defaultValue={user.designation ?? ""}
                 className={INPUT}
-                placeholder="Loom Operator"
+                placeholder={t.users.designationPlaceholder}
               />
             </Field>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Factory">
+            <Field label={t.common.site}>
               <select name="site_id" defaultValue={user.siteId ?? ""} className={INPUT}>
-                <option value="">Unassigned</option>
+                <option value="">{t.common.unassigned}</option>
                 {sites.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -878,9 +1033,9 @@ function EditProfileDialog({
                 ))}
               </select>
             </Field>
-            <Field label="Department">
+            <Field label={t.common.department}>
               <select name="department_id" defaultValue={user.departmentId ?? ""} className={INPUT}>
-                <option value="">Unassigned</option>
+                <option value="">{t.common.unassigned}</option>
                 {departments.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.name}
@@ -888,19 +1043,16 @@ function EditProfileDialog({
                 ))}
               </select>
             </Field>
-            <Field label="Shift">
+            <Field label={t.users.shift}>
               <select name="shift_id" defaultValue={user.shiftId ?? ""} className={INPUT}>
-                <option value="">No shift — must complete duty hours</option>
+                <option value="">{t.users.noShift}</option>
                 {shifts.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
                   </option>
                 ))}
               </select>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Someone with no shift is never marked late and their clock-out is never rounded.
-                Their hours and overtime are still counted from the punches.
-              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{t.users.noShiftHint}</p>
             </Field>
           </div>
 
@@ -912,6 +1064,7 @@ function EditProfileDialog({
 }
 
 function SaveProfileButton() {
+  const t = useDictionary();
   const { pending } = useFormStatus();
   return (
     <button
@@ -919,7 +1072,7 @@ function SaveProfileButton() {
       disabled={pending}
       className="w-full rounded-2xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5 disabled:opacity-60"
     >
-      {pending ? "Saving…" : "Save changes"}
+      {pending ? t.common.saving : t.users.saveChanges}
     </button>
   );
 }
@@ -933,6 +1086,7 @@ function AccessDialog({
   permissions: PermissionOption[];
   onClose: () => void;
 }) {
+  const t = useDictionary();
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -958,17 +1112,16 @@ function AccessDialog({
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-bold tracking-tight text-foreground">
-              Custom access · {user.full_name}
+              <Fill template={t.users.accessTitle} values={{ name: user.full_name }} />
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              On top of the <strong>{user.roleName}</strong> role. Use this to give one person
-              something extra, or take something away, without creating a new role.
+              <Fill template={t.users.accessHint} values={{ role: user.roleName }} />
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t.common.close}
             className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground"
           >
             <X className="size-4" />
@@ -978,8 +1131,10 @@ function AccessDialog({
         <div className="mt-5 space-y-5">
           {Object.entries(byModule).map(([module, items]) => (
             <div key={module}>
+              {/* Module and capability names come out of the permission
+                  catalogue, so they are data rather than interface text. */}
               <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                {module}
+                <Latin>{module}</Latin>
               </p>
               <div className="space-y-2">
                 {items.map((permission) => {
@@ -990,7 +1145,7 @@ function AccessDialog({
                       className="flex items-center justify-between gap-3 rounded-2xl bg-secondary px-4 py-2.5"
                     >
                       <span className="min-w-0 truncate text-sm font-semibold text-foreground">
-                        {permission.label}
+                        <Latin>{permission.label}</Latin>
                       </span>
                       <div className="flex shrink-0 gap-1">
                         {(["grant", "role", "deny"] as const).map((option) => (
@@ -1000,7 +1155,7 @@ function AccessDialog({
                             disabled={pending}
                             onClick={() => set(permission.id, option === "role" ? "clear" : option)}
                             className={cn(
-                              "rounded-lg px-2.5 py-1.5 text-[11px] font-bold capitalize transition-all disabled:opacity-50",
+                              "rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all disabled:opacity-50",
                               effect === option
                                 ? option === "grant"
                                   ? "bg-success text-white"
@@ -1010,7 +1165,11 @@ function AccessDialog({
                                 : "bg-card text-muted-foreground",
                             )}
                           >
-                            {option === "role" ? "Use role" : option}
+                            {option === "grant"
+                              ? t.users.grant
+                              : option === "deny"
+                                ? t.users.deny
+                                : t.users.useRole}
                           </button>
                         ))}
                       </div>
@@ -1036,6 +1195,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function CreateUserButton() {
+  const t = useDictionary();
   const { pending } = useFormStatus();
   return (
     <button
@@ -1044,7 +1204,7 @@ function CreateUserButton() {
       className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3.5 text-sm font-bold text-primary-foreground shadow-[0_12px_30px_rgb(239_86_25/0.28)] transition-all hover:-translate-y-0.5 disabled:opacity-60"
     >
       <UserPlus className="size-4" />
-      {pending ? "Creating…" : "Create user"}
+      {pending ? t.roles.creating : t.users.createUser}
     </button>
   );
 }
@@ -1061,10 +1221,12 @@ function Dialog({
   children,
   onClose,
 }: {
-  title: string;
+  title: React.ReactNode;
   children: React.ReactNode;
   onClose: () => void;
 }) {
+  const t = useDictionary();
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-3 backdrop-blur-sm sm:items-center">
       <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-card p-6 shadow-[0_18px_40px_rgb(0_0_0/0.18)]">
@@ -1073,7 +1235,7 @@ function Dialog({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t.common.close}
             className="rounded-xl p-1.5 text-muted-foreground transition-colors hover:text-foreground"
           >
             <X className="size-5" />
@@ -1094,19 +1256,28 @@ function Dialog({
  * how a wrong duty figure survives a salary review.
  */
 function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
+  const t = useDictionary();
   const [state, formAction] = useActionState(updateUserPay, INITIAL);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
 
+  const [approverId, setApproverId] = useState("");
   const [workerType, setWorkerType] = useState(user.workerType);
   const [dutyHours, setDutyHours] = useState(String(user.dutyHours));
   const [salary, setSalary] = useState(String(user.monthlySalary));
 
-  const trackingValue = trackingValueOf({
-    requires_attendance: user.requiresAttendance,
-    payroll_exempt: user.payrollExempt,
-  });
+  /*
+   * Controlled, because the duty select can force it: "no attendance needed"
+   * and `salary_only` are one arrangement said two ways, and two controls free
+   * to disagree would let the form submit a contradiction.
+   */
+  const [tracking, setTracking] = useState(
+    trackingValueOf({
+      requires_attendance: user.requiresAttendance,
+      payroll_exempt: user.payrollExempt,
+    }),
+  );
 
   useEffect(() => {
     if (!state.message) return;
@@ -1123,34 +1294,40 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
    * overtime is worth beside it.
    */
   const monthly = Number(salary) || 0;
-  const daysThisMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-  const perDay = monthly > 0 ? monthly / daysThisMonth : 0;
-  const perOtHour = perDay / 8;
+  const noAttendance = dutyHours === "none";
+  const rates = deriveRates(monthly, noAttendance ? 8 : Number(dutyHours) || 8);
+  const daysThisMonth = rates.daysInMonth;
+  const perDay = rates.perDay;
+  const perOtHour = rates.perOvertimeHour;
   const money = (value: number) =>
     value.toLocaleString("en-PK", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
 
   return (
-    <Dialog title={`Pay & duty · ${user.full_name}`} onClose={onClose}>
+    <Dialog
+      title={<Fill template={t.users.payTitle} values={{ name: user.full_name }} />}
+      onClose={onClose}
+    >
       <form ref={form} action={formAction} className="space-y-4">
         <input type="hidden" name="user_id" value={user.id} />
+        <input type="hidden" name="approver_id" value={approverId} readOnly />
 
         <div>
-          <label className="text-sm font-semibold text-foreground">Paid as</label>
+          <label className="text-sm font-semibold text-foreground">{t.users.paidAs}</label>
           <select
             name="worker_type"
             value={workerType}
             onChange={(event) => setWorkerType(event.target.value as UserRow["workerType"])}
             className={INPUT}
           >
-            <option value="employee">Employee — calculated from attendance</option>
-            <option value="contractor">Contractor — flat agreed amount</option>
+            <option value="employee">{t.users.employeeFromAttendance}</option>
+            <option value="contractor">{t.users.contractorFlat}</option>
           </select>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="text-sm font-semibold text-foreground">
-              {isContractor ? "Agreed amount (PKR)" : "Monthly salary (PKR)"}
+              {isContractor ? t.users.agreedAmountPkr : t.users.monthlySalaryPkr}
             </label>
             <input
               name="monthly_salary"
@@ -1163,7 +1340,7 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
             />
           </div>
           <div>
-            <label className="text-sm font-semibold text-foreground">Hourly rate (PKR)</label>
+            <label className="text-sm font-semibold text-foreground">{t.users.hourlyRatePkr}</label>
             <input
               name="hourly_rate"
               type="number"
@@ -1172,20 +1349,20 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
               defaultValue={user.hourlyRate}
               className={INPUT}
             />
-            <p className="mt-1 text-[11px] text-muted-foreground">Only used for hourly staff.</p>
+            <p className="mt-1 text-[11px] text-muted-foreground">{t.users.hourlyOnlyHint}</p>
           </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="text-sm font-semibold text-foreground">Pay class</label>
+            <label className="text-sm font-semibold text-foreground">{t.users.payClass}</label>
             <select name="pay_class" defaultValue={user.payClass} className={INPUT}>
-              <option value="monthly">Monthly</option>
-              <option value="hourly">Hourly</option>
+              <option value="monthly">{t.status.payClass.monthly}</option>
+              <option value="hourly">{t.status.payClass.hourly}</option>
             </select>
           </div>
           <div>
-            <label className="text-sm font-semibold text-foreground">Salary covers</label>
+            <label className="text-sm font-semibold text-foreground">{t.users.salaryCovers}</label>
             <select
               name="duty_hours"
               value={dutyHours}
@@ -1193,39 +1370,44 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
               disabled={isContractor}
               className={cn(INPUT, isContractor && "opacity-50")}
             >
-              <option value="8">8 hours — anything beyond is overtime</option>
-              <option value="12">12 hours — all twelve are duty, no overtime</option>
+              <option value="8">{t.users.hours8Overtime}</option>
+              <option value="12">{t.users.hours12NoOvertime}</option>
+              <option value="none">{t.users.noAttendanceNeeded}</option>
             </select>
           </div>
         </div>
 
         <div>
-          <label className="text-sm font-semibold text-foreground">Sunday</label>
+          <label className="text-sm font-semibold text-foreground">{t.users.sunday}</label>
           <select
             name="sunday_policy"
             defaultValue={user.sundayPolicy}
             disabled={isContractor}
             className={cn(INPUT, isContractor && "opacity-50")}
           >
-            <option value="off">Off — not expected in</option>
-            <option value="optional">Optional — may come in</option>
-            <option value="compulsory">Compulsory — expected in</option>
-            <option value="adjust_in_leave">Adjust in leave — not paid</option>
+            <option value="off">{t.users.sundayOff}</option>
+            <option value="optional">{t.users.sundayOptional}</option>
+            <option value="compulsory">{t.users.sundayCompulsory}</option>
+            <option value="adjust_in_leave">{t.users.sundayAdjust}</option>
           </select>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            Sunday is never a working day. Every hour worked on one is overtime, whatever this says.
-          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">{t.users.sundayHint}</p>
         </div>
 
         <div>
-          <label className="text-sm font-semibold text-foreground">Attendance and pay</label>
-          <select name="tracking" defaultValue={trackingValue} className={INPUT}>
-            <option value="tracked">Tracked — attendance and salary</option>
-            <option value="salary_only">Salary only — no attendance kept</option>
-            <option value="exempt">Neither — owner</option>
+          <label className="text-sm font-semibold text-foreground">{t.users.tracking}</label>
+          <select
+            name="tracking"
+            value={noAttendance ? "salary_only" : tracking}
+            onChange={(event) => setTracking(event.target.value as TrackingChoice)}
+            disabled={noAttendance}
+            className={cn(INPUT, noAttendance && "opacity-50")}
+          >
+            <option value="tracked">{t.users.trackingTracked}</option>
+            <option value="salary_only">{t.users.trackingSalaryOnly}</option>
+            <option value="exempt">{t.users.trackingExempt}</option>
           </select>
           <p className="mt-1 text-xs text-muted-foreground">
-            An owner draws nothing through this system and appears on no payroll run.
+            {noAttendance ? t.users.noAttendanceHint : t.users.trackingHint}
           </p>
         </div>
 
@@ -1238,9 +1420,9 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
               className="mt-0.5 size-4 rounded border-input"
             />
             <span>
-              Earns overtime
+              {t.users.earnsOvertime}
               <span className="block text-xs font-normal text-muted-foreground">
-                Unticked, hours past the duty boundary are recorded but never paid.
+                {t.users.earnsOvertimeHint}
               </span>
             </span>
           </label>
@@ -1248,40 +1430,60 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
 
         {isContractor ? (
           <p className="rounded-2xl bg-warning-soft px-4 py-3 text-xs text-warning">
-            Nothing is calculated for a contractor. They receive the agreed amount in full — no
-            proration for days missed, no overtime, no late penalty.
+            {t.users.contractorNote}
           </p>
         ) : monthly > 0 ? (
           <div className="rounded-2xl bg-secondary px-4 py-3 text-xs text-muted-foreground">
+            {/* Each line is one template with its figures as slots: Urdu
+                puts the amount and the division the other way round. */}
             <p>
-              <span className="font-bold text-foreground">Rs {money(perDay)}</span> a day
-              <span className="opacity-60">
-                {" "}
-                ({money(monthly)} ÷ {daysThisMonth} days this month)
-              </span>
+              <Fill
+                template={t.users.perDayLine}
+                values={{
+                  amount: `Rs ${money(perDay)}`,
+                  salary: money(monthly),
+                  days: daysThisMonth,
+                }}
+              />
             </p>
             <p className="mt-1">
-              <span className="font-bold text-foreground">Rs {money(perOtHour)}</span> an overtime
-              hour<span className="opacity-60"> (the daily rate ÷ 8)</span>
+              <Fill
+                template={t.users.perOvertimeHourLine}
+                values={{ amount: `Rs ${money(perOtHour)}` }}
+              />
+            </p>
+            {/* The hour and the minute, because that is the granularity
+                every argument about this salary is actually had at. */}
+            <p className="mt-1">
+              <Fill
+                template={t.users.perHourLine}
+                values={{
+                  perHour: `Rs ${money(rates.perHour)}`,
+                  perMinute: `Rs ${rates.perMinute.toFixed(2)}`,
+                }}
+              />
             </p>
             <p className="mt-1 opacity-80">
-              Beyond {dutyHours} hours on a weekday, and every hour on a Sunday.
+              <Fill
+                template={t.users.overtimeBoundary}
+                values={{ hours: noAttendance ? 8 : dutyHours }}
+              />
             </p>
           </div>
         ) : null}
 
+        <ApproverPicker value={approverId} onChange={setApproverId} />
+
         <SwipeToConfirm
-          label="Swipe to save pay settings"
-          confirmedLabel="Saving…"
+          label={t.users.swipeSavePay}
+          confirmedLabel={t.common.saving}
           onConfirm={() => form.current?.requestSubmit()}
         />
       </form>
 
       <div className="mt-6 border-t border-border pt-5">
-        <p className="text-sm font-bold text-foreground">Allowances &amp; deductions</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Applied to this person only, every period, until removed.
-        </p>
+        <p className="text-sm font-bold text-foreground">{t.users.componentsTitle}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t.users.componentsHint}</p>
 
         {user.components.length > 0 ? (
           <ul className="mt-3 space-y-2">
@@ -1292,11 +1494,18 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-foreground">
-                    {component.label}
+                    <Latin>{component.label}</Latin>
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    From {component.effectiveFrom}
-                    {component.effectiveTo ? ` to ${component.effectiveTo}` : " — ongoing"}
+                    <Fill
+                      template={
+                        component.effectiveTo ? t.users.componentFromTo : t.users.componentOngoing
+                      }
+                      values={{
+                        from: component.effectiveFrom,
+                        to: component.effectiveTo ?? "",
+                      }}
+                    />
                   </p>
                 </div>
                 <span
@@ -1305,12 +1514,12 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
                     component.kind === "earning" ? "text-success" : "text-danger",
                   )}
                 >
-                  {component.kind === "earning" ? "+" : "−"} Rs {money(component.amount)}
+                  <Latin>{`${component.kind === "earning" ? "+" : "−"} Rs ${money(component.amount)}`}</Latin>
                 </span>
                 <button
                   type="button"
                   disabled={pending}
-                  aria-label={`Remove ${component.label}`}
+                  aria-label={fill(t.rates.removeLine, { name: component.label })}
                   onClick={() =>
                     startTransition(async () => {
                       const result = await removeUserComponent(component.id);
@@ -1328,7 +1537,7 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
           </ul>
         ) : (
           <p className="mt-3 rounded-2xl bg-secondary px-4 py-3 text-xs text-muted-foreground">
-            Nothing attached to this person yet.
+            {t.users.nothingAttached}
           </p>
         )}
 
@@ -1340,6 +1549,7 @@ function PayDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
 
 /** Attaches one recurring line — an advance being recovered, a bonus — to a person. */
 function AddComponentForm({ userId }: { userId: string }) {
+  const t = useDictionary();
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   const [pending, startTransition] = useTransition();
@@ -1381,8 +1591,8 @@ function AddComponentForm({ userId }: { userId: string }) {
           name="label"
           value={label}
           onChange={(event) => setLabel(event.target.value)}
-          placeholder="Advance recovery"
-          aria-label="Name"
+          placeholder={t.rates.componentNamePlaceholder}
+          aria-label={t.rates.lineName}
           className={INPUT}
         />
         <input
@@ -1392,27 +1602,25 @@ function AddComponentForm({ userId }: { userId: string }) {
           step="0.01"
           value={amount}
           onChange={(event) => setAmount(event.target.value)}
-          placeholder="Amount"
-          aria-label="Amount"
+          placeholder={t.rates.amount}
+          aria-label={t.rates.amount}
           className={INPUT}
         />
-        <select name="kind" defaultValue="deduction" aria-label="Kind" className={INPUT}>
-          <option value="deduction">Deduction</option>
-          <option value="earning">Allowance</option>
+        <select name="kind" defaultValue="deduction" aria-label={t.rates.kind} className={INPUT}>
+          <option value="deduction">{t.rates.deduction}</option>
+          <option value="earning">{t.rates.allowance}</option>
         </select>
       </div>
 
       {ready ? (
         <SwipeToConfirm
-          label="Swipe to attach this line"
-          confirmedLabel="Attaching…"
+          label={t.rates.swipeAttach}
+          confirmedLabel={t.rates.attaching}
           pending={pending}
           onConfirm={submit}
         />
       ) : (
-        <p className="text-[11px] text-muted-foreground">
-          Enter a name and an amount to attach it.
-        </p>
+        <p className="text-[11px] text-muted-foreground">{t.users.needNameAndAmount}</p>
       )}
     </form>
   );

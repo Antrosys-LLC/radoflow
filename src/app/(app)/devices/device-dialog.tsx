@@ -26,6 +26,7 @@ export interface DeviceFormValues {
   model?: string | null;
   mode?: string | null;
   purpose?: string | null;
+  direction?: string | null;
   ip_address?: unknown;
   port?: number | null;
   comm_key?: string | null;
@@ -161,6 +162,23 @@ export function DeviceDialog({
                 >
                   <option value="attendance">{t.devices.purposeAttendanceOption}</option>
                   <option value="canteen">{t.devices.purposeCanteenOption}</option>
+                </select>
+              </Field>
+
+              {/* Meaningless on a canteen terminal, which records meals rather
+                  than arrivals — but left in place rather than hidden behind
+                  the purpose select, because a terminal moved from the canteen
+                  back to a door would otherwise keep a setting nobody could
+                  see to change. Ingestion ignores it for canteen scans. */}
+              <Field label={t.devices.gate} hint={t.devices.gateHint}>
+                <select
+                  name="direction"
+                  defaultValue={device?.direction ?? "auto"}
+                  className={INPUT}
+                >
+                  <option value="auto">{t.devices.gateAutoOption}</option>
+                  <option value="in">{t.devices.gateInOption}</option>
+                  <option value="out">{t.devices.gateOutOption}</option>
                 </select>
               </Field>
 

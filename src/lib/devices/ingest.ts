@@ -9,6 +9,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import type { Json } from "@/lib/supabase/database.types";
 import type { DayType } from "@/lib/payroll/types";
 
+import { resolvePeopleByDeviceUserId } from "./resolve-people";
 import { toWallClockString, workDateFromWallClock, zonedWallClockToUtc } from "./timezone";
 import type { IclockPunch } from "./zkteco/iclock";
 import { directionFromState, type DeviceAttendanceRecord } from "./zkteco/protocol";
@@ -51,6 +52,17 @@ export interface DeviceRecord {
   timezone: string;
   /** Canteen terminals record meals, never attendance. */
   purpose: "attendance" | "canteen";
+  /**
+   * What a punch from this terminal means.
+   *
+   * `auto` is the original behaviour: the terminal says nothing useful, and
+   * the direction is inferred afterwards from the order of the day's punches.
+   * `in` and `out` are a terminal that has been installed as a gate — one by
+   * the door in, another on the way out — and those state the direction
+   * outright, which is the only thing that survives somebody punching an odd
+   * number of times.
+   */
+  direction: "auto" | "in" | "out";
 }
 
 /**
@@ -70,7 +82,7 @@ export async function recordDeviceContact(serialNumber: string): Promise<DeviceR
 
   const { data: device, error } = await supabase
     .from("devices")
-    .select("id, site_id, timezone, purpose")
+    .select("id, site_id, timezone, purpose, direction")
     .eq("serial_number", serialNumber)
     .single<DeviceRecord>();
 
@@ -116,17 +128,9 @@ export async function ingestPunches(
     return { accepted: 0, duplicates: 0, unmapped: [], recomputedDays: 0 };
   }
 
-  // Resolve the terminal's enrolment numbers to people in one round trip.
+  // Resolve the terminal's enrolment numbers to people.
   const deviceUserIds = [...new Set(punches.map((p) => p.deviceUserId))];
-  const { data: enrolments } = await supabase
-    .from("device_enrollments")
-    .select("device_user_id, profile_id")
-    .eq("device_id", device.id)
-    .in("device_user_id", deviceUserIds);
-
-  const profileByDeviceUser = new Map<string, string>(
-    (enrolments ?? []).map((e) => [e.device_user_id as string, e.profile_id as string]),
-  );
+  const profileByDeviceUser = await resolvePeopleByDeviceUserId(device.id, deviceUserIds);
 
   const unmapped = deviceUserIds.filter((id) => !profileByDeviceUser.has(id));
 
@@ -147,7 +151,13 @@ export async function ingestPunches(
         profile_id: profileByDeviceUser.get(punch.deviceUserId) ?? null,
         punched_at: punchedAt.toISOString(),
         work_date: workDate,
-        direction: punch.direction,
+        /*
+         * A gate terminal overrides whatever the record's state byte claimed.
+         * The byte is not trustworthy on a K50 without dedicated in/out keys —
+         * it stamps every record state 0 — whereas which door the terminal is
+         * screwed beside is a fact about the installation.
+         */
+        direction: device.direction === "auto" ? punch.direction : device.direction,
         verify_mode: String(punch.verifyMode),
         source: "device" as const,
         // Kept verbatim so a disputed punch can always be traced back to what
@@ -222,7 +232,7 @@ export async function recomputeAttendanceDay(
   const [{ data: punchRows }, { data: profile }, dayType] = await Promise.all([
     supabase
       .from("punches")
-      .select("id, punched_at, direction")
+      .select("id, punched_at, direction, device_id")
       .eq("profile_id", profileId)
       .eq("work_date", workDate)
       .order("punched_at", { ascending: true }),
@@ -258,7 +268,29 @@ export async function recomputeAttendanceDay(
    * in/out keys stamps every record state 0 — so the direction shown on the
    * device page and the live feed is the one the sequence implies. The raw
    * state stays in `punches.raw` for audit.
+   *
+   * Skipped entirely for a punch that came from a gate terminal: that
+   * direction was not inferred, it was declared by where the terminal is
+   * installed, and re-deriving it from the sequence would overwrite the more
+   * reliable fact with the less reliable one. A day mixing a gate terminal
+   * with an `auto` one keeps both — each row is corrected only if the device
+   * it came from had nothing to say.
    */
+  const gateDeviceIds = new Set<string>();
+  {
+    const deviceIds = [
+      ...new Set((punchRows ?? []).map((row) => row.device_id).filter(Boolean)),
+    ] as string[];
+    if (deviceIds.length > 0) {
+      const { data: gates } = await supabase
+        .from("devices")
+        .select("id, direction")
+        .in("id", deviceIds)
+        .neq("direction", "auto");
+      for (const gate of gates ?? []) gateDeviceIds.add(gate.id);
+    }
+  }
+
   const ordered = (punchRows ?? [])
     .slice()
     .sort(
@@ -270,6 +302,7 @@ export async function recomputeAttendanceDay(
     ordered.flatMap((row, index) => {
       const derived = computed.directions[index];
       if (!derived || derived === row.direction) return [];
+      if (row.device_id && gateDeviceIds.has(row.device_id)) return [];
       return [supabase.from("punches").update({ direction: derived }).eq("id", row.id)];
     }),
   );

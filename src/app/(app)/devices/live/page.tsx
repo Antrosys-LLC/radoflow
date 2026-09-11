@@ -3,8 +3,11 @@ import Link from "next/link";
 import { ArrowLeft, LogIn, LogOut, Radio } from "lucide-react";
 
 import { AutoRefresh } from "@/components/auto-refresh";
+import { Fill } from "@/components/fill";
+import { Latin } from "@/components/latin";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
+import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -30,7 +33,8 @@ const LIVE_REFRESH_SECONDS = 10;
 const FEED_LIMIT = 400;
 
 export default async function LiveFeedPage() {
-  await requireAnyPermission(["devices.view", "devices.manage"]);
+  const session = await requireAnyPermission(["devices.view", "devices.manage"]);
+  const t = dictionaryFor(session.profile.language);
 
   const supabase = await createClient();
 
@@ -59,22 +63,25 @@ export default async function LiveFeedPage() {
         className="inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft className="size-4 rtl-flip" />
-        Biometric Devices
+        {t.nav.devices}
       </Link>
 
       <Card className="p-4 sm:p-6">
         <SectionTitle
           icon={Radio}
-          title="Live floor"
-          subtitle={`The last ${FEED_LIMIT} check-ins and check-outs, refreshing every ${LIVE_REFRESH_SECONDS} seconds`}
+          title={t.liveFloor.title}
+          subtitle={
+            <Fill
+              template={t.liveFloor.subtitle}
+              values={{ count: FEED_LIMIT, seconds: LIVE_REFRESH_SECONDS }}
+            />
+          }
         />
 
         {!punches || punches.length === 0 ? (
           <div className="rounded-2xl bg-secondary p-8 text-center">
-            <p className="text-sm font-semibold text-foreground">Nothing on the floor yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Scans appear here within seconds of a terminal uploading them.
-            </p>
+            <p className="text-sm font-semibold text-foreground">{t.liveFloor.nothingYet}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t.liveFloor.nothingYetHint}</p>
           </div>
         ) : (
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
@@ -90,17 +97,34 @@ export default async function LiveFeedPage() {
                   <Avatar name={person?.full_name ?? "??"} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-foreground">
-                      {person?.full_name ?? (
+                      {person?.full_name ? (
+                        <Latin>{person.full_name}</Latin>
+                      ) : (
                         <span className="text-warning">
-                          Unlinked terminal ID {punch.device_user_id}
+                          <Fill
+                            template={t.liveFloor.unlinkedTerminalId}
+                            values={{ id: punch.device_user_id }}
+                          />
                         </span>
                       )}
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {person?.employee_code ?? punch.device_user_id}
-                      {punch.device_id ? ` · ${deviceById.get(punch.device_id) ?? "Terminal"}` : ""}
+                      <Latin>{person?.employee_code ?? punch.device_user_id}</Latin>
+                      {punch.device_id ? (
+                        <>
+                          {" · "}
+                          {/* The terminal's own name is Latin; the stand-in for
+                              a row this screen did not load is a word, and is
+                              not. */}
+                          {deviceById.get(punch.device_id) ? (
+                            <Latin>{deviceById.get(punch.device_id)}</Latin>
+                          ) : (
+                            t.liveFloor.terminalFallback
+                          )}
+                        </>
+                      ) : null}
                       {" · "}
-                      {formatDate(punch.punched_at)}
+                      <Latin>{formatDate(punch.punched_at)}</Latin>
                     </p>
                   </div>
                   <span
@@ -110,8 +134,10 @@ export default async function LiveFeedPage() {
                     )}
                   >
                     {isIn ? <LogIn className="size-4" /> : <LogOut className="size-4" />}
-                    <span className="tabular-nums">{formatTime(punch.punched_at)}</span>
-                    <span className="font-extrabold">{isIn ? "IN" : "OUT"}</span>
+                    <Latin className="tabular-nums">{formatTime(punch.punched_at)}</Latin>
+                    <span className="font-extrabold">
+                      {isIn ? t.common.checkedIn : t.common.checkedOut}
+                    </span>
                   </span>
                 </div>
               );

@@ -4,14 +4,17 @@ import { Building2, CreditCard, Fingerprint, KeyRound, ScanFace } from "lucide-r
 import { AntrosysRibbon, showsAntrosysRibbon } from "@/components/antrosys-ribbon";
 import { AssistantWidget } from "@/components/assistant/assistant-widget";
 import { Fill } from "@/components/fill";
+import { LanguageSwitch } from "@/components/language-switch";
 import { Latin } from "@/components/latin";
-import { LiveClock } from "@/components/live-clock";
+import { ClockAndDate } from "@/components/clock-and-date";
 import { ProfileMenu } from "@/components/profile-menu";
 import { SidebarNav, MobileNav } from "@/components/sidebar-nav";
-import { can } from "@/lib/auth/session";
+import { ThemeSwitch } from "@/components/theme-switch";
+import { canUseAssistant } from "@/lib/auth/antrosys";
 import { dictionaryFor } from "@/lib/i18n";
 import { navigationFor } from "@/lib/navigation";
 import type { Session } from "@/lib/auth/session";
+import type { ThemeChoice } from "@/lib/theme";
 
 /**
  * The signed-in application frame.
@@ -20,13 +23,25 @@ import type { Session } from "@/lib/auth/session";
  * anything reaches the browser, so a role never receives markup for modules it
  * cannot open.
  */
-export function AppShell({ session, children }: { session: Session; children: React.ReactNode }) {
+export function AppShell({
+  session,
+  theme,
+  pendingApprovals,
+  children,
+}: {
+  session: Session;
+  /** The stored theme choice, so the switch opens on the right option. */
+  theme: ThemeChoice;
+  /** Requests waiting on this person, for the badge on the menu entry. */
+  pendingApprovals: number;
+  children: React.ReactNode;
+}) {
   const t = dictionaryFor(session.profile.language);
   const sections = navigationFor(session);
   const showRibbon = showsAntrosysRibbon(session);
   // Same gate as the /assistant page and the API route, so the button is
-  // never rendered for someone whose question would be refused anyway.
-  const showAssistant = session.isSuperuser || can(session, "assistant.ask");
+  // never rendered for somebody whose question would be refused anyway.
+  const showAssistant = canUseAssistant(session);
 
   return (
     <div className="min-h-screen bg-background">
@@ -59,7 +74,9 @@ export function AppShell({ session, children }: { session: Session; children: Re
               <KeyRound className="size-4" aria-hidden />
               <span className="sr-only">{t.common.identifyMethodsHint}</span>
             </span>
-            <LiveClock />
+            <ClockAndDate />
+            <ThemeSwitch initial={theme} />
+            <LanguageSwitch />
             <ProfileMenu session={session} />
           </div>
         </div>
@@ -67,7 +84,7 @@ export function AppShell({ session, children }: { session: Session; children: Re
 
       <div className="mx-auto flex max-w-[1500px] gap-5 px-3 py-5 sm:px-5">
         <aside className="sticky top-28 hidden max-h-[calc(100vh-8rem)] w-64 shrink-0 overflow-y-auto overscroll-contain rounded-3xl border border-border bg-card p-3 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_rgb(0_0_0/0.05)] lg:block">
-          <SidebarNav sections={sections} />
+          <SidebarNav sections={sections} pendingApprovals={pendingApprovals} />
         </aside>
 
         <main className={`min-w-0 flex-1 pb-24 ${showRibbon ? "lg:pb-10" : "lg:pb-0"}`}>
@@ -76,7 +93,7 @@ export function AppShell({ session, children }: { session: Session; children: Re
       </div>
 
       {showRibbon ? <AntrosysRibbon /> : null}
-      <MobileNav sections={sections} />
+      <MobileNav sections={sections} pendingApprovals={pendingApprovals} />
 
       {showAssistant ? (
         <AssistantWidget

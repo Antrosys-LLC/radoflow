@@ -8,7 +8,9 @@ import { ExportButtons } from "@/components/export-buttons";
 import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
 import { matchesPerson } from "@/lib/people/match";
+import { AskAbout } from "@/components/assistant/ask-about";
 import { Card, SectionTitle } from "@/components/ui-kit";
+import { CorrectDayButton } from "./correct-day";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { dictionaryFor, type Dictionary } from "@/lib/i18n";
 import {
@@ -25,7 +27,9 @@ import {
   type DayType,
   type HourBuckets,
 } from "@/lib/payroll/types";
-import { selectInBatches } from "@/lib/supabase/in-batches";
+import { SchemaOutOfDate } from "@/components/schema-out-of-date";
+import { selectAllInBatches } from "@/lib/supabase/in-batches";
+import { isSchemaOutOfDate } from "@/lib/supabase/schema-error";
 import { createClient } from "@/lib/supabase/server";
 import { formatHours, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -91,7 +95,28 @@ function statusLabel(t: Dictionary, status: string | null): string {
  * literal `[]`, which infers as `never[]` and makes every field below an error
  * that has nothing to do with the actual shape.
  */
+/**
+ * A stored instant as "HH:MM" on the factory's clock.
+ *
+ * `formatTime` is for reading — it produces "07:58 AM", which a `type="time"`
+ * input rejects. This is the same instant in the form the control takes.
+ */
+function clockTime(value: string | null): string {
+  if (!value) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Karachi",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(value));
+
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "";
+  return hour && minute ? `${hour}:${minute}` : "";
+}
+
 interface DayRow {
+  id: string;
   profile_id: string;
   work_date: string;
   first_in: string | null;
@@ -107,6 +132,18 @@ interface DayRow {
   approved_at: string | null;
   hours_are_final: boolean;
 }
+
+/**
+ * What the register reads, and what it settles for.
+ *
+ * Two lists rather than one, because the approval columns arrive with a
+ * migration and this screen has to work on both sides of it. See the read
+ * below.
+ */
+const COLUMNS_BEFORE_APPROVALS =
+  "id, profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual, locked, hours_are_final";
+
+const FULL_COLUMNS = `${COLUMNS_BEFORE_APPROVALS}, approved_by, approved_at`;
 
 /** One person's days, already split into the buckets payroll would pay. */
 interface Summary {
@@ -147,6 +184,17 @@ export default async function AttendanceLogPage({
    */
   const canSeeEveryone = session.isSuperuser || session.permissions.has("attendance.view.all");
   const canApprove = session.permissions.has("attendance.approve");
+  /*
+   * Correcting a day is `attendance.edit` — the capability that exists for
+   * exactly this and the reason a manager holds it. Whether the correction
+   * takes effect at once or waits for a director is the action's decision, not
+   * this one: the button looks the same either way, and the picker inside it
+   * says which is happening.
+   */
+  const canCorrect =
+    session.isSuperuser ||
+    session.permissions.has("attendance.edit") ||
+    session.permissions.has("attendance.edit.all");
 
   const selectedDepts = params.dept
     ? Array.isArray(params.dept)
@@ -185,19 +233,64 @@ export default async function AttendanceLogPage({
   const cohort = person ? [person] : scoped;
   const cohortIds = cohort.map((p) => p.id);
 
-  const batched = await selectInBatches<DayRow>(
-    cohortIds,
-    (ids) =>
-      supabase
-        .from("attendance_days")
-        .select(
-          "profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual, locked, approved_by, approved_at, hours_are_final",
-        )
-        .in("profile_id", ids)
-        .gte("work_date", from)
-        .lte("work_date", to),
-    `Could not read attendance for ${from} to ${to}`,
-  );
+  /*
+   * The period's attendance — batched by id, and paged.
+   *
+   * Paged because a PostgREST reply stops at a thousand rows without saying
+   * so: four hundred people over a nine-day range fits, the same four hundred
+   * over a month does not, and the half that fell off the end would be drawn
+   * as a floor that never clocked in.
+   */
+  const read = (columns: string) =>
+    selectAllInBatches<DayRow>(
+      cohortIds,
+      (ids, first, last) =>
+        supabase
+          .from("attendance_days")
+          .select(columns)
+          .in("profile_id", ids)
+          .gte("work_date", from)
+          .lte("work_date", to)
+          .order("profile_id")
+          .order("work_date")
+          .range(first, last)
+          .overrideTypes<DayRow[]>(),
+      `Could not read attendance for ${from} to ${to}`,
+    );
+
+  /*
+   * `approved_by` and `approved_at` arrive with a migration that is applied by
+   * hand, so there is a real window in which this screen asks for two columns
+   * the database has not got yet.
+   *
+   * The register is the point of the screen; who signed a day off is a detail
+   * on top of it. Losing the whole thing over the detail — which is what an
+   * unhandled error does, and what the "something went wrong" boundary reports
+   * it as — is the wrong trade. So the read falls back to the columns that
+   * have always existed and the screen carries on without the approval marks.
+   * Only if that read fails too is there really nothing to show.
+   */
+  let batched: DayRow[];
+  try {
+    batched = await read(FULL_COLUMNS);
+  } catch (error) {
+    if (!isSchemaOutOfDate(error)) throw error;
+    try {
+      batched = (await read(COLUMNS_BEFORE_APPROVALS)).map((row) => ({
+        ...row,
+        approved_by: null,
+        approved_at: null,
+      }));
+    } catch (fallbackError) {
+      if (!isSchemaOutOfDate(fallbackError)) throw fallbackError;
+      return (
+        <SchemaOutOfDate
+          t={t}
+          detail={fallbackError instanceof Error ? fallbackError.message : undefined}
+        />
+      );
+    }
+  }
 
   // Each batch comes back ordered within itself; the merged list still needs sorting.
   const days = batched.sort((a, b) => (a.work_date < b.work_date ? 1 : -1));
@@ -259,6 +352,14 @@ export default async function AttendanceLogPage({
           subtitle={canSeeEveryone ? t.logs.subtitleAll : t.logs.subtitleMine}
           action={
             <div className="flex flex-wrap items-center gap-2">
+              <AskAbout
+                label={`${from} – ${to}`}
+                context={{
+                  surface: "attendance-log",
+                  subject: `${from} to ${to}`,
+                  facts: { from, to, people: visible.length, days: days.length },
+                }}
+              />
               <ExportButtons kind="attendance" params={{ from, to, dept: selectedDepts[0] }} />
               <Link
                 href="/attendance"
@@ -401,6 +502,7 @@ export default async function AttendanceLogPage({
           to={to}
           departmentName={person.department_id ? deptName.get(person.department_id) : undefined}
           canApprove={canApprove}
+          canCorrect={canCorrect}
         />
       ) : (
         <Cohort
@@ -638,6 +740,7 @@ function PersonLog({
   to,
   departmentName,
   canApprove,
+  canCorrect,
 }: {
   t: Dictionary;
   person: {
@@ -656,6 +759,8 @@ function PersonLog({
   to: string;
   departmentName: string | undefined;
   canApprove: boolean;
+  /** Whether a per-day correction control is offered. */
+  canCorrect: boolean;
 }) {
   const dutyHours = Number(person.duty_hours ?? 8);
   const contractor = person.worker_type === "contractor";
@@ -791,6 +896,7 @@ function PersonLog({
                 <th className="px-4 py-3 text-end font-semibold">{t.logs.overtime}</th>
                 <th className="px-4 py-3 text-end font-semibold">{t.common.late}</th>
                 <th className="px-4 py-3 font-semibold">{t.logs.counts}</th>
+                {canCorrect ? <th className="px-4 py-3" /> : null}
               </tr>
             </thead>
             <tbody>
@@ -888,13 +994,31 @@ function PersonLog({
                         </span>
                       )}
                     </td>
+                    {canCorrect ? (
+                      <td className="px-4 py-3 text-end">
+                        <CorrectDayButton
+                          day={{
+                            id: row.id,
+                            workDate: row.work_date,
+                            // The dialog's time inputs want HH:MM on the
+                            // factory's clock; the column stores an instant.
+                            firstIn: clockTime(row.first_in),
+                            lastOut: clockTime(row.last_out),
+                            status: row.status ?? "present",
+                          }}
+                        />
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}
 
               {summary.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td
+                    colSpan={canCorrect ? 9 : 8}
+                    className="px-4 py-10 text-center text-sm text-muted-foreground"
+                  >
                     <Fill template={t.logs.noAttendanceBetween} values={{ from, to }} />
                   </td>
                 </tr>

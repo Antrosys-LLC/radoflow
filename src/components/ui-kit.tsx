@@ -1,4 +1,4 @@
-import type { LucideIcon } from "lucide-react";
+import type { IconComponent } from "@/components/claude-icon";
 import { Latin } from "@/components/latin";
 import { cn } from "@/lib/utils";
 import type { AttendanceStatus } from "@/lib/payroll/types";
@@ -24,7 +24,7 @@ export function SectionTitle({
   subtitle,
   action,
 }: {
-  icon: LucideIcon;
+  icon: IconComponent;
   /*
    * ReactNode rather than string: a heading or a subtitle often carries a
    * count, a date or a money figure, and those have to be wrapped in `<Latin>`
@@ -57,7 +57,7 @@ export function StatPill({
   hint,
   tone = "neutral",
 }: {
-  icon: LucideIcon;
+  icon: IconComponent;
   label: string;
   /** The figure itself, so callers can wrap it in `<Latin>`. */
   value: React.ReactNode;

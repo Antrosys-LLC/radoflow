@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { requireAnyPermission } from "@/lib/auth/session";
+import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 
 import { PayrollClient, type ItemRow, type PeriodRow } from "./payroll-client";
@@ -18,6 +19,7 @@ export default async function PayrollPage({
   searchParams: Promise<{ period?: string }>;
 }) {
   const session = await requireAnyPermission(["payroll.view", "payroll.run"]);
+  const t = dictionaryFor(session.profile.language);
   const { period: requestedPeriod } = await searchParams;
   const supabase = await createClient();
 
@@ -47,17 +49,20 @@ export default async function PayrollPage({
 
   let items: ItemRow[] = [];
   if (selectedId) {
-    const { data: rows } = await supabase
-      .from("payroll_items")
-      .select("*")
-      .eq("period_id", selectedId);
-
-    // The directory is the pay-free view, so a payroll operator can label rows
-    // without needing read access to the full profile record.
-    const { data: people } = await supabase
-      .from("employee_directory")
-      .select("id, full_name, employee_code, department_id");
-    const { data: departments } = await supabase.from("departments").select("id, name");
+    /*
+     * Three independent reads, so three round trips run at once rather than
+     * one after another. Nothing here depends on anything else here — the
+     * lines, the names and the department labels are joined in memory below —
+     * and on a payroll of four hundred the difference is the whole wait.
+     *
+     * The directory is the pay-free view, so a payroll operator can label rows
+     * without needing read access to the full profile record.
+     */
+    const [{ data: rows }, { data: people }, { data: departments }] = await Promise.all([
+      supabase.from("payroll_items").select("*").eq("period_id", selectedId),
+      supabase.from("employee_directory").select("id, full_name, employee_code, department_id"),
+      supabase.from("departments").select("id, name"),
+    ]);
 
     const personById = new Map((people ?? []).map((p) => [p.id, p]));
     const deptById = new Map((departments ?? []).map((d) => [d.id, d.name]));
@@ -68,7 +73,7 @@ export default async function PayrollPage({
         return {
           id: row.id,
           profile_id: row.profile_id,
-          full_name: person?.full_name ?? "Unknown",
+          full_name: person?.full_name ?? t.payroll.unknownPerson,
           employee_code: person?.employee_code ?? "—",
           department: deptById.get(person?.department_id ?? "") ?? "—",
           pay_class: row.pay_class,
@@ -84,6 +89,16 @@ export default async function PayrollPage({
           flaggedDays: (row.flagged_days ?? []) as ItemRow["flaggedDays"],
           reviewNote: row.review_note,
           paidAt: row.paid_at,
+          /*
+           * `== null`, not `=== null`: these three columns arrive with a
+           * migration, and this row is `select("*")`, so on a database that
+           * has not had it run they come back missing rather than null.
+           * `Number(undefined)` is NaN, which reaches the screen as a payment
+           * of "NaN" against somebody's name.
+           */
+          paidAmount: row.paid_amount == null ? null : Number(row.paid_amount),
+          paidDifference: row.paid_difference == null ? null : Number(row.paid_difference),
+          paidNote: row.paid_note ?? null,
         };
       })
       .sort((a, b) => b.net - a.net);

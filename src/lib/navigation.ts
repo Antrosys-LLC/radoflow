@@ -1,4 +1,5 @@
 import type { NavIconName } from "@/components/nav-icons";
+import { canUseAssistant, isAntrosys } from "@/lib/auth/antrosys";
 import type { Session } from "@/lib/auth/session";
 import type { Dictionary } from "@/lib/i18n";
 
@@ -63,7 +64,9 @@ const WORK_MODULES: readonly NavItem[] = [
     href: "/assistant",
     labelKey: "ask",
     icon: "assistant",
-    requires: ["assistant.ask"],
+    // Empty, because permissions cannot express this: the gate is the role.
+    // `navigationFor` filters it on canUseAssistant below.
+    requires: [],
     description: "Ask a question, by voice or text — Urdu, Roman Urdu or English",
   },
   {
@@ -88,6 +91,13 @@ const WORK_MODULES: readonly NavItem[] = [
     description: "Punches, hours and what they pay",
   },
   {
+    href: "/calendar",
+    labelKey: "workingCalendar",
+    icon: "calendar",
+    requires: ["calendar.manage", "attendance.view", "attendance.view.all"],
+    description: "Which days the factory works, and this Sunday's exception",
+  },
+  {
     href: "/devices",
     labelKey: "devices",
     icon: "devices",
@@ -109,11 +119,27 @@ const WORK_MODULES: readonly NavItem[] = [
     description: "Overtime, weekend and late-arrival rules",
   },
   {
+    href: "/gate",
+    labelKey: "gate",
+    icon: "devices",
+    requires: ["gate.log", "gate.view", "gate.manage"],
+    description: "Who and what came through the gate, and when",
+  },
+  {
     href: "/canteen",
     labelKey: "canteen",
     icon: "canteen",
     requires: ["canteen.serve", "canteen.view"],
     description: "The serving counter, and who has eaten",
+  },
+  {
+    href: "/approvals",
+    labelKey: "approvals",
+    icon: "leave",
+    // Everyone: a manager opens it to watch what they asked for, a director to
+    // decide. The row policy is what limits each of them to their own.
+    requires: [],
+    description: "Changes waiting for a decision, and the ones you asked for",
   },
   {
     href: "/reports",
@@ -128,6 +154,22 @@ const WORK_MODULES: readonly NavItem[] = [
     icon: "payroll",
     requires: ["payroll.view", "payroll.run"],
     description: "Pay runs and payslips",
+  },
+];
+
+/**
+ * Antrosys's own. Not the factory's — what the *system* costs to run, which is
+ * an Antrosys operating figure and belongs in front of nobody else.
+ */
+const ANTROSYS_MODULES: readonly NavItem[] = [
+  {
+    href: "/admin/claude-spend",
+    labelKey: "claudeSpend",
+    icon: "assistant",
+    // Empty, because permissions cannot express this: the CEO holds every one
+    // of them. `navigationFor` filters this list on the role instead.
+    requires: [],
+    description: "What the assistant costs, in rupees",
   },
 ];
 
@@ -161,7 +203,7 @@ const GOVERNANCE_MODULES: readonly NavItem[] = [
  * their own payslip to read.
  */
 const SELF_MODULES: readonly NavItem[] = [
-  { href: "/me/profile", labelKey: "myProfile", icon: "profile", requires: [] },
+  { href: "/me/settings", labelKey: "settings", icon: "settings", requires: [] },
 ];
 
 function visible(items: readonly NavItem[], session: Session | null): NavItem[] {
@@ -173,8 +215,17 @@ function visible(items: readonly NavItem[], session: Session | null): NavItem[] 
 /** The menu for this user, with empty sections dropped. */
 export function navigationFor(session: Session | null): NavSection[] {
   const sections: NavSection[] = [
-    { titleKey: "workspace", items: visible(WORK_MODULES, session) },
+    {
+      titleKey: "workspace",
+      items: visible(WORK_MODULES, session).filter(
+        // Ask is role-gated, not permission-gated — every question costs money
+        // against a monthly ceiling. See lib/auth/antrosys.ts.
+        (item) => item.href !== "/assistant" || canUseAssistant(session),
+      ),
+    },
     { titleKey: "administration", items: visible(GOVERNANCE_MODULES, session) },
+    // Filtered on the role, not on a permission — see ANTROSYS_MODULES.
+    { titleKey: "antrosys", items: isAntrosys(session) ? [...ANTROSYS_MODULES] : [] },
     { titleKey: "myRecords", items: visible(SELF_MODULES, session) },
   ];
 
@@ -193,5 +244,11 @@ export function landingPathFor(session: Session | null): string {
   if (session.permissions.has("attendance.view.all")) return "/attendance";
   if (session.permissions.has("attendance.view")) return "/attendance";
   if (session.permissions.has("payroll.view")) return "/payroll";
-  return "/me/profile";
+  /*
+   * A gate supervisor holds one screen. Landing them on their settings — the
+   * fallback below — would mean signing in and then going looking for the only
+   * thing they came to do.
+   */
+  if (session.permissions.has("gate.log")) return "/gate";
+  return "/me/settings";
 }

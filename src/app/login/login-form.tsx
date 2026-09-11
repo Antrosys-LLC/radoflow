@@ -1,16 +1,20 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { Building2, LogIn, TriangleAlert } from "lucide-react";
 
+import { toast } from "sonner";
+
 import { CnicInput, PasswordInput } from "@/components/credential-inputs";
+import { requestAntrosysReset } from "./reset-actions";
 import { signIn, type LoginState } from "./actions";
 
 const INITIAL: LoginState = { error: null };
 
 export function LoginForm({ next, reason }: { next: string; reason?: string | null }) {
   const [state, formAction] = useActionState(signIn, INITIAL);
+  const [resetting, startReset] = useTransition();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
@@ -38,6 +42,14 @@ export function LoginForm({ next, reason }: { next: string; reason?: string | nu
           {reason === "access-changed" ? (
             <p className="mb-5 rounded-2xl bg-warning-soft px-4 py-3 text-sm text-warning">
               Your access was changed. Sign in again to continue.
+            </p>
+          ) : null}
+
+          {/* A spent or expired recovery link, said plainly rather than as a
+              failed page somewhere else. */}
+          {reason === "reset-expired" ? (
+            <p className="mb-5 rounded-2xl bg-warning-soft px-4 py-3 text-sm text-warning">
+              That reset link has expired or was already used. Ask for another below.
             </p>
           ) : null}
 
@@ -71,6 +83,29 @@ export function LoginForm({ next, reason }: { next: string; reason?: string | nu
 
         <p className="mt-5 text-center text-xs text-muted-foreground">
           Trouble signing in? Contact your factory administrator.
+        </p>
+
+        {/*
+         * Only for the Antrosys administrator, and deliberately understated:
+         * every other account here is recovered in person by the office, which
+         * is faster and needs no mailbox. This exists because the person at the
+         * top of that chain has nobody to ask, and the link goes to one fixed
+         * address rather than to anything typed on this page.
+         */}
+        <p className="mt-2 text-center text-xs text-muted-foreground">
+          <button
+            type="button"
+            disabled={resetting}
+            onClick={() =>
+              startReset(async () => {
+                const result = await requestAntrosysReset();
+                toast.success(result.message, { duration: 12000 });
+              })
+            }
+            className="font-semibold text-primary underline-offset-2 hover:underline disabled:opacity-60"
+          >
+            Antrosys administrator? Email me a reset link
+          </button>
         </p>
       </div>
     </div>

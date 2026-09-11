@@ -6,6 +6,9 @@ import { useFormStatus } from "react-dom";
 import { Check, Lock, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
+import { Latin } from "@/components/latin";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { cn } from "@/lib/utils";
 import { createRole, deleteRole, toggleRolePermission, type RoleResult } from "./actions";
@@ -38,6 +41,7 @@ export function RolesManager({
   roles: RoleRow[];
   permissions: PermissionRow[];
 }) {
+  const t = useDictionary();
   const [state, formAction] = useActionState(createRole, INITIAL);
   const [selectedId, setSelectedId] = useState(roles[0]?.id ?? "");
   const [pending, startTransition] = useTransition();
@@ -69,11 +73,7 @@ export function RolesManager({
   return (
     <div className="space-y-5">
       <Card className="p-4 sm:p-6">
-        <SectionTitle
-          icon={ShieldCheck}
-          title="Roles"
-          subtitle="Pick a role to change what it can do, or create a new one"
-        />
+        <SectionTitle icon={ShieldCheck} title={t.roles.title} subtitle={t.roles.hint} />
 
         <div className="flex flex-wrap gap-2">
           {roles.map((role) => (
@@ -90,7 +90,8 @@ export function RolesManager({
             >
               <span className="flex items-center gap-2 text-sm font-bold">
                 {role.is_superuser ? <Lock className="size-3.5" /> : null}
-                {role.name}
+                {/* A role name is what the office typed. */}
+                <Latin>{role.name}</Latin>
               </span>
               <span
                 className={cn(
@@ -98,8 +99,16 @@ export function RolesManager({
                   selected?.id === role.id ? "opacity-80" : "text-muted-foreground",
                 )}
               >
-                {role.is_superuser ? "Unrestricted" : `${role.permissionIds.length} capabilities`} ·{" "}
-                {role.holders} {role.holders === 1 ? "person" : "people"}
+                {role.is_superuser ? (
+                  t.roles.unrestricted
+                ) : (
+                  <Fill
+                    template={t.roles.capabilities}
+                    values={{ count: role.permissionIds.length }}
+                  />
+                )}
+                {" · "}
+                <Fill template={t.roles.heldBy} values={{ count: role.holders }} />
               </span>
             </button>
           ))}
@@ -110,19 +119,21 @@ export function RolesManager({
           className="mt-5 grid gap-3 rounded-2xl bg-secondary p-4 sm:grid-cols-[2fr_3fr_auto]"
         >
           <div>
-            <label className="text-xs font-semibold text-muted-foreground">New role name</label>
+            <label className="text-xs font-semibold text-muted-foreground">
+              {t.roles.newRoleName}
+            </label>
             <input
               name="name"
               required
-              placeholder="Payroll Officer"
+              placeholder={t.roles.newRolePlaceholder}
               className="mt-1 w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-muted-foreground">What it is for</label>
+            <label className="text-xs font-semibold text-muted-foreground">{t.roles.whatFor}</label>
             <input
               name="description"
-              placeholder="Runs payroll but cannot change access"
+              placeholder={t.roles.whatForPlaceholder}
               className="mt-1 w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
             />
           </div>
@@ -136,12 +147,8 @@ export function RolesManager({
         <Card className="p-4 sm:p-6">
           <SectionTitle
             icon={Check}
-            title={`What ${selected.name} can do`}
-            subtitle={
-              selected.is_superuser
-                ? "This role holds every capability and cannot be restricted"
-                : "Tap a capability to grant or remove it — the change applies immediately"
-            }
+            title={<Fill template={t.roles.whatCanDo} values={{ role: selected.name }} />}
+            subtitle={selected.is_superuser ? t.roles.superuserHint : t.roles.toggleHint}
             action={
               !selected.is_system ? (
                 <button
@@ -151,7 +158,7 @@ export function RolesManager({
                   className="inline-flex items-center gap-2 rounded-xl bg-danger-soft px-4 py-2.5 text-sm font-semibold text-danger transition-all hover:-translate-y-0.5 disabled:opacity-50"
                 >
                   <Trash2 className="size-4" />
-                  Delete role
+                  {t.roles.deleteRole}
                 </button>
               ) : null
             }
@@ -159,8 +166,7 @@ export function RolesManager({
 
           {selected.is_superuser ? (
             <p className="rounded-2xl bg-primary-soft p-4 text-sm font-semibold text-primary">
-              {selected.name} is an unrestricted role. Every capability is granted implicitly, so it
-              can never be locked out of this screen by an accidental edit.
+              <Fill template={t.roles.superuserNote} values={{ role: selected.name }} />
             </p>
           ) : (
             <PermissionGrid
@@ -216,7 +222,7 @@ function PermissionGrid({
       {Object.entries(byModule).map(([module, items]) => (
         <div key={module}>
           <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-            {module}
+            <Latin>{module}</Latin>
           </p>
           <div className="flex flex-wrap gap-2">
             {items.map((permission) => {
@@ -248,7 +254,7 @@ function PermissionGrid({
                       )}
                     />
                   </span>
-                  {permission.label}
+                  <Latin>{permission.label}</Latin>
                 </button>
               );
             })}
@@ -260,6 +266,7 @@ function PermissionGrid({
 }
 
 function CreateButton() {
+  const t = useDictionary();
   const { pending } = useFormStatus();
   return (
     <button
@@ -268,7 +275,7 @@ function CreateButton() {
       className="inline-flex h-[46px] items-center gap-2 rounded-2xl bg-primary px-5 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5 disabled:opacity-60"
     >
       <Plus className="size-4" />
-      {pending ? "Creating…" : "Create role"}
+      {pending ? t.roles.creating : t.roles.createRole}
     </button>
   );
 }

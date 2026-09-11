@@ -6,7 +6,12 @@ import { useFormStatus } from "react-dom";
 import { AlertTriangle, BadgeCheck, Banknote, Check, FileText, Play, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { AskAbout } from "@/components/assistant/ask-about";
+import { Fill } from "@/components/fill";
+import { useDictionary } from "@/components/language-provider";
+import { Latin } from "@/components/latin";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
+import type { Dictionary } from "@/lib/i18n";
 import { formatDate, formatDateTime, formatHours, formatPKR } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import {
@@ -74,6 +79,14 @@ export interface ItemRow {
   reviewNote: string | null;
   /** When this person was actually handed their cash. Null means not yet. */
   paidAt: string | null;
+  /**
+   * What actually left the cash box, and how far that was from `net`. Null
+   * until paid — zero would mean "paid exactly right", which is a different
+   * statement from "not paid yet".
+   */
+  paidAmount: number | null;
+  paidDifference: number | null;
+  paidNote: string | null;
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -96,6 +109,7 @@ export function PayrollClient({
   sites: { id: string; name: string }[];
   can: { run: boolean; approve: boolean; pay: boolean };
 }) {
+  const t = useDictionary();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showNew, setShowNew] = useState(false);
@@ -119,8 +133,8 @@ export function PayrollClient({
       <Card className="p-4 sm:p-6">
         <SectionTitle
           icon={Banknote}
-          title="Pay periods"
-          subtitle="Calculated from the attendance the terminals recorded"
+          title={t.payroll.periods}
+          subtitle={t.payroll.periodsHint}
           action={
             can.run ? (
               <button
@@ -129,7 +143,7 @@ export function PayrollClient({
                 className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5"
               >
                 <Plus className="size-4" />
-                New period
+                {t.payroll.newPeriod}
               </button>
             ) : null
           }
@@ -137,10 +151,8 @@ export function PayrollClient({
 
         {periods.length === 0 ? (
           <div className="rounded-2xl bg-secondary p-8 text-center">
-            <p className="text-sm font-semibold text-foreground">No pay periods yet</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Create one covering the dates you want to pay for.
-            </p>
+            <p className="text-sm font-semibold text-foreground">{t.payroll.noPeriods}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t.payroll.noPeriodsHint}</p>
           </div>
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">
@@ -158,10 +170,14 @@ export function PayrollClient({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-bold text-foreground">{period.label}</p>
+                    <p className="text-sm font-bold text-foreground">
+                      <Latin>{period.label}</Latin>
+                    </p>
                     <p className="text-xs text-muted-foreground">
-                      {period.siteName} · {formatDate(period.period_start)} –{" "}
-                      {formatDate(period.period_end)}
+                      <Latin>
+                        {period.siteName} · {formatDate(period.period_start)} –{" "}
+                        {formatDate(period.period_end)}
+                      </Latin>
                     </p>
                   </div>
                   <span
@@ -170,16 +186,21 @@ export function PayrollClient({
                       STATUS_TONE[period.status] ?? STATUS_TONE["draft"],
                     )}
                   >
-                    {period.status}
+                    {statusLabel(t, period.status)}
                   </span>
                 </div>
                 {period.headcount > 0 ? (
                   <p className="mt-2 text-xs text-muted-foreground">
-                    {period.headcount} paid · net{" "}
-                    <span className="font-bold text-foreground">{formatPKR(period.total_net)}</span>
+                    <Fill
+                      template={t.payroll.paidSummary}
+                      values={{
+                        count: period.headcount,
+                        amount: formatPKR(period.total_net),
+                      }}
+                    />
                   </p>
                 ) : (
-                  <p className="mt-2 text-xs text-muted-foreground">Not calculated yet</p>
+                  <p className="mt-2 text-xs text-muted-foreground">{t.payroll.notCalculated}</p>
                 )}
               </button>
             ))}
@@ -192,15 +213,38 @@ export function PayrollClient({
           <Card className="p-4 sm:p-6">
             <SectionTitle
               icon={Play}
-              title={selected.label}
-              subtitle={`${selected.siteName} · ${formatDate(selected.period_start)} to ${formatDate(selected.period_end)}`}
+              title={<Latin>{selected.label}</Latin>}
+              subtitle={
+                <Latin>{`${selected.siteName} · ${formatDate(selected.period_start)} – ${formatDate(selected.period_end)}`}</Latin>
+              }
+              action={
+                <AskAbout
+                  label={selected.label}
+                  context={{
+                    surface: "payroll",
+                    subject: `${selected.label} (${selected.period_start} to ${selected.period_end})`,
+                    facts: {
+                      status: selected.status,
+                      headcount: selected.headcount,
+                      grossRs: selected.total_gross,
+                      deductionsRs: selected.total_deductions,
+                      taxRs: selected.total_tax,
+                      netRs: selected.total_net,
+                      locked: selected.locked,
+                      linesNeedingReview: items.filter(
+                        (item) => item.flaggedHours > 0 || item.reviewNote,
+                      ).length,
+                    },
+                  }}
+                />
+              }
             />
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Total label="Gross pay" value={selected.total_gross} />
-              <Total label="Deductions" value={selected.total_deductions} tone="danger" />
-              <Total label="Tax" value={selected.total_tax} tone="danger" />
-              <Total label="Net payable" value={selected.total_net} tone="primary" />
+              <Total label={t.payroll.grossPay} value={selected.total_gross} />
+              <Total label={t.payroll.deductions} value={selected.total_deductions} tone="danger" />
+              <Total label={t.payroll.tax} value={selected.total_tax} tone="danger" />
+              <Total label={t.payroll.netPayable} value={selected.total_net} tone="primary" />
             </div>
 
             <div className="mt-5 flex flex-wrap gap-3">
@@ -208,11 +252,11 @@ export function PayrollClient({
                 <button
                   type="button"
                   disabled={pending}
-                  onClick={() => act(() => runPeriod(selected.id), "Calculating from attendance…")}
+                  onClick={() => act(() => runPeriod(selected.id), t.payroll.calculating)}
                   className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all hover:-translate-y-0.5 disabled:opacity-50"
                 >
                   <Play className="size-4" />
-                  {selected.headcount > 0 ? "Recalculate" : "Run payroll"}
+                  {selected.headcount > 0 ? t.payroll.recalculate : t.payroll.runPayroll}
                 </button>
               ) : null}
 
@@ -220,11 +264,11 @@ export function PayrollClient({
                 <button
                   type="button"
                   disabled={pending}
-                  onClick={() => act(() => approvePeriod(selected.id), "Approving…")}
+                  onClick={() => act(() => approvePeriod(selected.id), t.payroll.approving)}
                   className="inline-flex items-center gap-2 rounded-xl bg-charcoal px-4 py-2.5 text-sm font-bold text-charcoal-foreground transition-all hover:-translate-y-0.5 disabled:opacity-50"
                 >
                   <BadgeCheck className="size-4" />
-                  Approve
+                  {t.payroll.approve}
                 </button>
               ) : null}
 
@@ -232,17 +276,17 @@ export function PayrollClient({
                 <button
                   type="button"
                   disabled={pending}
-                  onClick={() => act(() => markPeriodPaid(selected.id), "Closing period…")}
+                  onClick={() => act(() => markPeriodPaid(selected.id), t.payroll.closingPeriod)}
                   className="inline-flex items-center gap-2 rounded-xl bg-success px-4 py-2.5 text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-50"
                 >
                   <Banknote className="size-4" />
-                  Mark paid &amp; lock
+                  {t.payroll.markPaidAndLock}
                 </button>
               ) : null}
 
               {selected.locked ? (
                 <p className="self-center text-xs font-semibold text-muted-foreground">
-                  Locked — paid periods cannot be recalculated.
+                  {t.payroll.locked}
                 </p>
               ) : null}
             </div>
@@ -251,8 +295,8 @@ export function PayrollClient({
           <Card className="p-4 sm:p-6">
             <SectionTitle
               icon={FileText}
-              title={`Payroll lines · ${items.length}`}
-              subtitle="Hours come from the biometric terminals; tap a row for the full payslip"
+              title={<Fill template={t.payroll.lines} values={{ count: items.length }} />}
+              subtitle={t.payroll.linesHint}
             />
 
             {(() => {
@@ -261,13 +305,15 @@ export function PayrollClient({
               return (
                 <div className="mb-4 flex items-start gap-3 rounded-2xl bg-warning-soft px-4 py-3">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+                  {/* One sentence with the count inside it, rather than a
+                      bold fragment glued to a tail — Urdu puts the count in a
+                      different place, and a sentence split in JSX cannot move
+                      it. */}
                   <p className="text-sm text-foreground">
-                    <span className="font-bold">
-                      {needsReview.length} employee{needsReview.length === 1 ? "" : "s"}
-                    </span>{" "}
-                    worth a look before you approve — dropped hours, an attendance anomaly, or a pay
-                    swing against their recent history. Nothing is calculated wrong; check each
-                    person&apos;s note on their payslip.
+                    <Fill
+                      template={t.payroll.reviewBanner}
+                      values={{ count: needsReview.length }}
+                    />
                   </p>
                 </div>
               );
@@ -279,9 +325,11 @@ export function PayrollClient({
 
             {items.length === 0 ? (
               <div className="rounded-2xl bg-secondary p-8 text-center">
-                <p className="text-sm font-semibold text-foreground">Nothing calculated yet</p>
+                <p className="text-sm font-semibold text-foreground">
+                  {t.payroll.nothingCalculated}
+                </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Run the payroll to build the lines from attendance.
+                  {t.payroll.nothingCalculatedHint}
                 </p>
               </div>
             ) : (
@@ -289,15 +337,15 @@ export function PayrollClient({
                 <table className="w-full min-w-[900px] border-separate border-spacing-y-2 text-sm">
                   <thead>
                     <tr className="text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                      <th className="px-4 pb-2">Employee</th>
-                      <th className="px-4 pb-2">Dept</th>
-                      <th className="px-4 pb-2 text-right">Reg h</th>
-                      <th className="px-4 pb-2 text-right">OT h</th>
-                      <th className="px-4 pb-2 text-right">Gross</th>
-                      <th className="px-4 pb-2 text-right">Deductions</th>
-                      <th className="px-4 pb-2 text-right">Tax</th>
-                      <th className="px-4 pb-2 text-right">Net</th>
-                      <th className="px-4 pb-2">Paid</th>
+                      <th className="px-4 pb-2">{t.common.person}</th>
+                      <th className="px-4 pb-2">{t.common.department}</th>
+                      <th className="px-4 pb-2 text-right">{t.payroll.colRegularHours}</th>
+                      <th className="px-4 pb-2 text-right">{t.payroll.colOvertimeHours}</th>
+                      <th className="px-4 pb-2 text-right">{t.payroll.colGross}</th>
+                      <th className="px-4 pb-2 text-right">{t.payroll.deductions}</th>
+                      <th className="px-4 pb-2 text-right">{t.payroll.tax}</th>
+                      <th className="px-4 pb-2 text-right">{t.payroll.colNet}</th>
+                      <th className="px-4 pb-2">{t.payroll.colPaid}</th>
                       <th className="px-4 pb-2" />
                     </tr>
                   </thead>
@@ -309,7 +357,7 @@ export function PayrollClient({
                             <Avatar name={item.full_name} />
                             <div>
                               <p className="flex items-center gap-1.5 font-semibold text-foreground">
-                                {item.full_name}
+                                <Latin>{item.full_name}</Latin>
                                 {item.reviewNote ? (
                                   <span title={item.reviewNote}>
                                     <AlertTriangle className="size-3.5 shrink-0 text-warning" />
@@ -317,19 +365,28 @@ export function PayrollClient({
                                 ) : null}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {item.employee_code} · {item.pay_class}
+                                <Latin>{item.employee_code}</Latin> ·{" "}
+                                {t.status.payClass[item.pay_class as "monthly" | "hourly"] ??
+                                  item.pay_class}
                               </p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">{item.department}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">{item.regular_hours}</td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          <Latin>{item.department}</Latin>
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums">
+                          <Latin>{item.regular_hours}</Latin>
+                        </td>
                         <td className="px-4 py-3 text-right font-semibold tabular-nums text-warning">
                           <span className="inline-flex items-center gap-1.5">
-                            {item.ot_hours}
+                            <Latin>{item.ot_hours}</Latin>
                             {item.flaggedHours > 0 ? (
                               <span
-                                title={`${item.flaggedHours}h dropped by the overtime ceiling on ${item.flaggedDays.map((d) => d.workDate).join(", ")} — check before approving`}
+                                title={fill(t.payroll.droppedTooltip, {
+                                  hours: formatHours(item.flaggedHours),
+                                  dates: item.flaggedDays.map((d) => d.workDate).join(", "),
+                                })}
                               >
                                 <AlertTriangle className="size-3.5 text-danger" />
                               </span>
@@ -337,16 +394,16 @@ export function PayrollClient({
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums">
-                          {formatPKR(item.gross)}
+                          <Latin>{formatPKR(item.gross)}</Latin>
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-danger">
-                          {item.deductions ? `- ${formatPKR(item.deductions)}` : "—"}
+                          <Latin>{item.deductions ? `- ${formatPKR(item.deductions)}` : "—"}</Latin>
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-danger">
-                          {item.tax ? `- ${formatPKR(item.tax)}` : "—"}
+                          <Latin>{item.tax ? `- ${formatPKR(item.tax)}` : "—"}</Latin>
                         </td>
                         <td className="px-4 py-3 text-right font-bold tabular-nums text-foreground">
-                          {formatPKR(item.net)}
+                          <Latin>{formatPKR(item.net)}</Latin>
                         </td>
                         <td className="px-4 py-3">
                           <PaidCell
@@ -366,7 +423,7 @@ export function PayrollClient({
                             className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-xs font-bold text-primary-foreground transition-all hover:-translate-y-0.5"
                           >
                             <FileText className="size-4" />
-                            Payslip
+                            {t.payroll.payslip}
                           </button>
                         </td>
                       </tr>
@@ -383,6 +440,23 @@ export function PayrollClient({
       {slip ? <PayslipSheet item={slip} onClose={() => setSlip(null)} /> : null}
     </div>
   );
+}
+
+/**
+ * A `payroll_status` member as a word rather than as the enum spells it. The
+ * fallback is the member itself — a status added to the enum and not yet to
+ * the dictionary should show as something, not as a blank badge.
+ */
+function statusLabel(t: Dictionary, status: string): string {
+  return t.status.payroll[status as keyof Dictionary["status"]["payroll"]] ?? status;
+}
+
+/**
+ * The plain-string sibling of `<Fill>`, for the two places a sentence has to
+ * be a string: a `title` attribute and a toast message.
+ */
+function fill(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (_match, key: string) => String(values[key] ?? ""));
 }
 
 function Total({
@@ -405,7 +479,7 @@ function Total({
           !tone && "text-foreground",
         )}
       >
-        {formatPKR(value)}
+        <Latin>{formatPKR(value)}</Latin>
       </p>
     </div>
   );
@@ -419,8 +493,13 @@ function Total({
  * approved amount by days while the cashier works through the floor.
  */
 function CashPaymentTally({ items }: { items: ItemRow[] }) {
+  const t = useDictionary();
   const paid = items.filter((item) => item.paidAt !== null);
-  const paidAmount = paid.reduce((total, item) => total + item.net, 0);
+  // What actually left the cash box, not what was owed — those are the same
+  // figure only when every line was paid to the rupee.
+  const paidAmount = paid.reduce((total, item) => total + (item.paidAmount ?? item.net), 0);
+  const differing = paid.filter((item) => (item.paidDifference ?? 0) !== 0);
+  const differenceNet = differing.reduce((total, item) => total + (item.paidDifference ?? 0), 0);
   const totalAmount = items.reduce((total, item) => total + item.net, 0);
   const allPaid = paid.length === items.length;
 
@@ -437,14 +516,34 @@ function CashPaymentTally({ items }: { items: ItemRow[] }) {
         <Banknote className="size-4 shrink-0 text-muted-foreground" />
       )}
       <p className="text-sm text-foreground">
-        <span className="font-bold">
-          {paid.length} of {items.length}
-        </span>{" "}
-        paid in cash · {formatPKR(paidAmount)} of {formatPKR(totalAmount)} disbursed
+        <Fill
+          template={t.payroll.cashTally}
+          values={{
+            paid: paid.length,
+            total: items.length,
+            paidAmount: formatPKR(paidAmount),
+            totalAmount: formatPKR(totalAmount),
+          }}
+        />
         {!allPaid ? (
-          <span className="text-muted-foreground"> — {items.length - paid.length} left</span>
+          <span className="text-muted-foreground">
+            {" — "}
+            <Fill template={t.payroll.cashLeft} values={{ count: items.length - paid.length }} />
+          </span>
         ) : null}
       </p>
+
+      {differing.length > 0 ? (
+        <p className="ms-auto shrink-0 text-xs font-bold text-warning">
+          <Fill
+            template={t.payroll.differencesTotal}
+            values={{
+              count: differing.length,
+              amount: `${differenceNet > 0 ? "+" : ""}${formatPKR(differenceNet)}`,
+            }}
+          />
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -461,24 +560,45 @@ function PaidCell({
   pending: boolean;
   act: (fn: () => Promise<PayrollResultMessage>, loading: string) => void;
 }) {
+  const t = useDictionary();
+
+  const difference = item.paidDifference ?? 0;
+
   if (item.paidAt) {
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <span
           title={formatDateTime(item.paidAt)}
           className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-bold text-success"
         >
           <Check className="size-3" />
-          {formatDate(item.paidAt)}
+          <Latin>{formatDate(item.paidAt)}</Latin>
         </span>
+
+        {/* A line paid short or over says so on the row. Nobody re-reads a
+            payslip they have already handed out. */}
+        {difference !== 0 ? (
+          <span
+            title={item.paidNote ?? undefined}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold",
+              difference < 0 ? "bg-danger-soft text-danger" : "bg-warning-soft text-warning",
+            )}
+          >
+            <Fill
+              template={difference < 0 ? t.payroll.shortBy : t.payroll.overBy}
+              values={{ amount: formatPKR(Math.abs(difference)) }}
+            />
+          </span>
+        ) : null}
         {canPay ? (
           <button
             type="button"
             disabled={pending}
-            onClick={() => act(() => markItemUnpaid(item.id), "Undoing…")}
+            onClick={() => act(() => markItemUnpaid(item.id), t.payroll.undoing)}
             className="text-[11px] font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
           >
-            Undo
+            {t.payroll.undo}
           </button>
         ) : null}
       </div>
@@ -486,19 +606,112 @@ function PaidCell({
   }
 
   if (!canPay) {
-    return <span className="text-xs text-muted-foreground">Not yet</span>;
+    return <span className="text-xs text-muted-foreground">{t.payroll.notYet}</span>;
+  }
+
+  return <PayOutButton item={item} pending={pending} act={act} />;
+}
+
+/**
+ * Handing over the cash for one line.
+ *
+ * One tap when the calculated figure is what was handed over — which is most
+ * of the time, and making that case type a number would get the number typed
+ * carelessly. The amount and a reason appear only when the cashier says the
+ * figure was different, so what is recorded is what actually happened rather
+ * than what the run expected.
+ */
+function PayOutButton({
+  item,
+  pending,
+  act,
+}: {
+  item: ItemRow;
+  pending: boolean;
+  act: (fn: () => Promise<PayrollResultMessage>, loading: string) => void;
+}) {
+  const t = useDictionary();
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState(String(item.net));
+  const [note, setNote] = useState("");
+
+  const typed = Number(amount);
+  const difference = Number.isFinite(typed) ? typed - item.net : 0;
+
+  function record() {
+    setOpen(false);
+    act(
+      () => markItemPaid(item.id, Number.isFinite(typed) ? typed : item.net, note),
+      fill(t.payroll.markingPaid, { name: item.full_name }),
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-xl bg-success px-3 py-1.5 text-xs font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-50"
+      >
+        <Banknote className="size-3.5" />
+        {t.payroll.markPaid}
+      </button>
+    );
   }
 
   return (
-    <button
-      type="button"
-      disabled={pending}
-      onClick={() => act(() => markItemPaid(item.id), `Marking ${item.full_name} paid…`)}
-      className="inline-flex items-center gap-1.5 rounded-xl bg-success px-3 py-1.5 text-xs font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-50"
-    >
-      <Banknote className="size-3.5" />
-      Mark paid
-    </button>
+    <div className="min-w-[13rem] space-y-1.5">
+      <label className="block">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+          {t.payroll.amountPaid}
+        </span>
+        <input
+          type="number"
+          min={0}
+          step="0.01"
+          value={amount}
+          dir="ltr"
+          autoFocus
+          onChange={(event) => setAmount(event.target.value)}
+          className="mt-0.5 w-full rounded-xl border border-input bg-background px-2.5 py-1.5 font-latin text-xs outline-none focus:border-primary"
+        />
+      </label>
+
+      {/* The reason is asked for only when there is a difference to explain —
+          and then it is the whole point of the record. */}
+      {difference !== 0 ? (
+        <input
+          type="text"
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder={t.payroll.paidReasonPlaceholder}
+          aria-label={t.payroll.paidReason}
+          className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs outline-none focus:border-primary"
+        />
+      ) : (
+        <p className="text-[10px] text-muted-foreground">{t.payroll.amountPaidHint}</p>
+      )}
+
+      <div className="flex gap-1.5">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={record}
+          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-success px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+        >
+          <Banknote className="size-3.5" />
+          {t.payroll.confirmPay}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-xl px-2 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
+        >
+          {t.common.cancel}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -509,6 +722,7 @@ function NewPeriodDialog({
   sites: { id: string; name: string }[];
   onClose: () => void;
 }) {
+  const t = useDictionary();
   const [state, formAction] = useActionState(createPeriod, INITIAL);
   const router = useRouter();
 
@@ -531,11 +745,13 @@ function NewPeriodDialog({
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-3 backdrop-blur-sm sm:items-center">
       <div className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-[0_18px_40px_rgb(0_0_0/0.18)]">
         <div className="flex items-start justify-between">
-          <h2 className="text-lg font-bold tracking-tight text-foreground">New pay period</h2>
+          <h2 className="text-lg font-bold tracking-tight text-foreground">
+            {t.payroll.newPeriodTitle}
+          </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t.common.close}
             className="flex size-10 items-center justify-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground"
           >
             <X className="size-4" />
@@ -544,7 +760,7 @@ function NewPeriodDialog({
 
         <form action={formAction} className="mt-5 space-y-4">
           <div>
-            <label className="text-sm font-semibold text-foreground">Factory</label>
+            <label className="text-sm font-semibold text-foreground">{t.common.site}</label>
             <select name="site_id" required defaultValue={sites[0]?.id ?? ""} className={input}>
               {sites.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -554,17 +770,17 @@ function NewPeriodDialog({
             </select>
           </div>
           <div>
-            <label className="text-sm font-semibold text-foreground">Label</label>
-            <input name="label" placeholder="August 2026" className={input} />
+            <label className="text-sm font-semibold text-foreground">{t.payroll.periodLabel}</label>
+            <input name="label" placeholder={t.payroll.periodLabelPlaceholder} className={input} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="text-sm font-semibold text-foreground">From</label>
-              <input name="period_start" type="date" required className={input} />
+              <label className="text-sm font-semibold text-foreground">{t.payroll.from}</label>
+              <input name="period_start" type="date" required dir="ltr" className={input} />
             </div>
             <div>
-              <label className="text-sm font-semibold text-foreground">To</label>
-              <input name="period_end" type="date" required className={input} />
+              <label className="text-sm font-semibold text-foreground">{t.payroll.to}</label>
+              <input name="period_end" type="date" required dir="ltr" className={input} />
             </div>
           </div>
           <CreateButton />
@@ -575,6 +791,7 @@ function NewPeriodDialog({
 }
 
 function CreateButton() {
+  const t = useDictionary();
   const { pending } = useFormStatus();
   return (
     <button
@@ -583,12 +800,13 @@ function CreateButton() {
       className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3.5 text-sm font-bold text-primary-foreground transition-all hover:-translate-y-0.5 disabled:opacity-60"
     >
       <Plus className="size-4" />
-      {pending ? "Creating…" : "Create period"}
+      {pending ? t.payroll.creating : t.payroll.createPeriod}
     </button>
   );
 }
 
 function PayslipSheet({ item, onClose }: { item: ItemRow; onClose: () => void }) {
+  const t = useDictionary();
   const earnings = item.breakdown.filter((l) => l.kind === "base" || l.kind === "earning");
   const deductions = item.breakdown.filter((l) => l.kind === "deduction" || l.kind === "tax");
 
@@ -599,34 +817,69 @@ function PayslipSheet({ item, onClose }: { item: ItemRow; onClose: () => void })
           <div className="flex items-center gap-3">
             <Avatar name={item.full_name} className="size-12" />
             <div>
-              <p className="text-lg font-bold tracking-tight text-foreground">{item.full_name}</p>
+              <p className="text-lg font-bold tracking-tight text-foreground">
+                <Latin>{item.full_name}</Latin>
+              </p>
               <p className="text-xs text-muted-foreground">
-                {item.employee_code} · {item.department} · {item.pay_class}
+                <Latin>{`${item.employee_code} · ${item.department}`}</Latin> ·{" "}
+                {t.status.payClass[item.pay_class as "monthly" | "hourly"] ?? item.pay_class}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close payslip"
-            className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground"
-          >
-            <X className="size-4" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {/* On the payslip itself, because "why is this number this
+                number" is the question this screen exists to answer and the
+                whole breakdown is already on it. */}
+            <AskAbout
+              variant="icon"
+              label={item.full_name}
+              context={{
+                surface: "payslip",
+                subject: `${item.full_name} (${item.employee_code}), ${item.department}`,
+                facts: {
+                  payClass: item.pay_class,
+                  dutyHours: item.regular_hours,
+                  overtimeHours: item.ot_hours,
+                  weekendHours: item.weekend_hours,
+                  grossRs: item.gross,
+                  deductionsRs: item.deductions,
+                  taxRs: item.tax,
+                  netRs: item.net,
+                  paidRs: item.paidAmount ?? "",
+                  differenceRs: item.paidDifference ?? "",
+                  droppedOvertimeHours: item.flaggedHours,
+                  reviewNote: item.reviewNote ?? "",
+                },
+              }}
+            />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={t.payroll.closePayslip}
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-          <Mini label="Regular" value={formatHours(item.regular_hours)} />
-          <Mini label="Overtime" value={formatHours(item.ot_hours)} />
-          <Mini label="Weekend" value={formatHours(item.weekend_hours)} />
+          <Mini label={t.payroll.regular} value={formatHours(item.regular_hours)} />
+          <Mini label={t.payroll.overtime} value={formatHours(item.ot_hours)} />
+          <Mini label={t.payroll.weekend} value={formatHours(item.weekend_hours)} />
         </div>
 
         {item.reviewNote ? (
           <div className="mt-4 flex items-start gap-3 rounded-2xl bg-warning-soft px-4 py-3">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
             <div className="text-sm text-foreground">
-              <p className="font-bold">Worth a look before approving</p>
-              <p className="mt-0.5 text-muted-foreground">{item.reviewNote}</p>
+              <p className="font-bold">{t.payroll.worthLook}</p>
+              {/* Written by the review pass, in English. Passed through rather
+                  than translated: an invented Urdu sentence around it would
+                  hide what was actually flagged. */}
+              <p className="mt-0.5 text-muted-foreground">
+                <Latin>{item.reviewNote}</Latin>
+              </p>
             </div>
           </div>
         ) : item.flaggedHours > 0 ? (
@@ -634,24 +887,61 @@ function PayslipSheet({ item, onClose }: { item: ItemRow; onClose: () => void })
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
             <div className="text-sm text-foreground">
               <p className="font-bold">
-                {formatHours(item.flaggedHours)} dropped by the overtime ceiling
+                <Fill
+                  template={t.payroll.droppedTitle}
+                  values={{ hours: formatHours(item.flaggedHours) }}
+                />
               </p>
               <p className="mt-0.5 text-muted-foreground">
-                Likely a double-duty day, not a wrong number — check the punches for{" "}
-                {item.flaggedDays.map((d) => `${d.workDate} (${formatHours(d.hours)})`).join(", ")}{" "}
-                before approving.
+                <Fill
+                  template={t.payroll.droppedBody}
+                  values={{
+                    dates: item.flaggedDays
+                      .map((d) => `${d.workDate} (${formatHours(d.hours)})`)
+                      .join(", "),
+                  }}
+                />
               </p>
             </div>
           </div>
         ) : null}
 
-        <Section title="Earnings" lines={earnings} />
-        <Section title="Deductions" lines={deductions} negative />
+        {item.paidAmount !== null && (item.paidDifference ?? 0) !== 0 ? (
+          <div
+            className={cn(
+              "mt-4 rounded-2xl px-4 py-3 text-sm",
+              (item.paidDifference ?? 0) < 0
+                ? "bg-danger-soft text-danger"
+                : "bg-warning-soft text-warning",
+            )}
+          >
+            <p className="font-bold">
+              <Fill
+                template={(item.paidDifference ?? 0) < 0 ? t.payroll.shortBy : t.payroll.overBy}
+                values={{ amount: formatPKR(Math.abs(item.paidDifference ?? 0)) }}
+              />
+            </p>
+            <p className="mt-0.5 text-foreground">
+              <Latin>{`${formatPKR(item.paidAmount)} / ${formatPKR(item.net)}`}</Latin>
+              {item.paidNote ? (
+                <>
+                  {" — "}
+                  <Latin>{item.paidNote}</Latin>
+                </>
+              ) : null}
+            </p>
+          </div>
+        ) : null}
+
+        <Section title={t.payroll.earnings} lines={earnings} />
+        <Section title={t.payroll.deductions} lines={deductions} negative />
 
         <div className="mt-4 rounded-2xl bg-primary-soft p-4">
-          <p className="text-xs font-bold uppercase tracking-wide text-primary">Net pay</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-primary">
+            {t.payroll.netPay}
+          </p>
           <p className="mt-1 text-3xl font-bold tracking-tight text-foreground">
-            {formatPKR(item.net)}
+            <Latin>{formatPKR(item.net)}</Latin>
           </p>
         </div>
 
@@ -660,7 +950,7 @@ function PayslipSheet({ item, onClose }: { item: ItemRow; onClose: () => void })
           onClick={() => typeof window !== "undefined" && window.print()}
           className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-secondary px-4 py-3 text-sm font-semibold text-foreground transition-all hover:bg-muted"
         >
-          Print payslip
+          {t.payroll.printPayslip}
         </button>
       </div>
     </div>
@@ -689,10 +979,12 @@ function Section({
             className="flex items-center justify-between gap-3 rounded-2xl bg-secondary px-4 py-2.5"
           >
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-foreground">{line.label}</p>
+              <p className="truncate text-sm font-medium text-foreground">
+                <Latin>{line.label}</Latin>
+              </p>
               {line.hours != null && line.rate != null ? (
                 <p className="text-xs text-muted-foreground">
-                  {line.hours} h × {formatPKR(line.rate)}
+                  <Latin>{`${line.hours} h × ${formatPKR(line.rate)}`}</Latin>
                 </p>
               ) : null}
             </div>
@@ -702,8 +994,7 @@ function Section({
                 negative ? "text-danger" : "text-foreground",
               )}
             >
-              {negative ? "- " : ""}
-              {formatPKR(line.amount)}
+              <Latin>{`${negative ? "- " : ""}${formatPKR(line.amount)}`}</Latin>
             </span>
           </div>
         ))}
@@ -716,7 +1007,9 @@ function Mini({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl bg-secondary px-2 py-3">
       <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-sm font-bold text-foreground">{value}</p>
+      <p className="mt-0.5 text-sm font-bold text-foreground">
+        <Latin>{value}</Latin>
+      </p>
     </div>
   );
 }

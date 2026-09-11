@@ -456,7 +456,7 @@ export default async function DashboardPage() {
                 subtitle={t.dashboard.everythingAvailable}
               />
               <Link
-                href="/me/profile"
+                href="/me/settings"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition-all hover:-translate-y-0.5"
               >
                 {t.dashboard.openMyProfile}

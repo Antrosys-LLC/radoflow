@@ -135,7 +135,7 @@ export function parseHeading(heading) {
 }
 
 /**
- * Reads column O — the free-text duty rule — into the fields payroll needs.
+ * Reads the free-text duty rule into the fields payroll needs.
  *
  * The column is handwritten English with inconsistent spelling and casing, so
  * every test here is a loose match on a keyword rather than an equality check.
@@ -173,6 +173,34 @@ export function parseDutyRule(rule) {
   };
 }
 
+const colIndex = (letters) => [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+
+/**
+ * Where each field lives, read from the header row rather than fixed letters.
+ *
+ * The office has already inserted EMPLOYEE ID, TERMINAL ID and HAS OWN ID
+ * columns once, which moved designation from C to F and salary from D to G;
+ * a reader pinned to letters imported terminal ids as salaries. The duty rule
+ * has no heading of its own — it is the first unheaded column after NET PAY.
+ */
+function columnsOf(rows) {
+  const header = rows.find((cells) => {
+    const labels = Object.values(cells);
+    return labels.includes("NAME") && labels.includes("S RATE");
+  });
+  if (!header) throw new Error('No header row with "NAME" and "S RATE" in the sheet.');
+
+  const col = Object.fromEntries(Object.entries(header).map(([letter, label]) => [label, letter]));
+  const after = colIndex(col["NET PAY"] ?? "A");
+  const populated = new Set(rows.flatMap((cells) => Object.keys(cells)));
+
+  col.rule = [...populated]
+    .filter((letter) => !(letter in header) && colIndex(letter) > after)
+    .sort((a, b) => colIndex(a) - colIndex(b))[0];
+
+  return col;
+}
+
 /** Every person in the workbook, in sheet order, with their department. */
 export function readWorkers(path) {
   const files = unzip(readFileSync(path));
@@ -187,6 +215,8 @@ export function readWorkers(path) {
 
   // Sheet 2 is the per-person list; sheet 1 is a department summary.
   const rows = sheetRows(files, 2, shared);
+  const col = columnsOf(rows);
+  const text = (cells, label) => String(cells[col[label]] ?? "").trim();
 
   const people = [];
   const departments = new Map();
@@ -211,15 +241,20 @@ export function readWorkers(path) {
     const name = String(cells.B ?? "").trim();
     if (!name || name === "0") continue;
 
+    const salary = Number(text(cells, "S RATE"));
+
     people.push({
       serial: Number(serial),
       department: current?.name ?? "Unassigned",
       departmentOrder: current?.order ?? 999,
       name,
-      designation: String(cells.C ?? "").trim(),
-      salary: Number(cells.D ?? 0) || 0,
-      rule: String(cells.O ?? "").trim(),
-      ...parseDutyRule(cells.O),
+      employeeCode: text(cells, "EMPLOYEE ID"),
+      terminalId: text(cells, "TERMINAL ID"),
+      designation: text(cells, "DESIGNATION"),
+      // Blank means "not filled in yet", which is not the same claim as zero.
+      salary: salary > 0 ? salary : null,
+      rule: text(cells, "rule"),
+      ...parseDutyRule(text(cells, "rule")),
     });
   }
 

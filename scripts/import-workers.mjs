@@ -13,8 +13,9 @@
  * sign-in path can reach them: they are employee records, not accounts. To give
  * someone access later, set their CNIC and a password from the people screen.
  *
- * Re-running is safe. People are matched on employee code and updated in place,
- * so a corrected spreadsheet can be imported over the top of an earlier run.
+ * Re-running is safe. People are matched on the sheet's EMPLOYEE ID and updated
+ * in place, so a corrected spreadsheet can be imported over an earlier run. A
+ * blank salary cell is left alone rather than written as zero.
  *
  * Usage:
  *   node scripts/import-workers.mjs "C:/path/WORKERS LIST.xlsx" [--dry-run]
@@ -84,6 +85,29 @@ async function main() {
     `Read ${people.length} people in ${departments.length} departments from the sheet.\n`,
   );
 
+  /*
+   * The sheet's EMPLOYEE ID is the match key and doubles as the terminal
+   * enrolment number, so two rows sharing one would silently merge two people
+   * into a single record — and one of them would scan as the other. Fifty-seven
+   * names in this list belong to more than one person, which is exactly how a
+   * lookup-by-name fills this column with duplicates. Refuse rather than guess.
+   */
+  const rowsByCode = new Map();
+  for (const person of people) {
+    if (!person.employeeCode) continue;
+    rowsByCode.set(person.employeeCode, [...(rowsByCode.get(person.employeeCode) ?? []), person]);
+  }
+  const duplicated = [...rowsByCode].filter(([, rows]) => rows.length > 1);
+  const missing = people.filter((p) => !p.employeeCode);
+
+  if (duplicated.length > 0) {
+    console.error(`${duplicated.length} EMPLOYEE IDs are used by more than one row:`);
+    for (const [code, rows] of duplicated) {
+      console.error(`  ${code}: ${rows.map((p) => `${p.name} (${p.department})`).join(" / ")}`);
+    }
+    throw new Error("Give every row its own EMPLOYEE ID, then import again.");
+  }
+
   const { data: site } = await db.from("sites").select("id, name").limit(1).maybeSingle();
   if (!site) throw new Error("No factory exists yet. Run create-admin first.");
   console.log(`Importing into "${site.name}".`);
@@ -136,27 +160,22 @@ async function main() {
 
   const byCode = new Map((existingPeople ?? []).map((p) => [p.employee_code, p]));
 
-  /*
-   * Employee codes are assigned by position in the sheet, not derived from the
-   * name: fifty-seven names in this list are shared by two or more people, so
-   * a name-based code would collide and silently merge their records. The code
-   * doubles as the terminal enrolment id, so it has to be stable and unique.
-   */
   let created = 0;
   let updated = 0;
   let failed = 0;
-  const problems = [];
+  const problems = missing.map((p) => `${p.name} (${p.department}): no EMPLOYEE ID, skipped`);
 
-  for (const [index, person] of people.entries()) {
-    const code = `RD-${String(2000 + index).padStart(4, "0")}`;
+  for (const person of people) {
+    if (!person.employeeCode) continue;
+
+    const code = person.employeeCode;
+    const existing = byCode.get(code);
     const profile = {
       employee_code: code,
       full_name: person.name,
-      designation: person.designation || null,
       site_id: site.id,
       department_id: deptId.get(person.department) ?? null,
       pay_class: "monthly",
-      monthly_salary: person.salary,
       hourly_rate: 0,
       worker_type: person.workerType,
       duty_hours: person.dutyHours,
@@ -165,13 +184,17 @@ async function main() {
       flexible_hours: person.flexibleHours,
       requires_attendance: person.requiresAttendance,
     };
+    if (person.designation) profile.designation = person.designation;
+    if (person.salary !== null) profile.monthly_salary = person.salary;
+    else if (!existing) profile.monthly_salary = 0;
+    if (/^[0-9]{1,9}$/.test(person.terminalId))
+      profile.device_pin = String(Number(person.terminalId));
 
     if (dryRun) {
-      created++;
+      if (existing) updated++;
+      else created++;
       continue;
     }
-
-    const existing = byCode.get(code);
 
     if (existing) {
       const { error } = await db.from("profiles").update(profile).eq("id", existing.id);
@@ -211,6 +234,12 @@ async function main() {
       continue;
     }
 
+    // app.default_requires_attendance() resets monthly staff to false on insert.
+    await db
+      .from("profiles")
+      .update({ requires_attendance: person.requiresAttendance, worker_type: person.workerType })
+      .eq("id", authUser.user.id);
+
     created++;
     if (created % 50 === 0) console.log(`  … ${created} created`);
   }
@@ -223,8 +252,9 @@ async function main() {
     if (problems.length > 20) console.log(`  … ${problems.length - 20} more`);
   }
 
-  const totalSalary = people.reduce((t, p) => t + p.salary, 0);
+  const totalSalary = people.reduce((t, p) => t + (p.salary ?? 0), 0);
   console.log(`\nMonthly salary across the sheet: Rs ${totalSalary.toLocaleString("en-PK")}`);
+  console.log(`Rows with no salary filled in: ${people.filter((p) => p.salary === null).length}`);
   console.log(`People on no overtime: ${people.filter((p) => !p.overtimeEligible).length}`);
   console.log(`Contractors: ${people.filter((p) => p.workerType === "contractor").length}`);
   console.log(`Not paid from attendance: ${people.filter((p) => !p.requiresAttendance).length}`);

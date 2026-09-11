@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { ingestPunches, recordDeviceContact } from "@/lib/devices/ingest";
-import { applyRosterUpload } from "@/lib/devices/user-sync";
+import { applyRosterUpload, recordDeviceUpload } from "@/lib/devices/user-sync";
 import { ackResponse, buildHandshakeResponse, parseAttlog } from "@/lib/devices/zkteco/iclock";
 
 /**
@@ -92,44 +92,35 @@ export async function POST(request: NextRequest) {
    */
   if (table === "OPERLOG") {
     const device = await recordDeviceContact(serialNumber);
-    if (!device) {
-      console.warn(`[iclock] roster upload from unregistered serial ${serialNumber}`);
-      return new NextResponse("Unknown device", { status: 404, headers: TEXT_HEADERS });
-    }
+    const response = await absorbRoster(serialNumber, device, body);
 
-    try {
-      const result = await applyRosterUpload(device, body);
+    // Kept so what the firmware really sends can be read back later — the
+    // audit code that removed a working employee from the check-in gate was
+    // taken from documentation for other models, and nobody could check.
+    await recordDeviceUpload({
+      deviceId: device?.id ?? null,
+      serialNumber,
+      endpoint: "cdata",
+      table,
+      statusCode: response.status,
+      body,
+    });
 
-      if (result.matched || result.templatesStored || result.deletions) {
-        console.info(
-          `[iclock] ${serialNumber}: roster — ${result.matched} user(s), ` +
-            `${result.templatesStored} template(s), ${result.deletions} deletion(s)`,
-        );
-      }
-      if (result.unknown.length > 0) {
-        // Enrolled on the hardware but not in RadoFlow. Relayed to the other
-        // terminals so the gate and the kitchen agree, but there is nobody to
-        // attach it to until the office creates the person.
-        console.warn(
-          `[iclock] ${serialNumber}: ${result.unknown.length} PIN(s) not in RadoFlow: ${result.unknown.join(", ")}`,
-        );
-      }
-
-      return new NextResponse(ackResponse(result.matched + result.templatesStored), {
-        status: 200,
-        headers: TEXT_HEADERS,
-      });
-    } catch (error) {
-      console.error(`[iclock] roster upload failed for ${serialNumber}`, error);
-      // Same contract as attendance: a non-OK reply makes the terminal keep
-      // the batch, so an enrolment is retried rather than lost.
-      return new NextResponse("ERROR", { status: 500, headers: TEXT_HEADERS });
-    }
+    return response;
   }
 
   // ATTPHOTO and the rest are acknowledged but not stored; replying with
-  // anything else makes the terminal retry the batch forever.
+  // anything else makes the terminal retry the batch forever. The body is kept
+  // so a table this code does not handle yet can be recognised when it turns up.
   if (table !== "ATTLOG") {
+    await recordDeviceUpload({
+      deviceId: null,
+      serialNumber,
+      endpoint: "cdata",
+      table,
+      statusCode: 200,
+      body,
+    });
     return new NextResponse(ackResponse(0), { status: 200, headers: TEXT_HEADERS });
   }
 
@@ -157,6 +148,53 @@ export async function POST(request: NextRequest) {
     console.error(`[iclock] ingestion failed for ${serialNumber}`, error);
     // A non-OK reply makes the terminal keep the batch and retry, so no punches
     // are lost while the server is unhealthy.
+    return new NextResponse("ERROR", { status: 500, headers: TEXT_HEADERS });
+  }
+}
+
+/**
+ * OPERLOG carries roster changes made on the terminal itself — a supervisor
+ * enrolling a new dyer at the gate, or deleting somebody who left. This is how
+ * most people are actually added, so absorbing it is what keeps the three
+ * terminals holding the same list.
+ */
+async function absorbRoster(
+  serialNumber: string,
+  device: Awaited<ReturnType<typeof recordDeviceContact>>,
+  body: string,
+): Promise<NextResponse> {
+  if (!device) {
+    console.warn(`[iclock] roster upload from unregistered serial ${serialNumber}`);
+    return new NextResponse("Unknown device", { status: 404, headers: TEXT_HEADERS });
+  }
+
+  const started = Date.now();
+
+  try {
+    const result = await applyRosterUpload(device, body);
+
+    console.info(
+      `[iclock] ${serialNumber}: roster in ${Date.now() - started}ms — ` +
+        `${result.matched} user(s), ${result.templatesStored} template(s), ` +
+        `${result.relaysQueued} relayed, ${result.deletions} deletion(s)`,
+    );
+    if (result.unknown.length > 0) {
+      // Enrolled on the hardware but not in RadoFlow. Relayed to the other
+      // terminals so the gate and the kitchen agree, but there is nobody to
+      // attach it to until the office creates the person.
+      console.warn(
+        `[iclock] ${serialNumber}: ${result.unknown.length} PIN(s) not in RadoFlow: ${result.unknown.join(", ")}`,
+      );
+    }
+
+    return new NextResponse(ackResponse(result.matched + result.templatesStored), {
+      status: 200,
+      headers: TEXT_HEADERS,
+    });
+  } catch (error) {
+    console.error(`[iclock] roster upload failed for ${serialNumber}`, error);
+    // Same contract as attendance: a non-OK reply makes the terminal keep the
+    // batch and resend it, which is safe because processing is idempotent.
     return new NextResponse("ERROR", { status: 500, headers: TEXT_HEADERS });
   }
 }

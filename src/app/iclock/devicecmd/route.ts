@@ -1,14 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { recordDeviceContact } from "@/lib/devices/ingest";
-import { recordCommandResults } from "@/lib/devices/user-sync";
+import { recordCommandResults, recordDeviceUpload } from "@/lib/devices/user-sync";
 import { parseCommandResult } from "@/lib/devices/zkteco/userinfo";
 
 /**
  * Command result callback.
  *
  * The terminal posts the outcome of each instruction it collected as
- * `ID=<id>&Return=<code>&CMD=<command>`, one per line. `Return=0` is success.
+ * `ID=<id>&Return=<code>&CMD=<command>`. `Return=0` is success.
  *
  * This is the only evidence that a worker's fingerprint actually reached a
  * terminal. Without it the queue would show everything as delivered the moment
@@ -30,6 +30,18 @@ export async function POST(request: NextRequest) {
   }
 
   const device = await recordDeviceContact(serialNumber);
+
+  // Kept whatever happens next. Results that nothing below can read are
+  // precisely the ones that need to be looked at.
+  await recordDeviceUpload({
+    deviceId: device?.id ?? null,
+    serialNumber,
+    endpoint: "devicecmd",
+    table: null,
+    statusCode: 200,
+    body,
+  });
+
   if (!device) {
     console.warn(`[iclock] command result from unregistered serial ${serialNumber}`);
     return new NextResponse("OK", { status: 200, headers: TEXT_HEADERS });
@@ -47,6 +59,8 @@ export async function POST(request: NextRequest) {
           failed.map((f) => `#${f.id}→${f.returnCode}`).join(", "),
       );
     }
+  } else if (body.trim()) {
+    console.warn(`[iclock] ${serialNumber}: unreadable command result: ${body.slice(0, 200)}`);
   }
 
   /*

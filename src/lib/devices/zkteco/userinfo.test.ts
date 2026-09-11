@@ -183,10 +183,40 @@ describe("withPin", () => {
   });
 });
 
+describe("parseCommandResult — firmware variations", () => {
+  it("reads keys in whatever case the firmware writes them", () => {
+    const [result] = parseCommandResult("id=7&return=0&cmd=DATA");
+
+    expect(result).toMatchObject({ id: 7, returnCode: 0, command: "DATA" });
+  });
+
+  it("splits several results written on one line", () => {
+    const results = parseCommandResult("ID=1&Return=0&CMD=DATA&ID=2&Return=-1&CMD=DATA");
+
+    expect(results.map((r) => [r.id, r.returnCode])).toEqual([
+      [1, 0],
+      [2, -1],
+    ]);
+  });
+
+  it("keeps the raw text when there is no readable code", () => {
+    // The kitchen's first results were unrecognised and nobody could see why.
+    const [result] = parseCommandResult("ID=9&CMD=DATA DELETE USERINFO");
+
+    expect(result?.returnCode).toBeNull();
+    expect(result?.raw).toBe("ID=9&CMD=DATA DELETE USERINFO");
+  });
+});
+
 describe("parseCommandResult", () => {
   it("reads a success", () => {
     expect(parseCommandResult("ID=42&Return=0&CMD=DATA UPDATE USERINFO")).toEqual([
-      { id: 42, returnCode: 0, command: "DATA UPDATE USERINFO" },
+      {
+        id: 42,
+        returnCode: 0,
+        command: "DATA UPDATE USERINFO",
+        raw: "ID=42&Return=0&CMD=DATA UPDATE USERINFO",
+      },
     ]);
   });
 

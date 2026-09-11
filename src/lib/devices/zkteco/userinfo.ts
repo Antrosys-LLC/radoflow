@@ -254,29 +254,43 @@ export interface CommandResult {
   id: number | null;
   returnCode: number | null;
   command: string | null;
+  /** The result exactly as the terminal wrote it, for when the fields above come back empty. */
+  raw: string;
 }
 
+/**
+ * Forgiving on purpose. Firmware varies in key case (`ID`, `Id`), and some
+ * builds report several results on one line rather than one per line, so each
+ * line is split wherever a new `ID=` begins.
+ */
 export function parseCommandResult(body: string): CommandResult[] {
   const results: CommandResult[] = [];
 
-  // A terminal may report several outcomes in one post, one per line.
   for (const rawLine of body.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line) continue;
+    for (const segment of rawLine.trim().split(/&(?=id=)/i)) {
+      const line = segment.trim();
+      if (!line) continue;
 
-    const params = new URLSearchParams(line);
-    const id = params.get("ID");
-    if (id === null) continue;
+      const params = new Map<string, string>();
+      for (const [key, value] of new URLSearchParams(line)) {
+        const lower = key.trim().toLowerCase();
+        if (!params.has(lower)) params.set(lower, value);
+      }
 
-    const parsedId = Number.parseInt(id, 10);
-    const returnRaw = params.get("Return");
-    const parsedReturn = returnRaw === null ? null : Number.parseInt(returnRaw, 10);
+      const id = params.get("id");
+      if (id === undefined) continue;
 
-    results.push({
-      id: Number.isFinite(parsedId) ? parsedId : null,
-      returnCode: parsedReturn !== null && Number.isFinite(parsedReturn) ? parsedReturn : null,
-      command: params.get("CMD"),
-    });
+      const parsedId = Number.parseInt(id, 10);
+      const returnRaw = params.get("return");
+      const parsedReturn = returnRaw === undefined ? Number.NaN : Number.parseInt(returnRaw, 10);
+
+      results.push({
+        id: Number.isFinite(parsedId) ? parsedId : null,
+        returnCode: Number.isFinite(parsedReturn) ? parsedReturn : null,
+        command: params.get("cmd") ?? null,
+        raw: line,
+      });
+    }
   }
 
   return results;

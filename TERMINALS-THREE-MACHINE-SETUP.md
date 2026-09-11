@@ -72,6 +72,25 @@ paths — it filled in two endpoints (`/iclock/getrequest` and
 `/iclock/devicecmd`) that the relay was already passing through and the server
 was answering with a bare `OK`.
 
+### The quick way
+
+`scripts/configure-relay.sh` does everything in this step: settings, service,
+firewall, and a check that the VPS can reach Railway. From the repo on your PC:
+
+```bash
+scp scripts/rado-relay.mjs scripts/configure-relay.sh root@148.230.66.172:/opt/radoflow/
+```
+
+```bash
+ssh root@148.230.66.172 "bash /opt/radoflow/configure-relay.sh"
+```
+
+It keeps the `RELAY_SECRET` already on the VPS rather than setting a new one,
+and opens 80 and 443 before enabling the firewall so radofactory.online stays
+up. The manual steps below are what it does.
+
+### By hand
+
 Redeploy it as it stands:
 
 ```bash

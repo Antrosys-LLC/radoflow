@@ -93,6 +93,26 @@ two on their own. Rules worth knowing before touching that path:
   boxes; making them active again puts them back. Their templates survive a
   suspension — reinstatement is a status change, not four hundred re-scans —
   and that is only safe because nothing can push a non-active person.
+- **A terminal is only ever sent what it lacks.** `device_inventory` holds one
+  row per user record and one per finger on each terminal, filled from its own
+  roster uploads and from every instruction it confirms. `app.queue_device_command`
+  refuses a finger the target already holds, in any version, and a relayed
+  user record for a PIN it already has. Office changes to a RadoFlow person's
+  name, privilege or card still go through. This is what the factory asked
+  for, and it is also what makes an echo harmless.
+- **Uploads must be fast and idempotent.** A terminal reads a slow reply as a
+  failure and resends the whole roster; on the first live day that happened
+  every thirty-five seconds for ten minutes. `applyRosterUpload` plans in
+  memory (`roster-plan.ts`) and writes in bulk. Keep it that way.
+- **Merging rosters is `reconcile_rosters(order)`.** It queues each terminal's
+  gaps, taking the version from the terminal earliest in `order`, users before
+  fingers, never copying suspended or terminated people. Run it only once every
+  terminal's inventory is complete.
+- **Pull mode is the kill switch.** Setting every terminal's `mode` to `pull`
+  stops all fan-out and relays without a deploy; punches and meals still
+  record, and queued instructions are still delivered.
+- **What terminals send is kept** in `device_uploads` (excerpts) and
+  `device_commands.result_raw`. Read those before guessing at firmware.
 
 Setup and troubleshooting: [TERMINALS-THREE-MACHINE-SETUP.md](TERMINALS-THREE-MACHINE-SETUP.md).
 

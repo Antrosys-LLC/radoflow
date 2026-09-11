@@ -209,6 +209,36 @@ the migration.
 
 ---
 
+## Nothing on a terminal is ever overwritten by another terminal
+
+Each terminal is sent only what it does not already have. RadoFlow keeps an
+inventory of every user and every finger on each box, and a finger a terminal
+already holds is never sent to it again — even if another terminal has a
+different scan of the same finger. The same goes for a user record copied from
+another terminal.
+
+Changes made in RadoFlow itself — a name, a terminal admin, a card — are the
+exception, and do update the terminals.
+
+## Merging the three rosters
+
+To make all three hold everyone, each terminal first reports its full roster,
+then the gaps are filled in a stated order of precedence:
+
+1. The check-in gate's records go to the other two, wherever they are missing.
+2. Then the check-out gate's, wherever still missing.
+3. Then the kitchen's.
+
+Nothing already on a terminal is replaced, suspended and terminated staff are
+not copied, and running the merge again adds nothing.
+
+## Pausing sync
+
+If the terminals ever start trading far more instructions than expected, set
+all three to **Pull** mode on the Biometric Devices screen. That stops every
+copy and relay immediately with no deploy. Punches and meals keep recording.
+Set them back to **Push** to resume.
+
 ## When somebody is enrolled who is not in RadoFlow yet
 
 Normal on a new worker's first morning: the gate supervisor enrols them before

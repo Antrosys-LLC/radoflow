@@ -45,10 +45,20 @@ export interface QueuedCommand {
   body: string;
 }
 
-/** A relayed record the uploading terminal has just shown it already holds. */
-export interface ReportedRecord {
+/**
+ * One slot on one terminal: a user record, or a single finger.
+ *
+ * The database never sends a terminal a slot it holds, so these rows are what
+ * make a merge additive and an echo harmless. The slot identity here must match
+ * `app.command_slot` in the migration exactly.
+ */
+export interface InventoryRow {
   device_id: string;
-  body: string;
+  pin: string;
+  record_type: "user" | "template";
+  bio_type: number;
+  finger_index: number;
+  command_body: string;
 }
 
 export interface IdentityUpdate {
@@ -61,19 +71,15 @@ export interface RosterPlan {
   enrollments: EnrollmentRow[];
   templates: TemplateRow[];
   relays: QueuedCommand[];
-  /**
-   * What must never be queued back to the uploading terminal. A record another
-   * terminal later reports again would otherwise be relayed home to the box it
-   * started on.
-   */
-  reported: ReportedRecord[];
+  /** Everything the uploading terminal just showed it holds, known people and strangers alike. */
+  inventory: InventoryRow[];
   identityUpdates: IdentityUpdate[];
   deletions: string[];
   unknown: string[];
   matchedUsers: number;
 }
 
-/** A USERINFO record for a worker RadoFlow does not know, as the terminal described them. */
+/** A USERINFO record as the terminal described the person. */
 export function userInfoCommand(user: {
   deviceUserId: string;
   name: string;
@@ -107,16 +113,19 @@ export function planRosterUpload(
   const enrollments = new Map<string, EnrollmentRow>();
   const templates = new Map<string, TemplateRow>();
   const relays = new Map<string, QueuedCommand>();
-  const reported = new Map<string, ReportedRecord>();
+  const inventory = new Map<string, InventoryRow>();
   const identityUpdates = new Map<string, IdentityUpdate>();
   const unknown = new Set<string>();
   const matchedPins = new Set<string>();
 
-  const relay = (kind: QueuedCommand["kind"], body: string) => {
-    // Recorded even while every terminal is paused and nothing is relayed:
-    // it is a fact about what this box holds, and it outlasts the pause.
-    reported.set(body, { device_id: sourceDeviceId, body });
+  const holds = (row: Omit<InventoryRow, "device_id">) => {
+    inventory.set(`${row.pin}|${row.record_type}|${row.bio_type}|${row.finger_index}`, {
+      device_id: sourceDeviceId,
+      ...row,
+    });
+  };
 
+  const relay = (kind: QueuedCommand["kind"], body: string) => {
     for (const deviceId of targetDeviceIds) {
       if (deviceId === sourceDeviceId) continue;
       // Keyed on target and body, so a batch naming the same stranger twice
@@ -126,11 +135,20 @@ export function planRosterUpload(
   };
 
   for (const user of parsed.users) {
+    const body = userInfoCommand(user);
+    holds({
+      pin: user.deviceUserId,
+      record_type: "user",
+      bio_type: 0,
+      finger_index: -1,
+      command_body: body,
+    });
+
     const profile = profilesByPin.get(user.deviceUserId);
 
     if (!profile) {
       unknown.add(user.deviceUserId);
-      relay("user.update", userInfoCommand(user));
+      relay("user.update", body);
       continue;
     }
 
@@ -155,11 +173,20 @@ export function planRosterUpload(
   }
 
   for (const template of parsed.biometrics) {
+    const body = templateCommand(template);
+    holds({
+      pin: template.deviceUserId,
+      record_type: "template",
+      bio_type: template.bioType,
+      finger_index: template.fingerIndex,
+      command_body: body,
+    });
+
     const profile = profilesByPin.get(template.deviceUserId);
 
     if (!profile) {
       unknown.add(template.deviceUserId);
-      relay("biometric.update", templateCommand(template));
+      relay("biometric.update", body);
       continue;
     }
 
@@ -186,7 +213,7 @@ export function planRosterUpload(
     enrollments: [...enrollments.values()],
     templates: [...templates.values()],
     relays: [...relays.values()],
-    reported: [...reported.values()],
+    inventory: [...inventory.values()],
     identityUpdates: [...identityUpdates.values()],
     deletions: [...new Set(parsed.deletions.map((d) => d.deviceUserId))],
     unknown: [...unknown],

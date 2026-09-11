@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { createServiceClient } from "@/lib/supabase/service";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -16,14 +14,15 @@ import { parseOperlog, type CommandResult } from "./zkteco/userinfo";
  * live in application code: reading what a terminal uploaded about its own
  * users, and handing the queued instructions back out when a terminal asks.
  *
- * Two properties matter more than anything else here, and both were learned
- * on the day the terminals went live:
+ * Three properties matter more than anything else here, all learned on the day
+ * the terminals went live:
  *
  *   - An upload must finish well inside the relay's thirty seconds. A terminal
  *     reads a timeout as a failure and resends the whole batch.
- *   - Processing the same upload twice must change nothing. It will be resent,
- *     for that reason and others, and a resend that queues everything again is
- *     a loop.
+ *   - Processing the same upload twice must change nothing.
+ *   - A terminal is only ever sent what it lacks. What each terminal reports
+ *     is recorded as its inventory, and the queue refuses a user or a finger
+ *     the target already holds.
  */
 
 /** How many instructions a terminal is handed in one poll. */
@@ -42,16 +41,13 @@ const WRITE_CHUNK = 100;
  */
 const RETURN_OK = 0;
 
-/** Must match Postgres `md5(text)`, which the queue compares against. */
-const bodyHash = (body: string) => createHash("md5").update(body, "utf8").digest("hex");
-
 export interface RosterUploadResult {
   /** Users matched to a person in RadoFlow. */
   matched: number;
   /** Users enrolled on the hardware that RadoFlow has never heard of. */
   unknown: string[];
   templatesStored: number;
-  /** Instructions newly queued for other terminals; repeats of queued ones are not counted. */
+  /** Instructions newly queued for other terminals; repeats and slots they hold are not counted. */
   relaysQueued: number;
   deletions: number;
   skipped: number;
@@ -63,16 +59,8 @@ export interface RosterUploadResult {
  * Everything here keys off `profiles.device_pin`, the one enrolment number a
  * person carries on all three boxes. A PIN that resolves to somebody is stored
  * centrally and fanned out by the database triggers. A PIN that resolves to
- * nobody is relayed to the other terminals as-is and reported:
- *
- *   - Stored, when we know who it is. The template becomes RadoFlow's copy, so
- *     a terminal that dies can be repopulated without re-scanning the factory.
- *     A template identical to the stored one is ignored by the database, which
- *     is what stops an echo from circulating.
- *   - Relayed, when we do not. The queue refuses an instruction the target
- *     already has waiting, acted on in the last hour, or reported itself —
- *     which is what stops a resend or an echo from relaying the same stranger
- *     again.
+ * nobody is relayed to the other terminals as-is and reported. In both cases
+ * the queue sends a terminal only the slots it is missing.
  */
 export async function applyRosterUpload(
   device: DeviceRecord,
@@ -110,9 +98,8 @@ export async function applyRosterUpload(
           .in("device_pin", slice),
       ),
     ),
-    // Every other push-mode terminal. A pull-mode box never polls, so a row
-    // queued for one would sit unread for ever — and switching every terminal
-    // to pull is how fan-out is paused.
+    // Every other push-mode terminal. A pull-mode box never polls for relays,
+    // and switching every terminal to pull is how fan-out is paused.
     supabase.from("devices").select("id").eq("is_active", true).eq("mode", "push"),
   ]);
 
@@ -143,11 +130,11 @@ export async function applyRosterUpload(
 
   /*
    * The writes are independent of one another, so they go together. Any
-   * failure fails the request, which makes the terminal resend — safe now,
-   * because nothing below does anything the second time that it did the first.
+   * failure fails the request, which makes the terminal resend — safe, because
+   * nothing below does anything the second time that it did the first.
    *
-   * The reported-record markers go in this batch, before any relay is queued,
-   * so a record can never be relayed back to this terminal in the gap.
+   * The inventory is written in this batch, before any relay is queued, so a
+   * record can never be relayed back to this terminal in the gap.
    */
   const results = await Promise.all([
     ...chunk(plan.enrollments, 500).map((rows) =>
@@ -158,14 +145,10 @@ export async function applyRosterUpload(
         .from("person_biometrics")
         .upsert(rows, { onConflict: "profile_id,bio_type,finger_index" }),
     ),
-    ...chunk(plan.reported, 500).map((rows) =>
-      supabase.from("device_reported_records").upsert(
-        rows.map((r) => ({
-          device_id: r.device_id,
-          body_hash: bodyHash(r.body),
-          reported_at: reportedAt,
-        })),
-        { onConflict: "device_id,body_hash" },
+    ...chunk(plan.inventory, WRITE_CHUNK).map((rows) =>
+      supabase.from("device_inventory").upsert(
+        rows.map((r) => ({ ...r, reported_at: reportedAt })),
+        { onConflict: "device_id,pin,record_type,bio_type,finger_index" },
       ),
     ),
     ...plan.identityUpdates.map((u) =>
@@ -193,10 +176,10 @@ export async function applyRosterUpload(
   /*
    * A deletion performed on the terminal itself.
    *
-   * Only the hardware and the stored templates are cleared, never the RadoFlow
-   * record. Deleting a profile would take that person's attendance history and
-   * their unpaid payroll lines with it, on the strength of a supervisor pressing
-   * DELETE on a wall-mounted box with no confirmation step.
+   * Only the hardware, the stored templates and the inventory are cleared,
+   * never the RadoFlow record. Deleting a profile would take that person's
+   * attendance history and their unpaid payroll lines with it, on the strength
+   * of a supervisor pressing DELETE on a wall-mounted box with no confirmation.
    *
    * Last, so an upload that enrols and deletes the same person ends with them
    * deleted, which is the order the supervisor did it in.
@@ -257,10 +240,8 @@ export async function claimCommands(deviceId: string): Promise<string[]> {
  * Records what the terminal made of each instruction.
  *
  * Scoped to the device that reported, so one terminal cannot close out
- * another's queue by posting an id it happened to guess. The protocol offers
- * no authentication beyond a serial number in a query string, and an
- * instruction marked done that never ran is a worker who cannot get through
- * the gate and a screen insisting he can.
+ * another's queue by posting an id it happened to guess. A confirmed delivery
+ * is added to the terminal's inventory by a trigger on the row.
  *
  * The line is kept verbatim either way. A result with no readable code is
  * still a result — the kitchen's first hour of them went unrecognised, and

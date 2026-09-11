@@ -862,25 +862,37 @@ export type Database = {
           },
         ]
       }
-      device_reported_records: {
+      device_inventory: {
         Row: {
-          body_hash: string
+          bio_type: number
+          command_body: string
           device_id: string
+          finger_index: number
+          pin: string
+          record_type: string
           reported_at: string
         }
         Insert: {
-          body_hash: string
+          bio_type?: number
+          command_body: string
           device_id: string
+          finger_index?: number
+          pin: string
+          record_type: string
           reported_at?: string
         }
         Update: {
-          body_hash?: string
+          bio_type?: number
+          command_body?: string
           device_id?: string
+          finger_index?: number
+          pin?: string
+          record_type?: string
           reported_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "device_reported_records_device_id_fkey"
+            foreignKeyName: "device_inventory_device_id_fkey"
             columns: ["device_id"]
             isOneToOne: false
             referencedRelation: "devices"
@@ -3179,6 +3191,14 @@ export type Database = {
         Returns: number
       }
       queue_device_commands: { Args: { p_commands: Json }; Returns: number }
+      reconcile_rosters: {
+        Args: { p_order: string[] }
+        Returns: {
+          target_device: string
+          templates_queued: number
+          users_queued: number
+        }[]
+      }
       resync_device: { Args: { p_device: string }; Returns: number }
       session_bootstrap: { Args: never; Returns: Json }
     }

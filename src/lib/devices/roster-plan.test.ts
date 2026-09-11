@@ -73,6 +73,77 @@ describe("planRosterUpload — known workers", () => {
   });
 });
 
+describe("planRosterUpload — what the terminal holds", () => {
+  it("records a user slot and a finger slot for known and unknown people alike", () => {
+    const plan = planRosterUpload(
+      parseOperlog(
+        [
+          "USER PIN=2070\tName=Aslam\tPri=0\tCard=",
+          `FP PIN=2070\tFID=6\tTMP=${TMP_A}`,
+          "USER PIN=4018\tName=Arslan\tPri=0\tCard=",
+          `BIODATA Pin=4018\tNo=3\tType=1\tTmp=${TMP_B}`,
+        ].join("\n"),
+      ),
+      KITCHEN,
+      profiles(ASLAM),
+      ALL,
+    );
+
+    const slots = plan.inventory.map((r) => [
+      r.device_id,
+      r.pin,
+      r.record_type,
+      r.bio_type,
+      r.finger_index,
+    ]);
+    expect(slots).toEqual([
+      [KITCHEN, "2070", "user", 0, -1],
+      [KITCHEN, "4018", "user", 0, -1],
+      [KITCHEN, "2070", "template", 1, 6],
+      [KITCHEN, "4018", "template", 1, 3],
+    ]);
+  });
+
+  it("keeps the record in the exact form another terminal would be sent it", () => {
+    const plan = planRosterUpload(
+      parseOperlog(`FP PIN=4018\tFID=6\tSize=900\tValid=1\tTMP=${TMP_A}`),
+      KITCHEN,
+      profiles(),
+      ALL,
+    );
+
+    expect(plan.inventory[0]?.command_body).toBe(
+      `DATA UPDATE FINGERTMP PIN=4018\tFID=6\tSize=900\tValid=1\tTMP=${TMP_A}`,
+    );
+  });
+
+  it("records one slot when the same finger appears twice", () => {
+    const plan = planRosterUpload(
+      parseOperlog(
+        [`FP PIN=4018\tFID=6\tTMP=${TMP_A}`, `FP PIN=4018\tFID=6\tTMP=${TMP_B}`].join("\n"),
+      ),
+      KITCHEN,
+      profiles(),
+      ALL,
+    );
+
+    expect(plan.inventory).toHaveLength(1);
+    expect(plan.inventory[0]?.command_body).toContain(TMP_B);
+  });
+
+  it("still records what a terminal holds while fan-out is paused", () => {
+    const plan = planRosterUpload(
+      parseOperlog("USER PIN=4018\tName=Arslan\tPri=0\tCard="),
+      KITCHEN,
+      profiles(),
+      [],
+    );
+
+    expect(plan.relays).toEqual([]);
+    expect(plan.inventory).toHaveLength(1);
+  });
+});
+
 describe("planRosterUpload — terminal privilege and cards", () => {
   it("records nothing when the terminal agrees with RadoFlow", () => {
     const plan = planRosterUpload(
@@ -136,10 +207,9 @@ describe("planRosterUpload — workers RadoFlow does not know", () => {
     expect([...new Set(plan.relays.map((r) => r.device_id))].sort()).toEqual(
       [GATE_IN, GATE_OUT].sort(),
     );
-    expect(plan.relays.every((r) => r.device_id !== KITCHEN)).toBe(true);
     expect(plan.relays.filter((r) => r.kind === "user.update")).toHaveLength(2);
     expect(plan.relays.filter((r) => r.kind === "biometric.update")).toHaveLength(2);
-    // Nothing to attach a template to, so nothing is stored.
+    // Nothing to attach a template to, so nothing is stored centrally.
     expect(plan.templates).toEqual([]);
     expect(plan.enrollments).toEqual([]);
   });
@@ -157,8 +227,6 @@ describe("planRosterUpload — workers RadoFlow does not know", () => {
   });
 
   it("relays to nobody while every terminal is paused in pull mode", () => {
-    // Pull-mode terminals are not in the target list, which is how fan-out is
-    // switched off without a deploy.
     const plan = planRosterUpload(
       parseOperlog("USER PIN=4018\tName=Arslan\tPri=0\tCard="),
       KITCHEN,
@@ -168,34 +236,6 @@ describe("planRosterUpload — workers RadoFlow does not know", () => {
 
     expect(plan.unknown).toEqual(["4018"]);
     expect(plan.relays).toEqual([]);
-  });
-
-  it("remembers that the uploading terminal already holds what it reported", () => {
-    // So a later echo from another terminal is never relayed home to it.
-    const plan = planRosterUpload(
-      parseOperlog(`USER PIN=4018\tName=Arslan\tPri=0\tCard=\nFP PIN=4018\tFID=6\tTMP=${TMP_A}`),
-      KITCHEN,
-      profiles(),
-      ALL,
-    );
-
-    expect(plan.reported.map((r) => r.device_id)).toEqual([KITCHEN, KITCHEN]);
-    expect(plan.reported.map((r) => r.body)).toEqual([
-      userInfoCommand({ deviceUserId: "4018", name: "Arslan", privilege: 0, cardNumber: null }),
-      `DATA UPDATE FINGERTMP PIN=4018\tFID=6\tTMP=${TMP_A}`,
-    ]);
-  });
-
-  it("still records what was reported while fan-out is paused", () => {
-    const plan = planRosterUpload(
-      parseOperlog("USER PIN=4018\tName=Arslan\tPri=0\tCard="),
-      KITCHEN,
-      profiles(),
-      [],
-    );
-
-    expect(plan.relays).toEqual([]);
-    expect(plan.reported).toHaveLength(1);
   });
 
   it("carries the source terminal's privilege and card in the relay", () => {

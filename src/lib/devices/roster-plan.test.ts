@@ -144,6 +144,64 @@ describe("planRosterUpload — what the terminal holds", () => {
   });
 });
 
+describe("planRosterUpload — faces", () => {
+  it("stores a known person's face parts and records each as a Type 2 slot", () => {
+    const plan = planRosterUpload(
+      parseOperlog(
+        [
+          `FACE PIN=2070\tFID=0\tSIZE=1648\tVALID=1\tTMP=${TMP_A}`,
+          `FACE PIN=2070\tFID=11\tSIZE=1648\tVALID=1\tTMP=${TMP_B}`,
+        ].join("\n"),
+      ),
+      GATE_IN,
+      profiles(ASLAM),
+      ALL,
+    );
+
+    expect(plan.templates.map((t) => [t.dialect, t.bio_type, t.finger_index])).toEqual([
+      ["face", 2, 0],
+      ["face", 2, 11],
+    ]);
+    expect(plan.inventory.map((r) => [r.record_type, r.bio_type, r.finger_index])).toEqual([
+      ["template", 2, 0],
+      ["template", 2, 11],
+    ]);
+    expect(plan.inventory[1]?.command_body).toBe(
+      `DATA UPDATE FACE PIN=2070\tFID=11\tSIZE=1648\tVALID=1\tTMP=${TMP_B}`,
+    );
+  });
+
+  it("keeps a finger and a face part with the same number apart", () => {
+    const plan = planRosterUpload(
+      parseOperlog(
+        [
+          `FP PIN=2070\tFID=6\tTMP=${TMP_A}`,
+          `FACE PIN=2070\tFID=6\tSIZE=1648\tVALID=1\tTMP=${TMP_B}`,
+        ].join("\n"),
+      ),
+      GATE_IN,
+      profiles(ASLAM),
+      ALL,
+    );
+
+    expect(plan.templates).toHaveLength(2);
+    expect(plan.inventory.filter((r) => r.record_type === "template")).toHaveLength(2);
+  });
+
+  it("relays an unknown person's face with the FACE verb", () => {
+    const plan = planRosterUpload(
+      parseOperlog(`FACE PIN=4018\tFID=3\tSIZE=1648\tVALID=1\tTMP=${TMP_A}`),
+      KITCHEN,
+      profiles(),
+      ALL,
+    );
+
+    const body = `DATA UPDATE FACE PIN=4018\tFID=3\tSIZE=1648\tVALID=1\tTMP=${TMP_A}`;
+    expect(plan.relays.map((r) => r.body)).toEqual([body, body]);
+    expect(plan.relays.every((r) => r.kind === "biometric.update")).toBe(true);
+  });
+});
+
 describe("planRosterUpload — terminal privilege and cards", () => {
   it("records nothing when the terminal agrees with RadoFlow", () => {
     const plan = planRosterUpload(
@@ -190,6 +248,100 @@ describe("planRosterUpload — terminal privilege and cards", () => {
     );
 
     expect(plan.identityUpdates).toEqual([{ profileId: "p-sup", privilege: 14, card: "112233" }]);
+  });
+});
+
+describe("planRosterUpload — an administrator is never demoted", () => {
+  /*
+   * The check-in gate holds PIN 1 as an ordinary user while the check-out gate
+   * holds the same PIN as an administrator. Reading the gate's `Pri=0` as the
+   * truth would strip the estate of its administrator on the strength of the
+   * one box that had drifted, and the next office edit would then push `Pri=0`
+   * to all three. Privilege is learned upward only.
+   */
+  it("ignores a privilege lower than the one RadoFlow holds", () => {
+    const plan = planRosterUpload(
+      parseOperlog("USER PIN=1	Name=Sup	Pri=0	Card=998877"),
+      GATE_IN,
+      profiles(SUPERVISOR),
+      ALL,
+    );
+
+    expect(plan.identityUpdates).toEqual([]);
+  });
+
+  it("sends the privilege back to the terminal that had lost it", () => {
+    const plan = planRosterUpload(
+      parseOperlog("USER PIN=1	Name=Sup	Pri=0	Card=998877"),
+      GATE_IN,
+      profiles(SUPERVISOR),
+      ALL,
+    );
+
+    expect(plan.adminCorrections).toEqual([
+      {
+        device_id: GATE_IN,
+        kind: "user.update",
+        body: userInfoCommand({
+          deviceUserId: "1",
+          name: "Sup",
+          privilege: 14,
+          cardNumber: "998877",
+        }),
+        profile_id: "p-sup",
+      },
+    ]);
+  });
+
+  it("keeps the name and card the terminal reported, changing only the privilege", () => {
+    // PIN 1 is one person under two names on the two gates. Correcting the
+    // privilege must not rename them on either box.
+    const plan = planRosterUpload(
+      parseOperlog("USER PIN=1	Name=Antrosys	Pri=0	Card=9984165"),
+      GATE_OUT,
+      profiles(SUPERVISOR),
+      ALL,
+    );
+
+    expect(plan.adminCorrections[0]?.body).toContain("Name=Antrosys");
+    expect(plan.adminCorrections[0]?.body).toContain("Card=9984165");
+    expect(plan.adminCorrections[0]?.body).toContain("Pri=14");
+  });
+
+  it("corrects nobody when the terminal already agrees", () => {
+    const plan = planRosterUpload(
+      parseOperlog("USER PIN=1	Name=Sup	Pri=14	Card=998877"),
+      GATE_IN,
+      profiles(SUPERVISOR),
+      ALL,
+    );
+
+    expect(plan.adminCorrections).toEqual([]);
+  });
+
+  it("leaves an ordinary worker alone", () => {
+    const plan = planRosterUpload(
+      parseOperlog("USER PIN=2070	Name=Aslam	Pri=0	Card="),
+      GATE_IN,
+      profiles(ASLAM),
+      ALL,
+    );
+
+    expect(plan.adminCorrections).toEqual([]);
+  });
+
+  it("corrects only the terminal that reported, never the other two", () => {
+    // The other two are reached by their own uploads and by the merge. Queuing
+    // a correction for a terminal on the strength of what a different one said
+    // would put an instruction on every box each time any of them uploads.
+    const plan = planRosterUpload(
+      parseOperlog("USER PIN=1	Name=Sup	Pri=0	Card=998877"),
+      GATE_IN,
+      profiles(SUPERVISOR),
+      ALL,
+    );
+
+    expect(plan.adminCorrections.map((c) => c.device_id)).toEqual([GATE_IN]);
   });
 });
 

@@ -49,6 +49,8 @@ export interface RosterUploadResult {
   templatesStored: number;
   /** Instructions newly queued for other terminals; repeats and slots they hold are not counted. */
   relaysQueued: number;
+  /** Administrators this terminal had lost, queued back to it at their proper privilege. */
+  adminsCorrected: number;
   deletions: number;
   skipped: number;
 }
@@ -83,6 +85,7 @@ export async function applyRosterUpload(
       unknown: [],
       templatesStored: 0,
       relaysQueued: 0,
+      adminsCorrected: 0,
       deletions: 0,
       skipped: parsed.skipped,
     };
@@ -174,6 +177,24 @@ export async function applyRosterUpload(
   }
 
   /*
+   * Administrators this terminal reported as ordinary users, sent straight
+   * back to it. Separate from the relays because they travel the other way —
+   * to the terminal that uploaded, not away from it — and because they carry a
+   * profile id, which is what lets them through the rule that a terminal is
+   * never sent a user record it already holds.
+   */
+  let adminsCorrected = 0;
+  for (const rows of chunk(plan.adminCorrections, 500)) {
+    const { data, error } = await supabase.rpc("queue_device_commands", {
+      p_commands: rows as unknown as Json,
+    });
+    if (error) {
+      throw new Error(`Could not restore administrators on ${device.id}: ${error.message}`);
+    }
+    adminsCorrected += data ?? 0;
+  }
+
+  /*
    * A deletion performed on the terminal itself.
    *
    * Only the hardware, the stored templates and the inventory are cleared,
@@ -204,6 +225,7 @@ export async function applyRosterUpload(
     unknown: plan.unknown,
     templatesStored: plan.templates.length,
     relaysQueued,
+    adminsCorrected,
     deletions: plan.deletions.length,
     skipped: parsed.skipped,
   };

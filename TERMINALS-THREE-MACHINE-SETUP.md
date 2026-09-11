@@ -222,15 +222,84 @@ exception, and do update the terminals.
 
 ## Merging the three rosters
 
-To make all three hold everyone, each terminal first reports its full roster,
-then the gaps are filled in a stated order of precedence:
+Press **Merge every terminal's roster** on the Biometric Devices screen. Each
+terminal's gaps are filled in a stated order of precedence:
 
 1. The check-in gate's records go to the other two, wherever they are missing.
 2. Then the check-out gate's, wherever still missing.
 3. Then the kitchen's.
 
 Nothing already on a terminal is replaced, suspended and terminated staff are
-not copied, and running the merge again adds nothing.
+not copied, and running the merge again adds nothing. It only queues; each
+terminal collects its share on its own poll, twelve at a time.
+
+A terminal that has never reported its roster looks empty, and the merge will
+send it everything. That is the right answer for a box that was replaced and
+the wrong one for a box that simply is not talking — check it is collecting
+work before reading a large number as progress.
+
+### Administrators are the one thing a merge does overwrite
+
+Everything else is additive, and for a supervisor that rule bites: a gate
+holding PIN 1 as an ordinary user would keep a locked menu for ever, because
+nothing is allowed to replace a record it already has. A terminal with no
+administrator opens its menu to whoever presses the button.
+
+So the merge ends by putting every administrator RadoFlow knows back at their
+proper privilege on every terminal — using **that terminal's own record**, with
+only the privilege changed. Names and cards are left exactly as each box has
+them. This matters here: PIN 1 is the same person under two names, "UmarCEO" on
+the check-in gate and "Antrosys" on the check-out gate, and neither is renamed.
+
+The same correction happens on its own whenever a terminal uploads a roster
+that has an administrator down as an ordinary user. Privilege is only ever
+learned upward — a box saying somebody has less power than the office granted
+them is reporting its own gap.
+
+### Asking a terminal what it holds
+
+A terminal reports a worker when somebody is enrolled and never again, so
+RadoFlow's picture of a box is only as complete as the uploads it was listening
+for at the time. When the parser learns a record type it did not know, whatever
+is already on the wall stays invisible until the box is asked again:
+
+```bash
+node scripts/ask-terminal-for-roster.mjs --apply .201
+```
+
+It queues `DATA QUERY USERINFO` then `DATA QUERY FINGERTMP` — that order,
+because a terminal discards a template for a PIN it has not been introduced to.
+Despite the name, the second returns faces as well as fingerprints.
+
+**This is the shape of the upload flood**: several hundred uploads over about
+twelve minutes per terminal. Survivable now, but ask one box at a time and
+watch it rather than setting it going and walking away.
+
+### When the same man is on two terminals under two spellings
+
+The gates were enrolled at different times by different people, so a worker
+could be `MAJID SHAH` on one screen and `Majidshah` on the other. It changes
+nothing about scanning — a terminal matches on the enrolment number — but it
+makes two screens impossible to read against each other.
+
+```bash
+node scripts/fix-terminal-names.mjs
+```
+
+Dry by default; `--apply` queues the corrections. It rewrites `Name` only and
+copies every other field from the record that terminal already holds, so a
+card or a supervisor's privilege survives.
+
+It splits what it finds in two, because they are not the same claim.
+`Majidshah` and `MAJID SHAH` are one name typed twice, and those it will fix.
+`Sameer` and `ZAMEER`, or `Ranaahsan` and `RANA HUSSAIN`, are two different
+names — RadoFlow's comes from the workers list and the terminal's from whoever
+enrolled him, and neither is automatically right. Those are printed and left
+alone until somebody who knows the man says which is his, then
+`--include-renames` applies them too.
+
+PIN 1 and PIN 2 are never touched. They are one person under two names on
+purpose.
 
 ## Pausing sync
 

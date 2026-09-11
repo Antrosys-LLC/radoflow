@@ -32,7 +32,7 @@ export interface TemplateRow {
   profile_id: string;
   bio_type: number;
   finger_index: number;
-  dialect: "fp" | "biodata";
+  dialect: "fp" | "biodata" | "face";
   payload: string;
   template_size: number | null;
   is_duress: boolean;
@@ -43,6 +43,15 @@ export interface QueuedCommand {
   device_id: string;
   kind: "user.update" | "biometric.update";
   body: string;
+  /*
+   * Set only where the instruction is RadoFlow asserting something about a
+   * person it knows, rather than one terminal's record being copied to
+   * another. `app.queue_device_command` reads it as exactly that: a relayed
+   * user record is refused for a PIN the target already holds, and one carrying
+   * a profile is sent anyway, because the office is the authority on a name, a
+   * card and a privilege.
+   */
+  profile_id?: string;
 }
 
 /**
@@ -73,6 +82,12 @@ export interface RosterPlan {
   relays: QueuedCommand[];
   /** Everything the uploading terminal just showed it holds, known people and strangers alike. */
   inventory: InventoryRow[];
+  /**
+   * Sent back to the terminal that just uploaded, for people it holds at a
+   * lower privilege than RadoFlow does. Its own record, its own name and card,
+   * with only `Pri` raised.
+   */
+  adminCorrections: QueuedCommand[];
   identityUpdates: IdentityUpdate[];
   deletions: string[];
   unknown: string[];
@@ -99,8 +114,16 @@ export function userInfoCommand(user: {
   return `DATA UPDATE USERINFO ${fields.join("\t")}`;
 }
 
-export function templateCommand(template: { dialect: "fp" | "biodata"; payload: string }): string {
-  const verb = template.dialect === "fp" ? "DATA UPDATE FINGERTMP" : "DATA UPDATE BIODATA";
+export function templateCommand(template: {
+  dialect: "fp" | "biodata" | "face";
+  payload: string;
+}): string {
+  const verb =
+    template.dialect === "fp"
+      ? "DATA UPDATE FINGERTMP"
+      : template.dialect === "face"
+        ? "DATA UPDATE FACE"
+        : "DATA UPDATE BIODATA";
   return `${verb} ${template.payload}`;
 }
 
@@ -115,6 +138,7 @@ export function planRosterUpload(
   const relays = new Map<string, QueuedCommand>();
   const inventory = new Map<string, InventoryRow>();
   const identityUpdates = new Map<string, IdentityUpdate>();
+  const adminCorrections = new Map<string, QueuedCommand>();
   const unknown = new Set<string>();
   const matchedPins = new Set<string>();
 
@@ -165,10 +189,34 @@ export function planRosterUpload(
      * An empty Card field is what firmware writes for "none on this box", and
      * a person enrolled with a card on the gate but not yet on the kitchen
      * would otherwise have it wiped the next time the kitchen uploads.
+     *
+     * Privilege is learned upward only. The check-in gate holds PIN 1 as an
+     * ordinary user while the check-out gate holds the same person as an
+     * administrator; reading the gate's `Pri=0` as the truth would strip the
+     * estate of its administrator on the strength of the one box that had
+     * drifted, and the next office edit would push that demotion to all three.
+     * A terminal saying somebody has less power than RadoFlow granted them is
+     * describing its own gap, not a decision.
      */
+    const privilege = Math.max(user.privilege, profile.privilege);
     const card = user.cardNumber ?? profile.card;
-    if (user.privilege !== profile.privilege || card !== profile.card) {
-      identityUpdates.set(profile.id, { profileId: profile.id, privilege: user.privilege, card });
+    if (privilege !== profile.privilege || card !== profile.card) {
+      identityUpdates.set(profile.id, { profileId: profile.id, privilege, card });
+    }
+
+    /*
+     * And the gap is closed on the box that has it, using that box's own
+     * record so only `Pri` changes. PIN 1 is one person under two names on the
+     * two gates — "UmarCEO" on the check-in, "Antrosys" on the check-out — and
+     * restoring their menu access must not rename them on either.
+     */
+    if (user.privilege < profile.privilege) {
+      adminCorrections.set(user.deviceUserId, {
+        device_id: sourceDeviceId,
+        kind: "user.update",
+        body: userInfoCommand({ ...user, privilege: profile.privilege }),
+        profile_id: profile.id,
+      });
     }
   }
 
@@ -214,6 +262,7 @@ export function planRosterUpload(
     templates: [...templates.values()],
     relays: [...relays.values()],
     inventory: [...inventory.values()],
+    adminCorrections: [...adminCorrections.values()],
     identityUpdates: [...identityUpdates.values()],
     deletions: [...new Set(parsed.deletions.map((d) => d.deviceUserId))],
     unknown: [...unknown],

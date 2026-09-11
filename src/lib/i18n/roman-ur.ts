@@ -729,6 +729,12 @@ const roman: Dictionary = {
     rosterQueued: "{count} mulazim qatar mein. Machine agli baar khud le legi.",
     rosterFailedNote:
       "Machine aksar isliye inkaar karti hai ke us mein mazeed fingerprint ki gunjaish nahi bachi.",
+    mergeRosters: "Sab machinon ka staff aik jaisa karein",
+    mergeRunning: "Machinon ka staff milaya ja raha hai…",
+    mergeQueued:
+      "{count} hidayat qatar mein. Har machine jo us ke paas nahi tha woh agli baar khud le legi.",
+    mergeAlreadyIdentical:
+      "Sab machinon par staff pehle hi aik jaisa hai. Kuch bhejne ki zaroorat nahi.",
     readingLog: "Haazri ka record parha ja raha hai…",
     addIpFirst: "Pehle machine ka IP address darj karein",
     pushControlsNote:

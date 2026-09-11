@@ -176,7 +176,8 @@ async function absorbRoster(
     console.info(
       `[iclock] ${serialNumber}: roster in ${Date.now() - started}ms — ` +
         `${result.matched} user(s), ${result.templatesStored} template(s), ` +
-        `${result.relaysQueued} relayed, ${result.deletions} deletion(s)`,
+        `${result.relaysQueued} relayed, ${result.adminsCorrected} admin(s) restored, ` +
+        `${result.deletions} deletion(s)`,
     );
     if (result.unknown.length > 0) {
       // Enrolled on the hardware but not in RadoFlow. Relayed to the other

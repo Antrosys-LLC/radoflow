@@ -107,7 +107,19 @@ two on their own. Rules worth knowing before touching that path:
 - **Merging rosters is `reconcile_rosters(order)`.** It queues each terminal's
   gaps, taking the version from the terminal earliest in `order`, users before
   fingers, never copying suspended or terminated people. Run it only once every
-  terminal's inventory is complete.
+  terminal's inventory is complete. `merge_terminal_rosters()` is the same
+  thing behind the permission check, in check-in, check-out, kitchen order —
+  that is what the button on the devices screen calls.
+- **An administrator is the one exception to the additive rule.** Privilege is
+  learned upward only: a terminal reporting somebody as `Pri=0` when RadoFlow
+  holds them at 14 is describing its own drift, not a demotion, and it is sent
+  a correction rather than believed. Nothing else about them moves — the
+  correction is that terminal's _own_ record with only `Pri` rewritten, because
+  PIN 1 is one person under two names on the two gates and restoring their menu
+  access must not rename them on either. Both halves matter: `adminCorrections`
+  in `roster-plan.ts` catches it on every upload, `app.restore_administrators`
+  at the end of a merge catches a box that is not going to upload. A terminal
+  left with no administrator opens its menu to whoever presses the button.
 - **Pull mode is the kill switch.** Setting every terminal's `mode` to `pull`
   stops all fan-out and relays without a deploy; punches and meals still
   record, and queued instructions are still delivered.

@@ -313,3 +313,46 @@ export async function pushRosterToDevice(deviceId: string): Promise<ActionResult
 
   return { ok: true, message: fill(t.devices.rosterQueued, { count: String(data ?? 0) }) };
 }
+
+/**
+ * Makes the three terminals hold one roster between them.
+ *
+ * Every user record and every finger that any terminal has and another lacks
+ * is queued for the one that lacks it, in the precedence the setup notes
+ * state: the check-in gate's version first, then the check-out gate's, then
+ * the kitchen's. Nothing a terminal already holds is replaced — the merge is
+ * additive, which is why running it twice is not something to be careful
+ * about.
+ *
+ * The one exception is an administrator. A terminal that holds PIN 1 as an
+ * ordinary user is left with a locked menu for ever under a purely additive
+ * rule, so the merge ends by asserting every RadoFlow administrator onto every
+ * terminal, using that terminal's own record so only the privilege changes.
+ *
+ * Only queues, like `pushRosterToDevice`: an ADMS terminal is written to on
+ * its own poll and nowhere else.
+ */
+export async function mergeRosters(): Promise<ActionResult> {
+  const session = await requirePermission("devices.manage");
+  const t = dictionaryFor(session.profile.language);
+
+  // The user's own client, so the permission check inside the function sees
+  // who is asking. The service client would bypass exactly that check.
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("merge_terminal_rosters");
+
+  // Passed through untouched, for the reason given at the top of this file.
+  if (error) return { ok: false, message: error.message };
+
+  const queued = (data ?? []).reduce(
+    (total, row) => total + row.users_queued + row.templates_queued + row.admins_restored,
+    0,
+  );
+
+  revalidatePath("/devices");
+
+  return queued === 0
+    ? { ok: true, message: t.devices.mergeAlreadyIdentical }
+    : { ok: true, message: fill(t.devices.mergeQueued, { count: String(queued) }) };
+}

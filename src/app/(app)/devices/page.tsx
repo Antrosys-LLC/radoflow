@@ -13,6 +13,7 @@ import { formatDateTime, timeAgo } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 import { DeviceDialog } from "./device-dialog";
+import { MergeRostersButton } from "./merge-rosters";
 
 export const metadata: Metadata = {
   title: { absolute: "Biometric Devices | Rado Dyeing and Textile" },
@@ -58,15 +59,20 @@ export default async function DevicesPage() {
           subtitle={<Fill template={t.devices.subtitle} values={{ model: MODEL }} />}
           action={
             canManage ? (
-              <DeviceDialog
-                sites={sites ?? []}
-                trigger={
-                  <span className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all duration-300 hover:-translate-y-0.5">
-                    <Plus className="size-4" />
-                    {t.devices.addTerminal}
-                  </span>
-                }
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Only worth offering with more than one terminal: a merge
+                    across a single box has nothing to copy from. */}
+                {(devices ?? []).length > 1 ? <MergeRostersButton /> : null}
+                <DeviceDialog
+                  sites={sites ?? []}
+                  trigger={
+                    <span className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-[0_10px_24px_rgb(239_86_25/0.25)] transition-all duration-300 hover:-translate-y-0.5">
+                      <Plus className="size-4" />
+                      {t.devices.addTerminal}
+                    </span>
+                  }
+                />
+              </div>
             ) : null
           }
         />

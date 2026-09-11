@@ -959,6 +959,12 @@ const en = {
     rosterQueued: "{count} worker(s) queued. The terminal collects them on its next poll.",
     rosterFailedNote:
       "A refused instruction usually means the terminal has no room left for more fingerprints.",
+    // The merge, on the terminals index. Every terminal at once, not one.
+    mergeRosters: "Merge every terminal's roster",
+    mergeRunning: "Merging the rosters…",
+    mergeQueued:
+      "{count} instruction(s) queued. Each terminal collects what it was missing on its next poll.",
+    mergeAlreadyIdentical: "Every terminal already holds the same roster. Nothing to send.",
     readingLog: "Reading attendance log…",
     addIpFirst: "Add the terminal's IP address first",
     pushControlsNote:

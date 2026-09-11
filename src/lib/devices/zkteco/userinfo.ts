@@ -36,8 +36,11 @@ export interface DeviceUserRecord {
  */
 export interface DeviceBiometricRecord {
   deviceUserId: string;
-  /** 'fp' = older `FP PIN=` line; 'biodata' = newer `BIODATA Pin=` line. */
-  dialect: "fp" | "biodata";
+  /**
+   * 'fp' = older `FP PIN=` line; 'biodata' = newer `BIODATA Pin=` line;
+   * 'face' = one part of an enrolled face, `FACE PIN=`.
+   */
+  dialect: "fp" | "biodata" | "face";
   /** 1 fingerprint, 2 face, 9 palm — the terminal's own numbering. */
   bioType: number;
   fingerIndex: number;
@@ -189,9 +192,35 @@ export function parseOperlog(body: string): OperlogResult {
         break;
       }
 
-      // USERPIC, FACE, ATTPHOTO, WORKCODE and the rest are real records this
-      // system has no use for. Ignored rather than counted as skipped — they
-      // are not failures.
+      /*
+       * One part of an enrolled face. The MB460 stores a face as up to twelve
+       * parts, FID 0-11, one line each. Each part is synced like a finger, as
+       * Type 2 at its FID. This parser once dropped them, which left everybody
+       * who clocks in by face unable to at the other terminals.
+       */
+      case "FACE": {
+        const f = fields(rest);
+        const pin = f.get("pin")?.trim();
+        const template = f.get("tmp");
+        if (!isDevicePin(pin) || !template) {
+          skipped += 1;
+          break;
+        }
+        biometrics.push({
+          deviceUserId: pin,
+          dialect: "face",
+          bioType: 2,
+          fingerIndex: toInt(f.get("fid"), 0),
+          templateSize: f.has("size") ? toInt(f.get("size"), 0) : null,
+          isDuress: false,
+          payload: rest,
+        });
+        break;
+      }
+
+      // USERPIC, ATTPHOTO, WORKCODE and the rest are real records this system
+      // has no use for. Ignored rather than counted as skipped — they are not
+      // failures.
       default:
         break;
     }

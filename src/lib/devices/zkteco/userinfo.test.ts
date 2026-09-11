@@ -102,6 +102,42 @@ describe("parseOperlog — templates", () => {
   });
 });
 
+describe("parseOperlog — faces", () => {
+  it("reads one part of a face as a Type 2 template at its FID", () => {
+    const { biometrics } = parseOperlog(`FACE PIN=2\tFID=11\tSIZE=1648\tVALID=1\tTMP=${TEMPLATE}`);
+
+    expect(biometrics).toEqual([
+      {
+        deviceUserId: "2",
+        dialect: "face",
+        bioType: 2,
+        fingerIndex: 11,
+        templateSize: 1648,
+        isDuress: false,
+        payload: `PIN=2\tFID=11\tSIZE=1648\tVALID=1\tTMP=${TEMPLATE}`,
+      },
+    ]);
+  });
+
+  it("reads all twelve parts of a face, upper-case keys and all", () => {
+    const body = Array.from(
+      { length: 12 },
+      (_, fid) => `FACE PIN=2\tFID=${fid}\tSIZE=1648\tVALID=1\tTMP=${TEMPLATE}`,
+    ).join("\r\n");
+    const { biometrics, skipped } = parseOperlog(body);
+
+    expect(biometrics.map((b) => b.fingerIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(skipped).toBe(0);
+  });
+
+  it("skips a face part with no PIN to attach it to", () => {
+    const { biometrics, skipped } = parseOperlog(`FACE FID=0\tTMP=${TEMPLATE}`);
+
+    expect(biometrics).toHaveLength(0);
+    expect(skipped).toBe(1);
+  });
+});
+
 describe("parseOperlog — deletions", () => {
   it("reads a user deleted on the terminal", () => {
     // op 9 = delete user; the removed PIN is the fourth field.

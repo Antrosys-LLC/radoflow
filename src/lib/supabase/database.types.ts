@@ -3191,9 +3191,19 @@ export type Database = {
         Returns: number
       }
       queue_device_commands: { Args: { p_commands: Json }; Returns: number }
+      merge_terminal_rosters: {
+        Args: never
+        Returns: {
+          admins_restored: number
+          target_device: string
+          templates_queued: number
+          users_queued: number
+        }[]
+      }
       reconcile_rosters: {
         Args: { p_order: string[] }
         Returns: {
+          admins_restored: number
           target_device: string
           templates_queued: number
           users_queued: number

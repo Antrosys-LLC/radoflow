@@ -98,8 +98,13 @@ two on their own. Rules worth knowing before touching that path:
   roster uploads and from every instruction it confirms. `app.queue_device_command`
   refuses a finger the target already holds, in any version, and a relayed
   user record for a PIN it already has. Office changes to a RadoFlow person's
-  name, privilege or card still go through. This is what the factory asked
-  for, and it is also what makes an echo harmless.
+  name, privilege or card still go through — but only when the office is what
+  changed. A finger or face fanning out from the terminal that captured it
+  (`app.fan_out_biometric`) sends the person's user record only to a terminal
+  that does not hold the PIN; one that already has them keeps its name and
+  card. That is the third argument to `push_person_to_device`, and every other
+  caller leaves it at its default. This is what the factory asked for, and it
+  is also what makes an echo harmless.
 - **Uploads must be fast and idempotent.** A terminal reads a slow reply as a
   failure and resends the whole roster; on the first live day that happened
   every thirty-five seconds for ten minutes. `applyRosterUpload` plans in

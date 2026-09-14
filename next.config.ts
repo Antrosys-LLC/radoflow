@@ -33,6 +33,17 @@ const nextConfig: NextConfig = {
    */
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts", "date-fns"],
+    /*
+     * No Turbopack cache for production builds.
+     *
+     * Next 16.3 turned it on by default, and Railway carries `.next/cache` from
+     * one deploy to the next. A cache corrupted in one deploy ("checksum
+     * mismatch in …sst") then fails every build after it, before a line of our
+     * code is compiled — which is how a clean commit failed to deploy. A build
+     * here takes well under a minute cold, so the cache buys little and can
+     * cost a release.
+     */
+    turbopackFileSystemCacheForBuild: false,
   },
 
   /*

@@ -1,23 +1,23 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { buildPayslipPdf, buildTablePdf } from "@/lib/export/pdf";
+import { buildTablePdf, standardFooter } from "@/lib/export/pdf";
 import {
   canteenDocument,
-  liveRegisterDocument,
+  canteenInvoiceDocument,
+  livePayslipDocument,
   payslipFromRun,
+  rangeLabel,
   registerDocument,
+  registerFromItems,
   type Document,
 } from "@/lib/export/route-documents";
 import { buildWorkbook, type Sheet } from "@/lib/export/xlsx";
 import { getSession } from "@/lib/auth/session";
-import {
-  countWorkingDays,
-  dailyRate,
-  daysInMonthOf,
-  overtimeRate,
-  splitDayHours,
-} from "@/lib/payroll/hours";
+import { estimateSalaries } from "@/lib/payroll/estimate";
+import { countWorkingDays, splitDayHours } from "@/lib/payroll/hours";
+import type { RegisterItem } from "@/lib/payroll/register";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
+import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime, pakistanDayStartUtc, todayInPakistan } from "@/lib/time";
 
@@ -30,6 +30,11 @@ import { formatDateTime, pakistanDayStartUtc, todayInPakistan } from "@/lib/time
  *
  * Every export recomputes from the payroll functions rather than reading stored
  * totals, so a downloaded file and the screen it came from cannot disagree.
+ *
+ * Every read over the factory is batched by id. These downloads once asked for
+ * four hundred people's attendance in a single request, PostgREST refused the
+ * request line, and the refusal came back as no rows — a register of zeros for
+ * a month the whole floor worked.
  */
 
 export const dynamic = "force-dynamic";
@@ -44,11 +49,15 @@ const REQUIRED_PERMISSION = {
   payslip: "payroll.view",
   gate: "gate.view",
   canteen: "canteen.view",
+  // What the canteen is owed for a day or a month.
+  "canteen-invoice": "canteen.view",
   // The salary register of one saved pay run.
   register: "payroll.view",
 } as const;
 
 type Kind = keyof typeof REQUIRED_PERMISSION;
+
+const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 const money = (value: number) => Math.round(value);
 const hours = (value: number) => Math.round(value * 100) / 100;
@@ -83,6 +92,17 @@ function fileResponse(body: Buffer, name: string, contentType: string) {
   });
 }
 
+interface DayRow {
+  profile_id: string;
+  work_date: string;
+  regular_hours: number | string | null;
+  day_type: string | null;
+  status: string | null;
+  minutes_late: number | null;
+  is_late: boolean | null;
+  hours_are_final: boolean | null;
+}
+
 export async function GET(request: NextRequest, context: { params: Promise<{ kind: string }> }) {
   const { kind: rawKind } = await context.params;
   const kind = rawKind as Kind;
@@ -115,392 +135,449 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
   const from = url.searchParams.get("from") || `${today.slice(0, 7)}-01`;
   const to = url.searchParams.get("to") || today;
   const deptFilter = url.searchParams.get("dept") ?? "";
+  const period = rangeLabel(from, to);
 
-  /*
-   * The gate register, before the people queries below.
-   *
-   * It shares nothing with the other four — no department scope, no payroll
-   * arithmetic — so it answers early rather than loading a staff list it will
-   * not use.
-   */
-  if (kind === "gate") {
-    const { data: entries } = await supabase
-      .from("gate_entries")
-      .select("*")
-      .gte("happened_at", pakistanDayStartUtc(from))
-      .lt("happened_at", pakistanDayStartUtc(nextDay(to)))
-      .order("happened_at", { ascending: true });
+  try {
+    /*
+     * The gate register, before the people queries below.
+     *
+     * It shares nothing with the others — no department scope, no payroll
+     * arithmetic — so it answers early rather than loading a staff list it
+     * will not use.
+     */
+    if (kind === "gate") {
+      const { data: entries } = await supabase
+        .from("gate_entries")
+        .select("*")
+        .gte("happened_at", pakistanDayStartUtc(from))
+        .lt("happened_at", pakistanDayStartUtc(nextDay(to)))
+        .order("happened_at", { ascending: true });
 
-    const rows = (entries ?? []).map((entry) => [
-      formatDateTime(entry.happened_at),
-      entry.direction === "out" ? "Out" : "In",
-      entry.kind,
-      entry.subject,
-      entry.party ?? "",
-      entry.purpose ?? "",
-      entry.reference ?? "",
-      entry.quantity ?? "",
-      entry.remarks ?? "",
-    ]);
+      const rows = (entries ?? []).map((entry) => [
+        formatDateTime(entry.happened_at),
+        entry.direction === "out" ? "Out" : "In",
+        entry.kind,
+        entry.subject,
+        entry.party ?? "",
+        entry.purpose ?? "",
+        entry.reference ?? "",
+        entry.quantity ?? "",
+        entry.remarks ?? "",
+      ]);
 
-    if (format === "pdf") {
-      return fileResponse(
-        buildTablePdf({
-          title: "Gate register",
-          subtitle: `${from} to ${to} · ${rows.length} entries`,
-          columns: [
-            { header: "When", width: 90 },
-            { header: "In/Out", width: 40 },
-            { header: "What", width: 50 },
-            { header: "Who or what", width: 120 },
-            { header: "Company", width: 90 },
-            { header: "Purpose", width: 90 },
-            { header: "Reference", width: 70 },
-          ],
-          rows: rows.map((row) => [row[0]!, row[1]!, row[2]!, row[3]!, row[4]!, row[5]!, row[6]!]),
-        }),
-        filename("gate", "pdf"),
-        "application/pdf",
-      );
-    }
-
-    const sheet: Sheet = {
-      name: "Gate register",
-      columns: [
-        { header: "When", width: 20, format: "text" },
-        { header: "In/Out", width: 8, format: "text" },
-        { header: "What", width: 12, format: "text" },
-        { header: "Who or what", width: 26, format: "text" },
-        { header: "Company or destination", width: 22, format: "text" },
-        { header: "Purpose", width: 22, format: "text" },
-        { header: "Reference", width: 16, format: "text" },
-        { header: "Quantity", width: 12, format: "text" },
-        { header: "Remarks", width: 26, format: "text" },
-      ],
-      rows,
-    };
-
-    return fileResponse(
-      buildWorkbook([sheet]),
-      filename("gate", "xlsx"),
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-  }
-
-  /*
-   * The documents that read a saved record rather than recomputing one: the
-   * canteen register, a pay run's salary register, and a payslip from a run.
-   */
-  if (kind === "canteen") {
-    return documentResponse(await canteenDocument(supabase, { from, to, format }));
-  }
-
-  if (kind === "register") {
-    return documentResponse(
-      await registerDocument(supabase, { periodId: url.searchParams.get("period") ?? "", format }),
-    );
-  }
-
-  const periodId = url.searchParams.get("period");
-  if (kind === "payslip" && periodId) {
-    return documentResponse(await payslipFromRun(supabase, { periodId, profileId }));
-  }
-
-  const { data: departments } = await supabase.from("departments").select("id, name");
-  const deptName = new Map((departments ?? []).map((d) => [d.id, d.name]));
-
-  const { data: staffRows } = await supabase
-    .from("profiles")
-    .select(
-      "id, full_name, employee_code, cnic, designation, department_id, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, overtime_eligible, flexible_hours, requires_attendance, status",
-    )
-    .eq("status", "active")
-    .order("full_name");
-
-  const everyone = staffRows ?? [];
-  const staff = deptFilter ? everyone.filter((p) => p.department_id === deptFilter) : everyone;
-
-  const scopeNote = deptFilter ? (deptName.get(deptFilter) ?? "Department") : "Whole factory";
-
-  // ---- People ------------------------------------------------------------
-  if (kind === "people" || kind === "pay") {
-    const columns = [
-      { header: "Unique ID", width: 16, format: "text" as const },
-      { header: "Name", width: 26, format: "text" as const },
-      { header: "Department", width: 20, format: "text" as const },
-      { header: "Designation", width: 18, format: "text" as const },
-      { header: "Paid as", width: 12, format: "text" as const },
-      { header: "Monthly salary", width: 16, format: "money" as const },
-      { header: "Salary covers (h)", width: 15, format: "number" as const },
-      { header: "Earns overtime", width: 14, format: "text" as const },
-      { header: "Sunday", width: 15, format: "text" as const },
-      { header: "Paid from attendance", width: 18, format: "text" as const },
-      { header: "Fixed in/out time", width: 15, format: "text" as const },
-      { header: "CNIC", width: 18, format: "text" as const },
-    ];
-
-    const rows = staff.map((p) => [
-      p.employee_code,
-      p.full_name,
-      p.department_id ? (deptName.get(p.department_id) ?? "") : "",
-      p.designation ?? "",
-      p.worker_type === "contractor" ? "Contractor" : "Employee",
-      Number(p.monthly_salary),
-      Number(p.duty_hours),
-      p.overtime_eligible ? "Yes" : "No",
-      p.sunday_policy,
-      p.requires_attendance ? "Yes" : "No",
-      p.flexible_hours ? "No" : "Yes",
-      p.cnic ?? "",
-    ]);
-
-    const total = staff.reduce((t, p) => t + Number(p.monthly_salary), 0);
-
-    if (format === "pdf") {
-      return fileResponse(
-        buildTablePdf({
-          title: `People and pay — ${scopeNote}`,
-          subtitle: `${staff.length} active · generated ${today}`,
-          columns: [
-            { header: "Code", width: 60 },
-            { header: "Name", width: 150 },
-            { header: "Department", width: 110 },
-            { header: "Paid as", width: 60 },
-            { header: "Duty", width: 40, align: "right" },
-            { header: "Salary", width: 80, align: "right" },
-          ],
-          rows: staff.map((p) => [
-            p.employee_code,
-            p.full_name,
-            p.department_id ? (deptName.get(p.department_id) ?? "") : "",
-            p.worker_type === "contractor" ? "Contract" : "Employee",
-            `${Number(p.duty_hours)}h`,
-            money(Number(p.monthly_salary)),
-          ]),
-          totals: ["Total", `${staff.length} people`, "", "", "", money(total)],
-          footer: "Monthly salary is a daily rate: salary divided by the days of the month.",
-        }),
-        filename("people", "pdf"),
-        "application/pdf",
-      );
-    }
-
-    return fileResponse(
-      buildWorkbook([
-        {
-          name: "People",
-          title: `People and pay — ${scopeNote}`,
-          columns,
-          rows,
-          totals: ["", `${staff.length} people`, "", "", "", total, "", "", "", "", "", ""],
-        },
-      ]),
-      filename("people", "xlsx"),
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-  }
-
-  // ---- Attendance and payroll both need the computed figures -------------
-  const ids = staff.map((p) => p.id);
-  const { data: dayRows } =
-    ids.length > 0
-      ? await supabase
-          .from("attendance_days")
-          .select("profile_id, work_date, regular_hours, day_type, status, minutes_late, is_late")
-          .in("profile_id", ids)
-          .gte("work_date", from)
-          .lte("work_date", to)
-          .order("work_date")
-      : { data: [] };
-
-  const byPerson = new Map<string, AttendanceDay[]>();
-  for (const row of dayRows ?? []) {
-    const list = byPerson.get(row.profile_id) ?? [];
-    list.push({
-      workDate: row.work_date,
-      dayType: (row.day_type ?? "workday") as DayType,
-      hoursWorked: Number(row.regular_hours ?? 0),
-      status: (row.status ?? "pending") as AttendanceDay["status"],
-      minutesLate: row.minutes_late ?? 0,
-    });
-    byPerson.set(row.profile_id, list);
-  }
-
-  const rule = DEFAULT_PAY_RULE;
-  const daysInMonth = daysInMonthOf(from);
-
-  const computed = staff.map((person) => {
-    const days = byPerson.get(person.id) ?? [];
-    const terms = {
-      overtimeEligible: person.overtime_eligible,
-      sundayPolicy: person.sunday_policy,
-    };
-    const buckets = days.map((d) => splitDayHours(d, rule, Number(person.duty_hours), terms));
-
-    const workingDays = countWorkingDays(days);
-    const overtime = buckets.reduce((t, b) => t + b.overtime, 0);
-    const duty = buckets.reduce((t, b) => t + b.regular, 0);
-
-    const salary = Number(person.monthly_salary);
-    const contractor = person.worker_type === "contractor";
-    const perDay = dailyRate(salary, daysInMonth);
-    const perOt = overtimeRate(salary, daysInMonth);
-
-    const base = contractor || !person.requires_attendance ? salary : perDay * workingDays;
-    const otPay = contractor ? 0 : overtime * perOt;
-
-    return { person, days, workingDays, overtime, duty, perDay, perOt, base, otPay, contractor };
-  });
-
-  // ---- Payslip -----------------------------------------------------------
-  if (kind === "payslip") {
-    const found = computed.find((c) => c.person.id === profileId);
-    if (!found) return NextResponse.json({ error: "No such person." }, { status: 404 });
-
-    const { data: extras } = await supabase
-      .from("profile_pay_components")
-      .select("label, kind, amount")
-      .eq("profile_id", profileId);
-
-    const earnings = [
-      found.contractor
-        ? { label: "Contract amount", amount: money(found.base) }
-        : !found.person.requires_attendance
-          ? { label: "Monthly salary", amount: money(found.base) }
-          : { label: `Salary for ${found.workingDays} working days`, amount: money(found.base) },
-      ...(found.otPay > 0
-        ? [{ label: `Overtime — ${hours(found.overtime)} h`, amount: money(found.otPay) }]
-        : []),
-      ...(extras ?? [])
-        .filter((e) => e.kind === "earning")
-        .map((e) => ({ label: e.label, amount: money(Number(e.amount)) })),
-    ];
-
-    const deductions = (extras ?? [])
-      .filter((e) => e.kind !== "earning")
-      .map((e) => ({ label: e.label, amount: money(Number(e.amount)) }));
-
-    const gross = earnings.reduce((t, e) => t + e.amount, 0);
-    const taken = deductions.reduce((t, d) => t + d.amount, 0);
-
-    return fileResponse(
-      buildPayslipPdf({
-        employeeName: found.person.full_name,
-        employeeCode: found.person.employee_code,
-        department: found.person.department_id
-          ? (deptName.get(found.person.department_id) ?? "")
-          : "",
-        designation: found.person.designation ?? undefined,
-        period: `${from} to ${to}`,
-        facts: found.contractor
-          ? [{ label: "Paid as", value: "Contractor — agreed amount, flat" }]
-          : [
-              {
-                label: "Monthly salary",
-                value: money(Number(found.person.monthly_salary)).toLocaleString("en-PK"),
-              },
-              { label: "Days in the month", value: String(daysInMonth) },
-              { label: "Daily rate", value: found.perDay.toLocaleString("en-PK") },
-              { label: "Working days attended", value: String(found.workingDays) },
-              { label: "Salary covers", value: `${Number(found.person.duty_hours)} hours a day` },
-              { label: "Overtime hours", value: hours(found.overtime).toLocaleString("en-PK") },
-              { label: "Overtime rate", value: `${found.perOt.toLocaleString("en-PK")} an hour` },
+      if (format === "pdf") {
+        return fileResponse(
+          buildTablePdf({
+            title: "Gate register",
+            subtitle: `${period} · ${rows.length} entries`,
+            columns: [
+              { header: "When", width: 90 },
+              { header: "In/Out", width: 40 },
+              { header: "What", width: 50 },
+              { header: "Who or what", width: 120 },
+              { header: "Company", width: 90 },
+              { header: "Purpose", width: 90 },
+              { header: "Reference", width: 70 },
             ],
-        earnings,
-        deductions,
-        // Never negative: nothing can be taken from pay that was not earned.
-        net: Math.max(0, gross - taken),
-        footer:
-          "Computer generated. Sundays are not working days; hours worked on one are overtime.",
-      }),
-      `payslip-${found.person.employee_code}-${from.slice(0, 7)}.pdf`,
-      "application/pdf",
-    );
-  }
+            rows: rows.map((row) => [
+              row[0]!,
+              row[1]!,
+              row[2]!,
+              row[3]!,
+              row[4]!,
+              row[5]!,
+              row[6]!,
+            ]),
+            footer: standardFooter(period),
+          }),
+          filename("gate", "pdf"),
+          "application/pdf",
+        );
+      }
 
-  // ---- Attendance --------------------------------------------------------
-  if (kind === "attendance") {
-    const columns = [
-      { header: "Unique ID", width: 15, format: "text" as const },
-      { header: "Name", width: 26, format: "text" as const },
-      { header: "Department", width: 20, format: "text" as const },
-      { header: "Working days", width: 13, format: "number" as const },
-      { header: "Duty hours", width: 13, format: "hours" as const },
-      { header: "Overtime hours", width: 14, format: "hours" as const },
-      { header: "Late days", width: 11, format: "number" as const },
-    ];
+      const sheet: Sheet = {
+        name: "Gate register",
+        title: "Gate register",
+        subtitle: period,
+        columns: [
+          { header: "When", width: 20, format: "text" },
+          { header: "In/Out", width: 8, format: "text" },
+          { header: "What", width: 12, format: "text" },
+          { header: "Who or what", width: 26, format: "text" },
+          { header: "Company or destination", width: 22, format: "text" },
+          { header: "Purpose", width: 22, format: "text" },
+          { header: "Reference", width: 16, format: "text" },
+          { header: "Quantity", width: 12, format: "text" },
+          { header: "Remarks", width: 26, format: "text" },
+        ],
+        rows,
+      };
 
-    const rows = computed.map((c) => [
-      c.person.employee_code,
-      c.person.full_name,
-      c.person.department_id ? (deptName.get(c.person.department_id) ?? "") : "",
-      c.workingDays,
-      hours(c.duty),
-      hours(c.overtime),
-      (dayRows ?? []).filter((d) => d.profile_id === c.person.id && d.is_late).length,
-    ]);
+      return fileResponse(buildWorkbook([sheet]), filename("gate", "xlsx"), XLSX);
+    }
 
-    const totals = [
-      "",
-      `${computed.length} people`,
-      "",
-      computed.reduce((t, c) => t + c.workingDays, 0),
-      hours(computed.reduce((t, c) => t + c.duty, 0)),
-      hours(computed.reduce((t, c) => t + c.overtime, 0)),
-      null,
-    ];
+    /*
+     * The documents that read a saved record rather than recomputing one: the
+     * canteen register and invoice, a pay run's salary register, and a payslip
+     * from a run.
+     */
+    if (kind === "canteen") {
+      return documentResponse(await canteenDocument(supabase, { from, to, format }));
+    }
 
-    if (format === "pdf") {
-      return fileResponse(
-        buildTablePdf({
-          title: `Attendance — ${scopeNote}`,
-          subtitle: `${from} to ${to}`,
-          columns: [
-            { header: "Code", width: 60 },
-            { header: "Name", width: 160 },
-            { header: "Department", width: 110 },
-            { header: "Days", width: 45, align: "right" },
-            { header: "Duty", width: 55, align: "right" },
-            { header: "Overtime", width: 60, align: "right" },
-          ],
-          rows: rows.map((r) => [r[0], r[1], r[2], r[3], r[4], r[5]] as (string | number)[]),
-          totals: ["Total", `${computed.length} people`, "", totals[3]!, totals[4]!, totals[5]!],
-          footer: "Sundays are never working days; every hour worked on one is overtime.",
+    if (kind === "canteen-invoice") {
+      return documentResponse(await canteenInvoiceDocument(supabase, { from, to, format }));
+    }
+
+    if (kind === "register") {
+      return documentResponse(
+        await registerDocument(supabase, {
+          periodId: url.searchParams.get("period") ?? "",
+          format,
         }),
-        filename("attendance", "pdf"),
-        "application/pdf",
       );
     }
 
-    return fileResponse(
-      buildWorkbook([
-        {
-          name: "Attendance",
-          title: `Attendance — ${scopeNote} · ${from} to ${to}`,
-          columns,
-          rows,
-          totals,
-        },
-      ]),
-      filename("attendance", "xlsx"),
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    );
-  }
+    const periodId = url.searchParams.get("period");
+    if (kind === "payslip" && periodId) {
+      return documentResponse(await payslipFromRun(supabase, { periodId, profileId }));
+    }
 
-  // ---- Payroll: the salary register, worked out live ----------------------
-  return documentResponse(
-    await liveRegisterDocument(supabase, {
-      figures: computed.map((c) => ({
-        person: c.person,
-        workingDays: c.contractor ? 0 : c.workingDays,
-        overtime: c.overtime,
-        base: c.base,
-        otPay: c.otPay,
-      })),
+    const { data: departments } = await supabase.from("departments").select("id, name");
+    const deptName = new Map((departments ?? []).map((d) => [d.id, d.name]));
+    const departmentOf = (id: string | null) => (id ? (deptName.get(id) ?? "") : "");
+
+    const { data: staffRows } = await supabase
+      .from("profiles")
+      .select(
+        "id, full_name, employee_code, cnic, designation, department_id, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, overtime_eligible, flexible_hours, requires_attendance, payroll_exempt, status",
+      )
+      .eq("status", "active")
+      .order("full_name");
+
+    const everyone = staffRows ?? [];
+    const staff = deptFilter ? everyone.filter((p) => p.department_id === deptFilter) : everyone;
+    const scopeNote = deptFilter ? (deptName.get(deptFilter) ?? "Department") : "Whole factory";
+
+    // ---- People ------------------------------------------------------------
+    if (kind === "people" || kind === "pay") {
+      const columns = [
+        { header: "Unique ID", width: 16, format: "text" as const },
+        { header: "Name", width: 26, format: "text" as const },
+        { header: "Department", width: 20, format: "text" as const },
+        { header: "Designation", width: 18, format: "text" as const },
+        { header: "Paid as", width: 12, format: "text" as const },
+        { header: "Monthly salary", width: 16, format: "money" as const },
+        { header: "Salary covers (h)", width: 15, format: "number" as const },
+        { header: "Earns overtime", width: 14, format: "text" as const },
+        { header: "Sunday", width: 15, format: "text" as const },
+        { header: "Paid from attendance", width: 18, format: "text" as const },
+        { header: "Fixed in/out time", width: 15, format: "text" as const },
+        { header: "CNIC", width: 18, format: "text" as const },
+      ];
+
+      const rows = staff.map((p) => [
+        p.employee_code,
+        p.full_name,
+        departmentOf(p.department_id),
+        p.designation ?? "",
+        p.worker_type === "contractor" ? "Contractor" : "Employee",
+        Number(p.monthly_salary),
+        Number(p.duty_hours),
+        p.overtime_eligible ? "Yes" : "No",
+        p.sunday_policy,
+        p.requires_attendance ? "Yes" : "No",
+        p.flexible_hours ? "No" : "Yes",
+        p.cnic ?? "",
+      ]);
+
+      const total = staff.reduce((t, p) => t + Number(p.monthly_salary), 0);
+
+      if (format === "pdf") {
+        return fileResponse(
+          buildTablePdf({
+            title: `People and pay — ${scopeNote}`,
+            subtitle: `${staff.length} active · generated ${today}`,
+            columns: [
+              { header: "Code", width: 60 },
+              { header: "Name", width: 150 },
+              { header: "Department", width: 110 },
+              { header: "Paid as", width: 60 },
+              { header: "Duty", width: 40, align: "right" },
+              { header: "Salary", width: 80, align: "right" },
+            ],
+            rows: staff.map((p) => [
+              p.employee_code,
+              p.full_name,
+              departmentOf(p.department_id),
+              !p.requires_attendance
+                ? "Fixed"
+                : p.flexible_hours
+                  ? "By hours"
+                  : p.worker_type === "contractor"
+                    ? "Contract"
+                    : "Shift",
+              `${Number(p.duty_hours)}h`,
+              money(Number(p.monthly_salary)),
+            ]),
+            totals: ["Total", `${staff.length} people`, "", "", "", money(total)],
+            footer: standardFooter(
+              period,
+              "Monthly salary is a daily rate: salary divided by the days of the month",
+            ),
+          }),
+          filename("people", "pdf"),
+          "application/pdf",
+        );
+      }
+
+      return fileResponse(
+        buildWorkbook([
+          {
+            name: "People",
+            title: `People and pay — ${scopeNote}`,
+            columns,
+            rows,
+            totals: ["", `${staff.length} people`, "", "", "", total, "", "", "", "", "", ""],
+          },
+        ]),
+        filename("people", "xlsx"),
+        XLSX,
+      );
+    }
+
+    // ---- Attendance --------------------------------------------------------
+    if (kind === "attendance") {
+      const dayRows = await selectAllInBatches<DayRow>(
+        staff.map((p) => p.id),
+        (ids, first, last) =>
+          supabase
+            .from("attendance_days")
+            .select(
+              "profile_id, work_date, regular_hours, day_type, status, minutes_late, is_late, hours_are_final",
+            )
+            .in("profile_id", ids)
+            .gte("work_date", from)
+            .lte("work_date", to)
+            .order("profile_id")
+            .order("work_date")
+            .range(first, last),
+        `Could not read attendance for ${from} to ${to}`,
+      );
+
+      const byPerson = new Map<string, DayRow[]>();
+      for (const row of dayRows) {
+        byPerson.set(row.profile_id, [...(byPerson.get(row.profile_id) ?? []), row]);
+      }
+
+      const computed = staff.map((person) => {
+        const rows = byPerson.get(person.id) ?? [];
+        const days: AttendanceDay[] = rows.map((row) => ({
+          workDate: row.work_date,
+          dayType: (row.day_type ?? "workday") as DayType,
+          hoursWorked: Number(row.regular_hours ?? 0),
+          status: (row.status ?? "pending") as AttendanceDay["status"],
+          minutesLate: row.minutes_late ?? 0,
+          hoursAreFinal: row.hours_are_final ?? false,
+        }));
+        const buckets = days.map((d) =>
+          splitDayHours(d, DEFAULT_PAY_RULE, Number(person.duty_hours), {
+            overtimeEligible: person.overtime_eligible,
+            sundayPolicy: person.sunday_policy,
+          }),
+        );
+        return {
+          person,
+          workingDays: countWorkingDays(days),
+          duty: buckets.reduce((t, b) => t + b.regular, 0),
+          overtime: buckets.reduce((t, b) => t + b.overtime + b.weekend + b.holiday, 0),
+          late: person.flexible_hours ? 0 : rows.filter((row) => row.is_late).length,
+          lateMinutes: person.flexible_hours
+            ? 0
+            : rows.reduce((t, row) => t + (row.is_late ? (row.minutes_late ?? 0) : 0), 0),
+          absent: rows.filter((row) => row.status === "absent").length,
+        };
+      });
+
+      const columns = [
+        { header: "Unique ID", width: 15, format: "text" as const },
+        { header: "Name", width: 26, format: "text" as const },
+        { header: "Department", width: 20, format: "text" as const },
+        { header: "Working days", width: 13, format: "number" as const },
+        { header: "Duty hours", width: 13, format: "hours" as const },
+        { header: "Overtime hours", width: 14, format: "hours" as const },
+        { header: "Late days", width: 11, format: "number" as const },
+        { header: "Minutes late", width: 13, format: "number" as const },
+        { header: "Absent days", width: 12, format: "number" as const },
+      ];
+
+      const rows = computed.map((c) => [
+        c.person.employee_code,
+        c.person.full_name,
+        departmentOf(c.person.department_id),
+        c.workingDays,
+        hours(c.duty),
+        hours(c.overtime),
+        c.late,
+        c.lateMinutes,
+        c.absent,
+      ]);
+
+      const sum = (pick: (c: (typeof computed)[number]) => number) =>
+        computed.reduce((t, c) => t + pick(c), 0);
+      const totals = [
+        "",
+        `${computed.length} people`,
+        "",
+        sum((c) => c.workingDays),
+        hours(sum((c) => c.duty)),
+        hours(sum((c) => c.overtime)),
+        sum((c) => c.late),
+        sum((c) => c.lateMinutes),
+        sum((c) => c.absent),
+      ];
+
+      if (format === "pdf") {
+        return fileResponse(
+          buildTablePdf({
+            title: `Attendance — ${scopeNote}`,
+            subtitle: period,
+            columns: [
+              { header: "Code", width: 58 },
+              { header: "Name", width: 140 },
+              { header: "Department", width: 100 },
+              { header: "Days", width: 38, align: "right" },
+              { header: "Duty h", width: 48, align: "right" },
+              { header: "OT h", width: 44, align: "right" },
+              { header: "Late", width: 36, align: "right" },
+              { header: "Absent", width: 42, align: "right" },
+            ],
+            rows: computed.map((c) => [
+              c.person.employee_code,
+              c.person.full_name,
+              departmentOf(c.person.department_id),
+              c.workingDays,
+              hours(c.duty),
+              hours(c.overtime),
+              c.late,
+              c.absent,
+            ]),
+            totals: [
+              "Total",
+              `${computed.length} people`,
+              "",
+              totals[3]!,
+              totals[4]!,
+              totals[5]!,
+              totals[6]!,
+              totals[8]!,
+            ],
+            highlights: [
+              { label: "People", value: String(computed.length) },
+              { label: "Working days", value: String(totals[3]) },
+              { label: "Overtime hours", value: String(totals[5]) },
+              { label: "Late arrivals", value: String(totals[6]) },
+            ],
+            footer: standardFooter(period),
+          }),
+          filename("attendance", "pdf"),
+          "application/pdf",
+        );
+      }
+
+      return fileResponse(
+        buildWorkbook([
+          {
+            name: "Attendance",
+            title: `Attendance — ${scopeNote}`,
+            subtitle: period,
+            columns,
+            rows,
+            totals,
+          },
+        ]),
+        filename("attendance", "xlsx"),
+        XLSX,
+      );
+    }
+
+    // ---- Payroll and payslips: priced by the payroll engine itself ---------
+    const targets = kind === "payslip" ? staff.filter((p) => p.id === profileId) : staff;
+    if (kind === "payslip" && targets.length === 0) {
+      return NextResponse.json({ error: "No such person." }, { status: 404 });
+    }
+
+    const outcome = await estimateSalaries(
+      supabase,
+      targets.map((p) => p.id),
       from,
       to,
-      scope: scopeNote,
-      format,
-    }),
-  );
+      { includeLedger: true, keepAbsent: true },
+    );
+    const personOf = new Map(targets.map((p) => [p.id, p]));
+
+    const items: RegisterItem[] = outcome.estimates.map(({ employee, result }) => {
+      const person = personOf.get(employee.id);
+      return {
+        profileId: employee.id,
+        name: employee.fullName,
+        code: employee.employeeCode,
+        designation: person?.designation ?? "",
+        department: departmentOf(person?.department_id ?? null) || "Unassigned",
+        monthlySalary: employee.monthlySalary,
+        workingDays: result.workingDays,
+        basePay: result.basePay,
+        overtimeHours: result.hours.overtime + result.hours.weekend + result.hours.holiday,
+        overtimePay: result.otPay + result.weekendPay + result.holidayPay,
+        gross: result.gross,
+        withheld: result.deductions + result.tax,
+        net: result.net,
+        lines: result.lines,
+      };
+    });
+
+    if (kind === "payslip") {
+      const person = targets[0]!;
+      const estimate = outcome.estimates[0];
+      const item = items[0];
+      const contractor = person.worker_type === "contractor";
+
+      return documentResponse(
+        await livePayslipDocument(supabase, {
+          name: person.full_name,
+          code: person.employee_code,
+          department: departmentOf(person.department_id),
+          designation: person.designation ?? "",
+          profileId: person.id,
+          from,
+          to,
+          monthlySalary: Number(person.monthly_salary),
+          dutyHours: Number(person.duty_hours ?? 8),
+          workingDays: item?.workingDays ?? 0,
+          overtimeHours: item?.overtimeHours ?? 0,
+          daysAbsent: estimate?.result.daysAbsent ?? 0,
+          lines: contractor
+            ? [
+                {
+                  code: "CONTRACT",
+                  label: "Contract amount",
+                  kind: "base",
+                  amount: Number(person.monthly_salary),
+                },
+              ]
+            : (item?.lines ?? []),
+          net: contractor ? Number(person.monthly_salary) : (item?.net ?? 0),
+          contractor,
+        }),
+      );
+    }
+
+    return documentResponse(registerFromItems(items, { from, to, scope: scopeNote, format }));
+  } catch (error) {
+    // A short read must never become a file of zeros: say what failed instead.
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Could not build this download." },
+      { status: 500 },
+    );
+  }
 }

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { isAntrosys } from "@/lib/auth/antrosys";
+import { isAntrosys, isCLevel } from "@/lib/auth/antrosys";
 import { requireSession } from "@/lib/auth/session";
 import { PAYMENT_TAX_RATE, USD_TO_PKR } from "@/lib/assistant/models";
 import { budgetState, DEFAULT_MONTHLY_LIMIT_PKR } from "@/lib/assistant/budget";
@@ -44,14 +44,20 @@ export default async function ClaudeSpendPage() {
    * conversation about the wrong number.
    */
   const session = await requireSession();
-  if (!isAntrosys(session)) redirect("/denied");
+  /*
+   * C-Level also reads this screen, but only the half that is theirs: the
+   * month's limit and what the factory's own questions came to. The account
+   * statement and the rate and tax it is converted at stay Antrosys's.
+   */
+  const antrosys = isAntrosys(session);
+  if (!antrosys && !isCLevel(session)) redirect("/denied");
 
   const supabase = await createClient();
 
   const [report, settingsRead, usageRead] = await Promise.all([
     // Thirty days: the longest window the cost endpoint serves in one page,
     // and a month is the unit a bill arrives in.
-    fetchDailySpend(30),
+    antrosys ? fetchDailySpend(30) : Promise.resolve({ ok: true as const, days: [] }),
     supabase
       .from("app_settings")
       .select("key, value")
@@ -92,7 +98,8 @@ export default async function ClaudeSpendPage() {
     taxPercent: settingOf("tax_percent", PAYMENT_TAX_RATE * 100),
     appUsd: (usage ?? []).reduce((total, row) => total + Number(row.cost_usd ?? 0), 0),
     appCalls: usage?.length ?? 0,
-    canManage: true,
+    canManage: antrosys,
+    audience: antrosys ? "antrosys" : "leadership",
     // The month's ceiling, worked out from the same rows and the same rate the
     // route refuses questions on, so the screen and the refusal cannot
     // disagree about how much is left.

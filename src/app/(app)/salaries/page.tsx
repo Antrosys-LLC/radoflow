@@ -3,7 +3,8 @@ import type { Metadata } from "next";
 import { SchemaOutOfDate } from "@/components/schema-out-of-date";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
-import { loanBalance, type LoanRow, type RecoveryRow } from "@/lib/payroll/ledger";
+import { LEDGER_CODES, loanBalance, type LoanRow, type RecoveryRow } from "@/lib/payroll/ledger";
+import type { PayslipLine } from "@/lib/payroll/types";
 import { isSchemaOutOfDate } from "@/lib/supabase/schema-error";
 import { createClient } from "@/lib/supabase/server";
 import { todayInPakistan } from "@/lib/time";
@@ -31,6 +32,42 @@ function shiftMonth(month: string, by: number): string {
   const date = new Date(`${month}-01T00:00:00Z`);
   date.setUTCMonth(date.getUTCMonth() + by);
   return date.toISOString().slice(0, 7);
+}
+
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
+/** A pay line's breakdown, sorted into the columns a person asks about. */
+function breakdownOf(lines: readonly PayslipLine[]) {
+  const sum = (pick: (line: PayslipLine) => boolean) =>
+    round2(lines.filter(pick).reduce((total, line) => total + Number(line.amount ?? 0), 0));
+  const withheld = (line: PayslipLine) => line.kind === "deduction" || line.kind === "tax";
+
+  return {
+    allowances: sum(
+      (line) => line.kind === "earning" && !["OT", "WEEKEND", "HOLIDAY"].includes(line.code),
+    ),
+    advances: sum(
+      (line) =>
+        withheld(line) &&
+        (line.code === LEDGER_CODES.advance || line.code === LEDGER_CODES.advance_2),
+    ),
+    suit: sum((line) => withheld(line) && line.code === LEDGER_CODES.suit),
+    loan: sum((line) => withheld(line) && line.code === LEDGER_CODES.loan),
+    late: sum((line) => withheld(line) && line.code.startsWith("LATE")),
+    other: sum(
+      (line) =>
+        withheld(line) &&
+        !line.code.startsWith("LATE") &&
+        !(
+          [
+            LEDGER_CODES.advance,
+            LEDGER_CODES.advance_2,
+            LEDGER_CODES.suit,
+            LEDGER_CODES.loan,
+          ] as string[]
+        ).includes(line.code),
+    ),
+  };
 }
 
 /**
@@ -120,12 +157,13 @@ export default async function SalariesPage({
     const balance = loanBalance(loan as LoanRow, mine);
     return {
       id: loan.id,
+      profileId: loan.profile_id,
       person: personById.get(loan.profile_id) ?? null,
       principal: Number(loan.principal),
       installment: Number(loan.installment),
       installments: loan.installments,
       paidCount: mine.filter((row) => Number(row.amount) > 0).length,
-      repaid: Math.round((Number(loan.principal) - balance) * 100) / 100,
+      repaid: round2(Number(loan.principal) - balance),
       balance,
       firstMonth: loan.first_month,
       takenOn: loan.taken_on,
@@ -149,19 +187,34 @@ export default async function SalariesPage({
   if (period) {
     const { data: items } = await supabase
       .from("payroll_items")
-      .select("id, profile_id, net, paid_amount, paid_difference, paid_note, paid_at")
-      .eq("period_id", period.id);
+      .select(
+        "id, profile_id, net, gross, working_days, days_present, base_pay, ot_pay, weekend_pay, holiday_pay, ot_hours, weekend_hours, holiday_hours, breakdown, paid_amount, paid_difference, paid_note, paid_at",
+      )
+      .eq("period_id", period.id)
+      .range(0, 4999);
 
     payments = (items ?? [])
-      .map((item) => ({
-        id: item.id,
-        person: personById.get(item.profile_id) ?? null,
-        net: Number(item.net),
-        paidAmount: item.paid_amount == null ? null : Number(item.paid_amount),
-        paidDifference: item.paid_difference == null ? null : Number(item.paid_difference),
-        paidNote: item.paid_note ?? null,
-        paidAt: item.paid_at,
-      }))
+      .map((item) => {
+        const lines = ((item.breakdown ?? []) as unknown as PayslipLine[]) ?? [];
+        return {
+          id: item.id,
+          profileId: item.profile_id,
+          person: personById.get(item.profile_id) ?? null,
+          net: Number(item.net),
+          gross: Number(item.gross),
+          workingDays:
+            item.working_days == null ? Number(item.days_present) : Number(item.working_days),
+          basePay: Number(item.base_pay),
+          overtimeHours:
+            Number(item.ot_hours) + Number(item.weekend_hours) + Number(item.holiday_hours),
+          overtimePay: Number(item.ot_pay) + Number(item.weekend_pay) + Number(item.holiday_pay),
+          ...breakdownOf(lines),
+          paidAmount: item.paid_amount == null ? null : Number(item.paid_amount),
+          paidDifference: item.paid_difference == null ? null : Number(item.paid_difference),
+          paidNote: item.paid_note ?? null,
+          paidAt: item.paid_at,
+        };
+      })
       .sort((a, b) => (a.person?.name ?? "").localeCompare(b.person?.name ?? ""));
   }
 

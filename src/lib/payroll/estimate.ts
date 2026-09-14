@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { calculatePayroll } from "./engine";
-import { daysInMonthOf } from "./hours";
+import { daysBetween, daysInMonthOf } from "./hours";
+import { ledgerFor, monthOf, type AdjustmentRow, type LoanRow, type RecoveryRow } from "./ledger";
 import { toEmployee, toLateTier, toPayComponent, toPayRule } from "./mappers";
 import type { AttendanceDay, DayType, Employee, PayComponent, PayrollResult } from "./types";
 import type { Database } from "@/lib/supabase/database.types";
+import { selectAllInBatches, selectInBatches } from "@/lib/supabase/in-batches";
 
 /**
  * What someone's pay comes to for a date range, without a payroll run.
@@ -20,6 +22,11 @@ import type { Database } from "@/lib/supabase/database.types";
  * asker is allowed to see. Someone without `payroll.view` or `people.view`
  * cannot read `profiles` at all, so they get nothing back rather than a number
  * they should not have.
+ *
+ * Every read is batched by id and paged. A single `.in()` over the factory is
+ * a request line PostgREST refuses, and a refused read comes back as no rows —
+ * which the engine prices as a month nobody worked. That is how the downloads
+ * came to show a factory of zeros.
  */
 
 type Client = SupabaseClient<Database>;
@@ -39,50 +46,90 @@ export interface EstimateOutcome {
   usedDefaultRule: boolean;
 }
 
+export interface EstimateOptions {
+  /**
+   * Take the month's advances, suits, allowances and loan installments off,
+   * the way a payroll run will. Off by default: the assistant quotes earnings.
+   */
+  includeLedger?: boolean;
+  /**
+   * Price someone who has no attendance in the range at zero instead of
+   * skipping them — a register lists everybody on the books.
+   */
+  keepAbsent?: boolean;
+}
+
+const PROFILE_COLUMNS =
+  "id, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, payroll_exempt, duty_hours, sunday_policy, overtime_eligible, flexible_hours";
+
+interface AttendanceRow {
+  profile_id: string | null;
+  work_date: string;
+  day_type: string | null;
+  status: string | null;
+  regular_hours: number | string | null;
+  minutes_late: number | null;
+  hours_are_final: boolean | null;
+}
+
 export async function estimateSalaries(
   supabase: Client,
   profileIds: readonly string[],
   from: string,
   to: string,
+  options: EstimateOptions = {},
 ): Promise<EstimateOutcome> {
   const empty: EstimateOutcome = { estimates: [], skipped: [], usedDefaultRule: false };
   if (profileIds.length === 0) return empty;
 
-  const { data: staff } = await supabase
-    .from("profiles")
-    .select(
-      "id, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, payroll_exempt, duty_hours, sunday_policy, overtime_eligible",
-    )
-    .in("id", profileIds);
+  const staff = await selectInBatches<
+    Record<string, unknown> & { id: string; site_id: string | null }
+  >(
+    profileIds,
+    (ids) => supabase.from("profiles").select(PROFILE_COLUMNS).in("id", ids) as never,
+    "Could not read the people to price",
+  );
 
-  if (!staff || staff.length === 0) return empty;
+  if (staff.length === 0) return empty;
 
   const siteId = staff.find((p) => p.site_id)?.site_id ?? null;
+  const ids = staff.map((s) => s.id);
 
-  const [{ data: rules }, { data: components }, { data: lateRules }, { data: attendance }] =
+  const [{ data: rules }, { data: components }, { data: lateRules }, attendance, extrasByProfile] =
     await Promise.all([
       siteRuleQuery(supabase, siteId, to),
       siteComponentQuery(supabase, siteId, to),
       siteLateRuleQuery(supabase, siteId),
-      supabase
-        .from("attendance_days")
-        .select(
-          "profile_id, work_date, day_type, status, regular_hours, minutes_late, hours_are_final",
-        )
-        .in(
-          "profile_id",
-          staff.map((s) => s.id),
-        )
-        .gte("work_date", from)
-        .lte("work_date", to),
+      selectAllInBatches<AttendanceRow>(
+        ids,
+        (batch, first, last) =>
+          supabase
+            .from("attendance_days")
+            .select(
+              "profile_id, work_date, day_type, status, regular_hours, minutes_late, hours_are_final",
+            )
+            .in("profile_id", batch)
+            .gte("work_date", from)
+            .lte("work_date", to)
+            .order("profile_id")
+            .order("work_date")
+            .range(first, last),
+        `Could not read attendance for ${from} to ${to}`,
+      ),
+      personalComponents(supabase, ids, from, to),
     ]);
+
+  const month = monthOf(from);
+  const ledger = options.includeLedger
+    ? await ledgerOf(supabase, ids, month)
+    : { adjustments: [], loans: [], recoveries: [] };
 
   const rule = toPayRule(rules?.[0]);
   const siteComponents = (components ?? []).map(toPayComponent);
   const tiers = (lateRules ?? []).map(toLateTier);
 
   const daysByProfile = new Map<string, AttendanceDay[]>();
-  for (const row of attendance ?? []) {
+  for (const row of attendance) {
     if (!row.profile_id) continue;
     const list = daysByProfile.get(row.profile_id) ?? [];
     list.push({
@@ -99,11 +146,10 @@ export async function estimateSalaries(
     daysByProfile.set(row.profile_id, list);
   }
 
-  const extrasByProfile = await personalComponents(supabase, staff, from, to);
-
   const estimates: SalaryEstimate[] = [];
   const skipped: EstimateOutcome["skipped"] = [];
   const daysInMonth = daysInMonthOf(from);
+  const periodDays = daysBetween(from, to);
 
   for (const person of staff) {
     const employee = toEmployee(person);
@@ -122,7 +168,7 @@ export async function estimateSalaries(
     }
 
     const days = daysByProfile.get(employee.id) ?? [];
-    if (employee.requiresAttendance && days.length === 0) {
+    if (employee.requiresAttendance && days.length === 0 && !options.keepAbsent) {
       skipped.push({
         profileId: employee.id,
         fullName: employee.fullName,
@@ -131,15 +177,21 @@ export async function estimateSalaries(
       continue;
     }
 
+    const own = options.includeLedger
+      ? ledgerFor(employee.id, month, ledger.adjustments, ledger.loans, ledger.recoveries)
+          .components
+      : [];
+
     estimates.push({
       employee,
       result: calculatePayroll({
         employee,
         rule,
         days,
-        components: [...siteComponents, ...(extrasByProfile.get(employee.id) ?? [])],
+        components: [...siteComponents, ...(extrasByProfile.get(employee.id) ?? []), ...own],
         latePenaltyTiers: tiers,
         daysInMonth,
+        periodDays,
       }),
     });
   }
@@ -174,28 +226,42 @@ function siteComponentQuery(supabase: Client, siteId: string | null, on: string)
 }
 
 function siteLateRuleQuery(supabase: Client, siteId: string | null) {
-  const query = supabase.from("late_penalty_rules").select("*").eq("is_active", true);
+  const query = supabase
+    .from("late_penalty_rules")
+    .select("*")
+    .eq("is_active", true)
+    // The same order the payroll run reads them in, so a tie between two
+    // tiers resolves the same way in an estimate as on the payslip.
+    .order("from_minutes", { ascending: true })
+    .order("id", { ascending: true });
   return siteId ? query.eq("site_id", siteId) : query;
 }
 
 async function personalComponents(
   supabase: Client,
-  staff: readonly { id: string }[],
+  ids: readonly string[],
   from: string,
   to: string,
 ): Promise<Map<string, PayComponent[]>> {
   const byProfile = new Map<string, PayComponent[]>();
 
-  const { data } = await supabase
-    .from("profile_pay_components")
-    .select("*")
-    .in(
-      "profile_id",
-      staff.map((s) => s.id),
-    )
-    .lte("effective_from", to);
+  const rows = await selectAllInBatches<
+    Database["public"]["Tables"]["profile_pay_components"]["Row"]
+  >(
+    ids,
+    (batch, first, last) =>
+      supabase
+        .from("profile_pay_components")
+        .select("*")
+        .in("profile_id", batch)
+        .lte("effective_from", to)
+        .order("profile_id")
+        .order("code")
+        .range(first, last),
+    "Could not read per-person pay components",
+  );
 
-  for (const row of data ?? []) {
+  for (const row of rows) {
     if (row.effective_to && row.effective_to < from) continue;
     const list = byProfile.get(row.profile_id) ?? [];
     list.push({
@@ -211,4 +277,57 @@ async function personalComponents(
   }
 
   return byProfile;
+}
+
+/** The month's ledger, or nothing on a database that has not got one. */
+async function ledgerOf(
+  supabase: Client,
+  ids: readonly string[],
+  month: string,
+): Promise<{ adjustments: AdjustmentRow[]; loans: LoanRow[]; recoveries: RecoveryRow[] }> {
+  try {
+    const [adjustments, loans] = await Promise.all([
+      selectAllInBatches<AdjustmentRow>(
+        ids,
+        (batch, first, last) =>
+          supabase
+            .from("salary_adjustments")
+            .select("profile_id, kind, amount, label, month")
+            .eq("month", month)
+            .in("profile_id", batch)
+            .order("id")
+            .range(first, last),
+        "Could not read the salary ledger",
+      ),
+      selectAllInBatches<LoanRow>(
+        ids,
+        (batch, first, last) =>
+          supabase
+            .from("employee_loans")
+            .select("id, profile_id, principal, installment, installments, first_month, status")
+            .eq("status", "active")
+            .in("profile_id", batch)
+            .order("id")
+            .range(first, last),
+        "Could not read loans",
+      ),
+    ]);
+    const recoveries =
+      loans.length === 0
+        ? []
+        : await selectAllInBatches<RecoveryRow>(
+            loans.map((loan) => loan.id),
+            (batch, first, last) =>
+              supabase
+                .from("loan_recoveries")
+                .select("loan_id, month, amount, source")
+                .in("loan_id", batch)
+                .order("id")
+                .range(first, last),
+            "Could not read loan recoveries",
+          );
+    return { adjustments, loans, recoveries };
+  } catch {
+    return { adjustments: [], loans: [], recoveries: [] };
+  }
 }

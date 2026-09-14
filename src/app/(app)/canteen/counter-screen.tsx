@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Ban, Check, Clock, HelpCircle, UtensilsCrossed } from "lucide-react";
+import { Ban, Check, Clock, HelpCircle } from "lucide-react";
 
 import { AutoRefresh } from "@/components/auto-refresh";
 import { useDictionary, useLanguage } from "@/components/language-provider";
@@ -153,7 +153,9 @@ export function CounterScreen({
       {/* Fast, because this is watched live with a queue waiting. */}
       <AutoRefresh seconds={5} />
 
-      {visible ? <ScanPanel scan={visible} /> : <IdlePanel />}
+      {/* Between scans the counter shows nothing rather than a standing
+          instruction: the terminal on the counter already says what to do. */}
+      {visible ? <ScanPanel scan={visible} /> : null}
 
       {canSeeCounts ? (
         <div className="grid grid-cols-2 gap-3">
@@ -243,25 +245,6 @@ function ScanPanel({ scan }: { scan: ScanView }) {
       {scan.mealName ? (
         <p className="mt-4 text-base font-semibold opacity-75">
           <Latin>{scan.mealName}</Latin>
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-/** Between scans: plainly waiting, never a stale result from the last person. */
-function IdlePanel() {
-  const label = useSecondLine((t) => t.canteen.scanFinger);
-
-  return (
-    <div className="flex flex-col items-center rounded-3xl bg-secondary px-6 py-16 text-center">
-      <UtensilsCrossed className="size-20 text-muted-foreground" aria-hidden />
-      <p className="mt-4 text-3xl font-bold leading-[1.7] text-foreground" lang="ur" dir="rtl">
-        {URDU.canteen.scanFinger}
-      </p>
-      {label ? (
-        <p className="text-base font-semibold uppercase tracking-wide text-muted-foreground">
-          {label}
         </p>
       ) : null}
     </div>

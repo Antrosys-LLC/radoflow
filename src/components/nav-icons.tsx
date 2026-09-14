@@ -1,13 +1,21 @@
 "use client";
 
 import {
+  Activity,
   CalendarClock,
   CalendarRange,
+  ChartColumn,
+  ChefHat,
+  CircleDollarSign,
+  ClipboardCheck,
+  ClipboardList,
   Coins,
+  DoorOpen,
   Fingerprint,
-  Gauge,
+  HandCoins,
+  History,
   LayoutDashboard,
-  ScrollText,
+  LogIn,
   Settings2,
   ShieldCheck,
   UserCircle,
@@ -26,19 +34,31 @@ import { ClaudeIcon, type IconComponent } from "@/components/claude-icon";
  * which cannot cross the server/client boundary. So navigation entries carry a
  * string key and the actual component is resolved here, on the client.
  */
+/*
+ * One icon per menu entry, and no two alike: a sidebar with three identical
+ * calendars under Attendance reads as three links to the same page.
+ */
 export const NAV_ICONS = {
   dashboard: LayoutDashboard,
   assistant: ClaudeIcon,
   attendance: CalendarClock,
+  checkInOut: LogIn,
+  attendanceLog: ClipboardList,
   calendar: CalendarRange,
   devices: Fingerprint,
-  leave: ScrollText,
+  liveFloor: Activity,
+  gate: DoorOpen,
+  leave: ClipboardCheck,
   people: Users,
   payroll: Wallet,
+  salaries: HandCoins,
   rates: Coins,
-  reports: Gauge,
+  reports: ChartColumn,
   roles: ShieldCheck,
   canteen: UtensilsCrossed,
+  canteenHistory: History,
+  canteenSettings: ChefHat,
+  claudeSpend: CircleDollarSign,
   users: UserCog,
   settings: Settings2,
   profile: UserCircle,

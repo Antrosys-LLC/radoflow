@@ -1,21 +1,16 @@
 import type { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
 import { readMealPrice, summariseMeals, type MealClaimRow } from "@/lib/canteen/history";
+import { dayPrices } from "@/lib/canteen/menu";
+import { loadMenus } from "@/lib/canteen/menu-data";
 import { dailyRate, daysInMonthOf, overtimeRate } from "@/lib/payroll/hours";
-import {
-  ledgerFor,
-  loanBalance,
-  monthOf,
-  type AdjustmentRow,
-  type LoanRow,
-  type RecoveryRow,
-} from "@/lib/payroll/ledger";
+import { loanBalance, monthOf, type LoanRow, type RecoveryRow } from "@/lib/payroll/ledger";
 import { groupRegister, toRegisterRow, type RegisterItem } from "@/lib/payroll/register";
 import type { PayslipLine } from "@/lib/payroll/types";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { formatDate } from "@/lib/time";
 
-import { buildPayslipPdf, buildTablePdf, rs, type TableRow } from "./pdf";
+import { buildPayslipPdf, buildTablePdf, rs, standardFooter, type TableRow } from "./pdf";
 import { registerPdf, registerWorkbook } from "./payroll-documents";
 import { buildWorkbook, type SheetRow } from "./xlsx";
 
@@ -36,6 +31,39 @@ export type Document =
 
 const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const PDF = "application/pdf";
+
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+/**
+ * A date range the way the office writes it: "1 to 9 September 2026",
+ * "28 August to 3 September 2026", "9 September 2026".
+ */
+export function rangeLabel(from: string, to: string): string {
+  const parse = (date: string) => ({
+    day: Number(date.slice(8, 10)),
+    month: MONTHS[Number(date.slice(5, 7)) - 1] ?? "",
+    year: date.slice(0, 4),
+  });
+  const a = parse(from);
+  const b = parse(to);
+  if (from === to) return `${a.day} ${a.month} ${a.year}`;
+  if (a.year !== b.year) return `${a.day} ${a.month} ${a.year} to ${b.day} ${b.month} ${b.year}`;
+  if (a.month !== b.month) return `${a.day} ${a.month} to ${b.day} ${b.month} ${b.year}`;
+  return `${a.day} to ${b.day} ${b.month} ${b.year}`;
+}
 
 interface DirectoryRow {
   id: string | null;
@@ -116,15 +144,16 @@ export async function canteenDocument(
   supabase: Client,
   { from, to, format }: { from: string; to: string; format: "pdf" | "xlsx" },
 ): Promise<Document> {
-  const [{ data: priceSetting }, { data: windows }, claims, deptName] = await Promise.all([
+  const [{ data: priceSetting }, { data: windows }, claims, deptName, menu] = await Promise.all([
     supabase.from("app_settings").select("value").eq("key", "canteen.meal_price_pkr").maybeSingle(),
     supabase.from("meal_windows").select("id, name"),
     mealClaims(supabase, from, to),
     departmentNames(supabase),
+    loadMenus(supabase, from, to),
   ]);
 
   const price = readMealPrice(priceSetting?.value);
-  const summary = summariseMeals(claims, price);
+  const summary = summariseMeals(claims, price, dayPrices(menu.menus));
   const people = await directory(
     supabase,
     summary.byPerson.map((row) => row.profileId),
@@ -208,7 +237,7 @@ export async function canteenDocument(
           { label: "Price per meal", value: price === null ? "Not set" : rs(price) },
           { label: "People fed", value: summary.byPerson.length.toLocaleString("en-PK") },
         ],
-        footer: note,
+        footer: standardFooter(rangeLabel(from, to), note.replace(/\.$/, "")),
       }),
       name: `canteen-${from}-to-${to}.pdf`,
       type: PDF,
@@ -311,6 +340,174 @@ export async function canteenDocument(
   };
 }
 
+/**
+ * What the canteen is owed for a day or a month: one line per day with what
+ * was cooked, the price of one meal, how many were served and what they came
+ * to — then the same total split by department, which is how it is recharged.
+ */
+export async function canteenInvoiceDocument(
+  supabase: Client,
+  { from, to, format }: { from: string; to: string; format: "pdf" | "xlsx" },
+): Promise<Document> {
+  const [{ data: priceSetting }, claims, deptName, menu] = await Promise.all([
+    supabase.from("app_settings").select("value").eq("key", "canteen.meal_price_pkr").maybeSingle(),
+    mealClaims(supabase, from, to),
+    departmentNames(supabase),
+    loadMenus(supabase, from, to),
+  ]);
+
+  const price = readMealPrice(priceSetting?.value);
+  const prices = dayPrices(menu.menus);
+  const summary = summariseMeals(claims, price, prices);
+  const people = await directory(
+    supabase,
+    summary.byPerson.map((row) => row.profileId),
+  );
+
+  const period = rangeLabel(from, to);
+  const daily = from === to;
+  const title = daily ? "CANTEEN INVOICE — DAILY" : "CANTEEN INVOICE";
+  const reference = `CI-${from.replace(/-/g, "")}${daily ? "" : `-${to.replace(/-/g, "")}`}`;
+  const menuOf = new Map(menu.menus.map((m) => [m.date, m]));
+  const servedByDay = new Map(summary.byDay.map((day) => [day.date, day]));
+
+  const dayLines = menu.menus
+    .filter((m) => m.items.length > 0 || servedByDay.has(m.date))
+    .map((m) => {
+      const served = servedByDay.get(m.date);
+      const meals = served?.meals ?? 0;
+      const amount = served?.amount ?? 0;
+      const perMeal = m.items.length > 0 ? m.price : meals > 0 ? amount / meals : (price ?? 0);
+      const named = (items: readonly { name: string; price: number }[]) =>
+        items.map((item) => `${item.name} ${Math.round(item.price)}`);
+      const dishes =
+        m.source === "choose"
+          ? `${[...named(m.fixed), named(m.options).join(" or ")].join(", ")} — not chosen yet, counted at ${Math.round(m.price)}`
+          : m.items.length > 0
+            ? named(m.items).join(", ")
+            : "No menu — flat price";
+      return {
+        date: m.date,
+        dishes,
+        perMeal,
+        meals,
+        amount,
+      };
+    });
+
+  // Days with servings the menu plan did not cover (none, normally).
+  for (const day of summary.byDay) {
+    if (menuOf.has(day.date)) continue;
+    dayLines.push({
+      date: day.date,
+      dishes: "No menu — flat price",
+      perMeal: day.meals > 0 ? day.amount / day.meals : 0,
+      meals: day.meals,
+      amount: day.amount,
+    });
+  }
+  dayLines.sort((a, b) => a.date.localeCompare(b.date));
+
+  const byDepartment = new Map<string, { meals: number; amount: number; people: number }>();
+  for (const row of summary.byPerson) {
+    const id = people.get(row.profileId)?.department_id;
+    const key = (id && deptName.get(id)) || "Unassigned";
+    const entry = byDepartment.get(key) ?? { meals: 0, amount: 0, people: 0 };
+    entry.meals += row.meals;
+    entry.amount += row.amount;
+    entry.people += 1;
+    byDepartment.set(key, entry);
+  }
+  const departments = [...byDepartment].sort(([a], [b]) => a.localeCompare(b));
+
+  const highlights = [
+    { label: "Invoice no.", value: reference },
+    { label: "Meals served", value: summary.total.meals.toLocaleString("en-PK") },
+    { label: "People fed", value: summary.byPerson.length.toLocaleString("en-PK") },
+    { label: "Amount due", value: rs(summary.total.amount) },
+  ];
+
+  if (format === "pdf") {
+    const rows: TableRow[] = [{ group: "By day" }];
+    dayLines.forEach((line) =>
+      rows.push([
+        formatDate(line.date),
+        line.dishes,
+        Math.round(line.perMeal),
+        line.meals,
+        Math.round(line.amount),
+      ]),
+    );
+    rows.push({ group: "By department" });
+    departments.forEach(([name, entry]) =>
+      rows.push([name, `${entry.people} people`, "", entry.meals, Math.round(entry.amount)]),
+    );
+
+    return {
+      ok: true,
+      body: buildTablePdf({
+        title,
+        subtitle: period,
+        columns: [
+          { header: "DATE", width: 70 },
+          { header: "MENU", width: 250 },
+          { header: "PER MEAL (Rs)", width: 70, align: "right" },
+          { header: "MEALS", width: 50, align: "right" },
+          { header: "AMOUNT (Rs)", width: 80, align: "right" },
+        ],
+        rows,
+        totals: ["", "TOTAL DUE", "", summary.total.meals, Math.round(summary.total.amount)],
+        highlights,
+        footer: standardFooter(period, `Invoice ${reference}`),
+      }),
+      name: `canteen-invoice-${daily ? from : `${from}-to-${to}`}.pdf`,
+      type: PDF,
+    };
+  }
+
+  return {
+    ok: true,
+    body: buildWorkbook([
+      {
+        name: "Invoice",
+        title,
+        subtitle: `${period} · Invoice ${reference}`,
+        columns: [
+          { header: "DATE", width: 13, format: "text" },
+          { header: "MENU", width: 46, format: "text" },
+          { header: "PER MEAL (Rs)", width: 14, format: "money" },
+          { header: "MEALS", width: 10, format: "number" },
+          { header: "AMOUNT (Rs)", width: 15, format: "money" },
+        ],
+        rows: dayLines.map((line) => [
+          line.date,
+          line.dishes,
+          line.perMeal,
+          line.meals,
+          line.amount,
+        ]),
+        totals: ["TOTAL DUE", "", "", summary.total.meals, summary.total.amount],
+      },
+      {
+        name: "By department",
+        title: `${title} — BY DEPARTMENT`,
+        subtitle: period,
+        orientation: "portrait",
+        columns: [
+          { header: "DEPARTMENT", width: 26, format: "text" },
+          { header: "PEOPLE", width: 10, format: "number" },
+          { header: "MEALS", width: 10, format: "number" },
+          { header: "AMOUNT (Rs)", width: 15, format: "money" },
+        ],
+        rows: departments.map(([name, entry]) => [name, entry.people, entry.meals, entry.amount]),
+        totals: ["TOTAL", summary.byPerson.length, summary.total.meals, summary.total.amount],
+      },
+    ]),
+    name: `canteen-invoice-${daily ? from : `${from}-to-${to}`}.xlsx`,
+    type: XLSX,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Salary register from a pay run
 // ---------------------------------------------------------------------------
@@ -407,6 +604,7 @@ export async function registerDocument(
   const meta = {
     title: "SALARY REGISTER",
     subtitle: `${period.label} · ${formatDate(period.period_start)} to ${formatDate(period.period_end)}`,
+    footer: standardFooter(rangeLabel(period.period_start, period.period_end)),
   };
   const month = period.period_start.slice(0, 7);
 
@@ -468,37 +666,7 @@ export async function payslipFromRun(
   const daysInMonth = daysInMonthOf(period.period_start);
   const lines = register.lines;
 
-  // Loans still being paid back, with what is left after this slip.
-  const loans: { label: string; installment: number; balance: number }[] = [];
-  const { data: loanRows, error: loanError } = await supabase
-    .from("employee_loans")
-    .select("id, profile_id, principal, installment, installments, first_month, status, taken_on")
-    .eq("profile_id", profileId);
-  if (!loanError && loanRows && loanRows.length > 0) {
-    const { data: recoveries } = await supabase
-      .from("loan_recoveries")
-      .select("loan_id, month, amount, source")
-      .in(
-        "loan_id",
-        loanRows.map((loan) => loan.id),
-      );
-    const month = monthOf(period.period_start);
-    for (const loan of loanRows) {
-      const upToThisSlip = ((recoveries ?? []) as RecoveryRow[]).filter(
-        (row) => row.month <= month,
-      );
-      const thisMonth = upToThisSlip
-        .filter((row) => row.loan_id === loan.id && row.month === month)
-        .reduce((total, row) => total + Number(row.amount), 0);
-      if (loan.status !== "active" && thisMonth === 0) continue;
-      loans.push({
-        label: `Loan of ${rs(Number(loan.principal))} taken ${formatDate(loan.taken_on)}`,
-        installment: thisMonth,
-        balance: loanBalance(loan as LoanRow, upToThisSlip),
-      });
-    }
-  }
-
+  const loans = await loansOnSlip(supabase, profileId, monthOf(period.period_start));
   const dutyHours = Number(profile?.duty_hours ?? 8);
 
   return {
@@ -542,193 +710,142 @@ export async function payslipFromRun(
               on: item.paid_at ? formatDate(item.paid_at) : undefined,
             },
       loans,
-      footer: `${period.label} · Sundays are not working days; hours worked on one are overtime.`,
+      footer: standardFooter(period.label),
     }),
     name: `payslip-${register.code || profileId.slice(0, 8)}-${period.period_start.slice(0, 7)}.pdf`,
     type: PDF,
   };
 }
 
-// ---------------------------------------------------------------------------
-// The live salary register — before a pay run exists
-// ---------------------------------------------------------------------------
-
-export interface LiveRegisterPerson {
-  id: string;
-  full_name: string;
-  employee_code: string;
-  designation: string | null;
-  department_id: string | null;
-  monthly_salary: number | string;
-}
-
-export interface LiveFigures {
-  person: LiveRegisterPerson;
-  workingDays: number;
-  overtime: number;
-  base: number;
-  otPay: number;
-}
-
-/** The ledger for a month, or nothing on a database that has not got one. */
-async function ledgerOf(supabase: Client, ids: readonly string[], month: string) {
-  const empty = {
-    adjustments: [] as AdjustmentRow[],
-    loans: [] as LoanRow[],
-    recoveries: [] as RecoveryRow[],
-  };
-  if (ids.length === 0) return empty;
-  try {
-    const [adjustments, loans] = await Promise.all([
-      selectAllInBatches<AdjustmentRow>(
-        [...ids],
-        (batch, first, last) =>
-          supabase
-            .from("salary_adjustments")
-            .select("profile_id, kind, amount, label, month")
-            .eq("month", month)
-            .in("profile_id", batch)
-            .order("id")
-            .range(first, last),
-        "Could not read the salary ledger",
-      ),
-      selectAllInBatches<LoanRow>(
-        [...ids],
-        (batch, first, last) =>
-          supabase
-            .from("employee_loans")
-            .select("id, profile_id, principal, installment, installments, first_month, status")
-            .eq("status", "active")
-            .in("profile_id", batch)
-            .order("id")
-            .range(first, last),
-        "Could not read loans",
-      ),
-    ]);
-    const recoveries =
-      loans.length === 0
-        ? []
-        : await selectAllInBatches<RecoveryRow>(
-            loans.map((loan) => loan.id),
-            (batch, first, last) =>
-              supabase
-                .from("loan_recoveries")
-                .select("loan_id, month, amount, source")
-                .in("loan_id", batch)
-                .order("id")
-                .range(first, last),
-            "Could not read loan recoveries",
-          );
-    return { adjustments, loans, recoveries };
-  } catch {
-    return empty;
-  }
-}
-
-export async function liveRegisterDocument(
+/**
+ * Loans still being paid back, with what came off this month and what is
+ * left after it — the table at the foot of a payslip.
+ *
+ * `planned` is this month's installment for a slip worked out before the run
+ * has recorded one; a slip from a run passes nothing and reads the recovery.
+ */
+export async function loansOnSlip(
   supabase: Client,
-  {
-    figures,
-    from,
-    to,
-    scope,
-    format,
-  }: {
-    figures: readonly LiveFigures[];
-    from: string;
-    to: string;
-    scope: string;
-    format: "pdf" | "xlsx";
-  },
-): Promise<Document> {
-  const ids = figures.map((row) => row.person.id);
-  const month = monthOf(from);
+  profileId: string,
+  month: string,
+  planned: ReadonlyMap<string, number> = new Map(),
+): Promise<{ label: string; installment: number; balance: number }[]> {
+  const loans: { label: string; installment: number; balance: number }[] = [];
+  const { data: loanRows, error: loanError } = await supabase
+    .from("employee_loans")
+    .select("id, profile_id, principal, installment, installments, first_month, status, taken_on")
+    .eq("profile_id", profileId);
+  if (loanError || !loanRows || loanRows.length === 0) return loans;
 
-  const [ledger, deptName, personal] = await Promise.all([
-    ledgerOf(supabase, ids, month),
-    departmentNames(supabase),
-    ids.length === 0
-      ? Promise.resolve([])
-      : selectAllInBatches<{
-          profile_id: string;
-          code: string;
-          label: string;
-          kind: "earning" | "deduction" | "tax";
-          amount: number;
-          effective_from: string;
-          effective_to: string | null;
-        }>(
-          ids,
-          (batch, first, last) =>
-            supabase
-              .from("profile_pay_components")
-              .select("profile_id, code, label, kind, amount, effective_from, effective_to")
-              .in("profile_id", batch)
-              .order("id")
-              .range(first, last),
-          "Could not read allowances and deductions",
-        ).catch(() => []),
-  ]);
+  const { data: recoveries } = await supabase
+    .from("loan_recoveries")
+    .select("loan_id, month, amount, source")
+    .in(
+      "loan_id",
+      loanRows.map((loan) => loan.id),
+    );
 
-  const items: RegisterItem[] = figures.map((row) => {
-    const own = personal
-      .filter(
-        (line) =>
-          line.profile_id === row.person.id &&
-          line.effective_from <= to &&
-          (!line.effective_to || line.effective_to >= from),
-      )
-      .map((line) => ({
-        code: line.code,
-        label: line.label,
-        kind: line.kind,
-        amount: Number(line.amount),
-      }));
-    const fromLedger = ledgerFor(
-      row.person.id,
-      month,
-      ledger.adjustments,
-      ledger.loans,
-      ledger.recoveries,
-    ).components.map((line) => ({
-      code: line.code,
-      label: line.label,
-      kind: line.kind,
-      amount: line.amount,
-    }));
-    const lines: PayslipLine[] = [...own, ...fromLedger];
+  for (const loan of loanRows) {
+    const upToThisSlip = ((recoveries ?? []) as RecoveryRow[]).filter((row) => row.month <= month);
+    const recorded = upToThisSlip
+      .filter((row) => row.loan_id === loan.id && row.month === month)
+      .reduce((total, row) => total + Number(row.amount), 0);
+    const thisMonth = recorded > 0 ? recorded : (planned.get(loan.id) ?? 0);
+    if (loan.status !== "active" && thisMonth === 0) continue;
+    const balance = loanBalance(loan as LoanRow, upToThisSlip);
+    loans.push({
+      label: `Loan of ${rs(Number(loan.principal))} taken ${formatDate(loan.taken_on)}`,
+      installment: thisMonth,
+      balance: Math.max(0, recorded > 0 ? balance : balance - thisMonth),
+    });
+  }
+  return loans;
+}
 
-    const earnings = lines
-      .filter((line) => line.kind === "earning")
-      .reduce((t, l) => t + l.amount, 0);
-    const withheld = lines
-      .filter((line) => line.kind !== "earning")
-      .reduce((t, l) => t + l.amount, 0);
-    const gross = row.base + row.otPay + earnings;
+// ---------------------------------------------------------------------------
+// A payslip worked out live — before a pay run exists
+// ---------------------------------------------------------------------------
 
-    return {
-      profileId: row.person.id,
-      name: row.person.full_name,
-      code: row.person.employee_code,
-      designation: row.person.designation ?? "",
-      department:
-        (row.person.department_id && deptName.get(row.person.department_id)) || "Unassigned",
-      monthlySalary: Number(row.person.monthly_salary),
-      workingDays: row.workingDays,
-      basePay: row.base,
-      overtimeHours: row.overtime,
-      overtimePay: row.otPay,
-      gross,
-      withheld,
-      net: Math.max(0, gross - withheld),
-      lines,
-    };
-  });
+export interface LiveSlip {
+  name: string;
+  code: string;
+  department: string;
+  designation: string;
+  profileId: string;
+  from: string;
+  to: string;
+  monthlySalary: number;
+  dutyHours: number;
+  workingDays: number;
+  overtimeHours: number;
+  daysAbsent: number;
+  lines: readonly PayslipLine[];
+  net: number;
+  /** A contractor's firm is billed, not the person — the slip says so. */
+  contractor?: boolean;
+}
 
+export async function livePayslipDocument(supabase: Client, slip: LiveSlip): Promise<Document> {
+  const daysInMonth = daysInMonthOf(slip.from);
+  const period = rangeLabel(slip.from, slip.to);
+  const month = monthOf(slip.from);
+  const loans = slip.contractor ? [] : await loansOnSlip(supabase, slip.profileId, month);
+
+  return {
+    ok: true,
+    body: buildPayslipPdf({
+      employeeName: slip.name,
+      employeeCode: slip.code,
+      department: slip.department,
+      designation: slip.designation || undefined,
+      period,
+      reference: `PS-${slip.from.slice(0, 7)}-${slip.code || slip.profileId.slice(0, 8)}`,
+      facts: slip.contractor
+        ? [{ label: "Paid as", value: "Contractor — agreed amount, flat" }]
+        : [
+            { label: "S Rate (monthly salary)", value: rs(slip.monthlySalary) },
+            { label: "Days in the month", value: String(daysInMonth) },
+            {
+              label: "Daily rate",
+              value: `Rs ${dailyRate(slip.monthlySalary, daysInMonth).toLocaleString("en-PK")}`,
+            },
+            { label: "Days worked", value: String(slip.workingDays) },
+            {
+              label: "Overtime hours",
+              value: String(Math.round(slip.overtimeHours * 100) / 100),
+            },
+            {
+              label: "Overtime rate",
+              value: `Rs ${overtimeRate(slip.monthlySalary, daysInMonth).toLocaleString("en-PK")} / h`,
+            },
+            { label: "Salary covers", value: `${slip.dutyHours} hours a day` },
+            { label: "Days absent", value: String(slip.daysAbsent) },
+          ],
+      earnings: slip.lines
+        .filter((line) => line.kind === "base" || line.kind === "earning")
+        .map((line) => ({ label: line.label, amount: line.amount })),
+      deductions: slip.lines
+        .filter((line) => (line.kind === "deduction" || line.kind === "tax") && line.amount > 0)
+        .map((line) => ({ label: line.label, amount: line.amount })),
+      net: slip.net,
+      loans,
+      footer: standardFooter(period),
+    }),
+    name: `payslip-${slip.code || slip.profileId.slice(0, 8)}-${slip.from.slice(0, 7)}.pdf`,
+    type: PDF,
+  };
+}
+
+/** A salary register from items already priced — live, or from anywhere else. */
+export function registerFromItems(
+  items: readonly RegisterItem[],
+  { from, to, scope, format }: { from: string; to: string; scope: string; format: "pdf" | "xlsx" },
+): Document {
   const groups = groupRegister(items.map(toRegisterRow));
   const meta = {
     title: "SALARY REGISTER",
     subtitle: `${scope} · ${formatDate(from)} to ${formatDate(to)} · worked out from attendance so far`,
+    footer: standardFooter(rangeLabel(from, to)),
   };
   const stamp = from.slice(0, 7);
 

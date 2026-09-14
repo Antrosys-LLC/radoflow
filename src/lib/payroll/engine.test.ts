@@ -983,3 +983,99 @@ describe("hours that are already final", () => {
 function roundTo2(v: number): number {
   return Math.round(v * 100) / 100;
 }
+
+describe("the three ways Rado pays a monthly salary", () => {
+  const september = (d: number) => `2026-09-${String(d).padStart(2, "0")}`;
+
+  it("pays fixed-salary staff for the part of the month a period covers, not the whole salary", () => {
+    const fixed: Employee = { ...monthlyStaff, monthlySalary: 30_000, requiresAttendance: false };
+
+    const nineDays = calculatePayroll({
+      employee: fixed,
+      rule,
+      days: [],
+      daysInMonth: 30,
+      periodDays: 9,
+    });
+    expect(nineDays.basePay).toBe(9_000);
+
+    const wholeMonth = calculatePayroll({
+      employee: fixed,
+      rule,
+      days: [],
+      daysInMonth: 30,
+      periodDays: 30,
+    });
+    expect(wholeMonth.basePay).toBe(30_000);
+  });
+
+  it("pays someone with no fixed time for the hours they completed", () => {
+    const flexible: Employee = {
+      ...monthlyStaff,
+      monthlySalary: 30_000,
+      requiresAttendance: true,
+      flexibleHours: true,
+      dutyHours: 8,
+    };
+
+    const result = calculatePayroll({
+      employee: flexible,
+      rule,
+      days: [
+        day({ workDate: september(1), hoursWorked: 8 }),
+        day({ workDate: september(2), hoursWorked: 4 }),
+        // Past the duty day is overtime, never more than one day of base pay.
+        day({ workDate: september(3), hoursWorked: 10 }),
+      ],
+      daysInMonth: 30,
+    });
+
+    expect(result.basePay).toBe(2_500);
+  });
+
+  it("never charges lateness to someone with no fixed time", () => {
+    const flexible: Employee = {
+      ...monthlyStaff,
+      monthlySalary: 30_000,
+      requiresAttendance: true,
+      flexibleHours: true,
+      dutyHours: 8,
+    };
+    const perMinute: LatePenaltyTier = {
+      label: "Late — per minute",
+      fromMinutes: 0,
+      toMinutes: null,
+      penaltyPercent: 100,
+      basis: "minute",
+    };
+
+    const result = calculatePayroll({
+      employee: flexible,
+      rule,
+      days: [day({ workDate: september(1), hoursWorked: 8, minutesLate: 75 })],
+      latePenaltyTiers: [perMinute],
+      daysInMonth: 30,
+    });
+
+    expect(result.latePenalty).toBe(0);
+    expect(result.net).toBe(1_000);
+  });
+
+  it("still pays a whole day for turning up on a fixed shift, however short", () => {
+    const shiftWorker: Employee = {
+      ...monthlyStaff,
+      monthlySalary: 30_000,
+      requiresAttendance: true,
+      dutyHours: 8,
+    };
+
+    const result = calculatePayroll({
+      employee: shiftWorker,
+      rule,
+      days: [day({ workDate: september(1), hoursWorked: 4 })],
+      daysInMonth: 30,
+    });
+
+    expect(result.basePay).toBe(1_000);
+  });
+});

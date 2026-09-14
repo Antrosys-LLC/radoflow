@@ -319,22 +319,29 @@ function letterhead(page: Page, title: string, subtitle: string | undefined, con
   return top - 66;
 }
 
+/** The sentence every document closes on, whatever else its footer says. */
+export const SUNDAY_RULE = "Sundays are not working days; hours worked on one are overtime";
+export const MACHINE_MADE = "Computer-generated AI automated slip";
+
+/**
+ * A footer in the one shape every download uses:
+ * `1 to 9 September 2026 · Sundays are not working days; hours worked on one
+ * are overtime · Computer-generated AI automated slip`.
+ */
+export function standardFooter(period: string | undefined, note?: string): string {
+  return [period, note, SUNDAY_RULE, MACHINE_MADE].filter(Boolean).join(" · ");
+}
+
 function pageFooter(page: Page, note: string | undefined, pageNumber: number, pageTotal: number) {
   const y = MARGIN - 12;
   const right = page.width - MARGIN;
+  // Whatever a document put in its footer, it ends on the same two sentences.
+  const parts = [note?.trim().replace(/\.$/, "")].filter(Boolean) as string[];
+  if (!parts.some((part) => part.includes(SUNDAY_RULE))) parts.push(SUNDAY_RULE);
+  if (!parts.some((part) => part.includes(MACHINE_MADE))) parts.push(MACHINE_MADE);
+  const text = parts.join(" · ");
   page.line(MARGIN, y + 11, right, y + 11, HAIRLINE);
-  page.text(
-    MARGIN,
-    y,
-    truncate(
-      note ? `Rado Dyeing & Textile  ·  ${note}` : "Rado Dyeing & Textile  ·  Computer generated",
-      7,
-      page.width - MARGIN * 2 - 80,
-    ),
-    7,
-    false,
-    MUTED,
-  );
+  page.text(MARGIN, y, truncate(text, 6.5, page.width - MARGIN * 2 - 60), 6.5, false, MUTED);
   page.rightText(right, y, `Page ${pageNumber} of ${pageTotal}`, 7, false, MUTED);
 }
 

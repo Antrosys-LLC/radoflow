@@ -27,6 +27,14 @@ describe("canteen history", () => {
     expect(summary.byPerson[0]).toEqual({ profileId: "a", meals: 2, amount: 300, unpriced: 0 });
   });
 
+  it("prices a day with a menu at that menu, whatever was stamped", () => {
+    const menu = new Map([["2026-09-01", 170]]);
+    const summary = summariseMeals(rows, 160, menu);
+
+    expect(summary.byDay[0]).toEqual({ date: "2026-09-01", meals: 2, amount: 340, unpriced: 0 });
+    expect(summary.byDay[1]).toEqual({ date: "2026-09-02", meals: 1, amount: 150, unpriced: 0 });
+  });
+
   it("reads a stored price, and treats anything else as not set", () => {
     expect(readMealPrice(150)).toBe(150);
     expect(readMealPrice("175")).toBe(175);

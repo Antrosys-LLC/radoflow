@@ -964,24 +964,19 @@ function PayslipSheet({
           </p>
         </div>
 
+        {/* The slip as a designed PDF, where the print button used to be — a
+            browser print of this sheet was never the document anyone kept. */}
         {periodId ? (
-          <div className="mt-4 flex justify-center">
+          <div className="mt-4">
             <ExportButtons
               kind="payslip"
               params={{ person: item.profile_id, period: periodId }}
-              label={t.payroll.payslip}
+              label={t.payroll.payslipPdf}
               formats={["pdf"]}
+              variant="primary"
             />
           </div>
         ) : null}
-
-        <button
-          type="button"
-          onClick={() => typeof window !== "undefined" && window.print()}
-          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-secondary px-4 py-3 text-sm font-semibold text-foreground transition-all hover:bg-muted"
-        >
-          {t.payroll.printPayslip}
-        </button>
       </div>
     </div>
   );

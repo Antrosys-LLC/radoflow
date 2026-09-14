@@ -2,6 +2,7 @@ import { applyComponents } from "./components";
 import {
   accumulateHours,
   countWorkingDays,
+  creditedDays,
   dailyRate as dailyRateOf,
   daysInMonthOf,
   excessHours,
@@ -39,6 +40,14 @@ export interface PayrollInput {
    * from the period, so a month where nobody attended still prices correctly.
    */
   daysInMonth?: number;
+  /**
+   * Calendar days the period covers, both ends included.
+   *
+   * Only someone paid without attendance needs it: their salary is for the
+   * month, so a nine-day period pays nine days of it rather than all of it.
+   * Omitted, the whole month is assumed — what a monthly run always was.
+   */
+  periodDays?: number;
 }
 
 /**
@@ -204,13 +213,42 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   let basePay: number;
 
   if (isMonthly) {
+    const periodDays =
+      input.periodDays && input.periodDays > 0 ? Math.min(input.periodDays, daysInMonth) : null;
+
     if (!employee.requiresAttendance) {
-      // Not tracked by the terminal: the contracted salary is paid in full.
-      basePay = roundMoney(employee.monthlySalary);
+      /*
+       * Not tracked by the terminal: the contracted salary, for the part of the
+       * month the period covers. A whole month pays it in full; the first nine
+       * days of one pay nine days of it — never the full salary twice over
+       * because the office ran payroll mid-month.
+       */
+      if (periodDays === null || periodDays >= daysInMonth) {
+        basePay = roundMoney(employee.monthlySalary);
+        lines.push({ code: "BASIC", label: "Monthly salary", kind: "base", amount: basePay });
+      } else {
+        basePay = roundMoney(perDay * periodDays);
+        lines.push({
+          code: "BASIC",
+          label: `Fixed salary for ${periodDays} of ${daysInMonth} days`,
+          kind: "base",
+          rate: perDay,
+          amount: basePay,
+        });
+      }
+    } else if (employee.flexibleHours) {
+      /*
+       * No fixed in or out time: paid for the duty hours completed, whenever
+       * they were worked. A day of four hours against an eight-hour duty earns
+       * half a day, not a whole one for having turned up.
+       */
+      const credited = creditedDays(days, rule, dutyHours);
+      basePay = roundMoney(perDay * credited);
       lines.push({
         code: "BASIC",
-        label: "Monthly salary",
+        label: `Salary for ${credited} day${credited === 1 ? "" : "s"} of hours completed`,
         kind: "base",
+        rate: perDay,
         amount: basePay,
       });
     } else {
@@ -294,13 +332,13 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   // worker cannot shrink the penalty by also working less.
   const dayRate = isMonthly ? perDay : roundMoney(employee.hourlyRate * rule.standardHoursPerDay);
 
-  const late = calculateLatePenalties(
-    days,
-    latePenaltyTiers,
-    dayRate,
-    employee.monthlySalary,
-    dutyHours,
-  );
+  /*
+   * Someone with no fixed in or out time cannot be late, whatever minutes an
+   * older attendance row still carries from before they were made flexible.
+   */
+  const late = employee.flexibleHours
+    ? { lines: [], total: 0, daysLate: 0 }
+    : calculateLatePenalties(days, latePenaltyTiers, dayRate, employee.monthlySalary, dutyHours);
   lines.push(...late.lines);
 
   // ---- Components ---------------------------------------------------------

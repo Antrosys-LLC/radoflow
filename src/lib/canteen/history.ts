@@ -32,11 +32,21 @@ export interface MealSummary {
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
-/** The rupees one serving is counted at, and whether that was estimated. */
+/**
+ * The rupees one serving is counted at, and whether that was estimated.
+ *
+ * A day with a menu prices its meals at that menu — the dishes added up —
+ * because that is what was cooked. Otherwise the price stamped on the serving,
+ * and failing that today's flat price, reported as an estimate.
+ */
 export function mealCost(
-  row: Pick<MealClaimRow, "price_pkr">,
+  row: Pick<MealClaimRow, "price_pkr"> & { served_on?: string },
   currentPrice: number | null,
+  menuPrices?: ReadonlyMap<string, number>,
 ): { amount: number; unpriced: boolean } {
+  const menu = row.served_on ? menuPrices?.get(row.served_on) : undefined;
+  if (menu !== undefined && menu >= 0) return { amount: menu, unpriced: false };
+
   const stamped =
     row.price_pkr === null || row.price_pkr === undefined ? NaN : Number(row.price_pkr);
   if (Number.isFinite(stamped) && stamped >= 0) return { amount: stamped, unpriced: false };
@@ -54,6 +64,8 @@ const empty = (): MealTotals => ({ meals: 0, amount: 0, unpriced: 0 });
 export function summariseMeals(
   rows: readonly MealClaimRow[],
   currentPrice: number | null,
+  /** One meal's price on each date that had a menu — see `lib/canteen/menu`. */
+  menuPrices?: ReadonlyMap<string, number>,
 ): MealSummary {
   const total = empty();
   const days = new Map<string, MealTotals>();
@@ -61,7 +73,7 @@ export function summariseMeals(
   const people = new Map<string, MealTotals>();
 
   for (const row of rows) {
-    const { amount, unpriced } = mealCost(row, currentPrice);
+    const { amount, unpriced } = mealCost(row, currentPrice, menuPrices);
     add(total, amount, unpriced);
 
     for (const [map, key] of [

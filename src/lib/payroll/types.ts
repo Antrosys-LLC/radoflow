@@ -181,6 +181,11 @@ export interface Employee {
   sundayPolicy?: SundayPolicy;
   /** False pays no overtime at all. Defaults to true. */
   overtimeEligible?: boolean;
+  /**
+   * No fixed in or out time: paid for completing the duty hours, whenever they
+   * are worked, rather than a whole day for turning up. Never late.
+   */
+  flexibleHours?: boolean;
   /** Negotiated premium rates. Null falls back to the site rule. */
   otHourlyRate?: number | null;
   weekendHourlyRate?: number | null;

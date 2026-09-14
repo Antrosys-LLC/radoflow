@@ -47,6 +47,19 @@ Rules worth knowing before editing:
   recorded for that person, whatever shift they are rostered to. Hours and
   overtime are still counted from the punches.
 - **Net pay can never be negative.** Withholding is capped at gross earnings.
+- **There are three ways to be paid a monthly salary**, and the WORKERS LIST's
+  last column says which. On a shift (the default), a day attended is a day
+  earned however short. `requires_attendance = false` is a fixed salary: the
+  month's salary for the part of the month the period covers
+  (`PayrollInput.periodDays`), never the whole salary for a nine-day run.
+  `flexible_hours` is paid for completing the duty hours whenever they are
+  worked: a day earns `min(1, hours ÷ duty)` (`creditedDays`), and is never late.
+- **A pay run is priced at the salary a profile held when it ran.** Changing a
+  salary does not move an existing run; recalculate it.
+- **Every read over the whole factory is batched** (`selectInBatches` /
+  `selectAllInBatches`). A single `.in()` over four hundred ids is refused by
+  PostgREST and comes back as no rows — which is how every download once
+  showed a factory of zeros.
 
 The reasoning behind the pay model is in
 `docs/superpowers/specs/2026-08-25-duty-hours-and-salary-formula-design.md`.
@@ -180,8 +193,24 @@ balance is never stored: it is the principal less `loan_recoveries`, one
 payroll line per loan per month, replaced on a re-run so an installment is
 never taken twice. A short month takes the shortfall off loan lines first.
 
+## The canteen's menu
+
+A meal costs the dishes on its day's menu added together
+(`src/lib/canteen/menu.ts`). The office keeps a weekly schedule
+(`canteen_menu_weekly`) and a date's own menu (`canteen_menu_days`), which
+replaces the schedule for that date, and `canteen_menu_no_meal` marks a date
+that serves nothing. Nothing moves on its own — Sunday is off in the working
+calendar yet has a meal, so a calendar-driven swap would be wrong every week.
+Moving a meal ("Monday none, Thursday chicken") is a no-meal row on one date and
+that date's dishes on the other (`moveMeal`). A day with no menu falls back to
+the stamped flat price. Everybody eats once in any 24 hours;
+`profiles.meals_per_day`, else `departments.meals_per_day`, raises that for a
+contract firm's people, and `app.enforce_meal_interval` counts against it.
+
 ## Downloads
 
+Every PDF footer ends `period · Sundays are not working days; hours worked on
+one are overtime · Computer-generated AI automated slip` (`standardFooter`).
 Every PDF and workbook carries the Rado letterhead and mark
 (`src/lib/export/brand-logo.ts`, generated from `public/`). Worksheet elements
 must stay in schema order — `autoFilter` before `mergeCells` before the print

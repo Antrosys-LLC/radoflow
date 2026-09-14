@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   ArrowRight,
   BadgeCheck,
+  CalendarClock,
   CircleDot,
   Clock,
   Fingerprint,
@@ -18,10 +19,11 @@ import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
 import { BarMeter, Card, SectionTitle, StatPill } from "@/components/ui-kit";
 import { dailyHourTotals } from "@/lib/attendance/daily-hours";
+import { runningShift, type ShiftClock } from "@/lib/attendance/shift-now";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
 import { requireSession } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
-import { selectInBatches } from "@/lib/supabase/in-batches";
+import { selectAllInBatches, selectInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatHours, formatPKR, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -159,6 +161,108 @@ export default async function DashboardPage() {
     DEFAULT_PAY_RULE,
   );
 
+  /*
+   * The shift the floor is on right now, and how its people came in.
+   *
+   * Read from the shift roster rather than the live board: the board is
+   * today's date, and after midnight the night shift's check-ins belong to
+   * yesterday. Someone with no fixed time is counted on the shift but never
+   * late — that is what "no fixed time" means.
+   */
+  const [{ data: shiftRows }, { data: mine }] = await Promise.all([
+    supabase
+      .from("shifts")
+      .select("id, code, name, starts_at, ends_at, overtime_until, grace_minutes, is_active")
+      .eq("is_active", true)
+      .order("sort_order"),
+    supabase
+      .from("profiles")
+      .select("shift_id, flexible_hours")
+      .eq("id", session.userId)
+      .maybeSingle(),
+  ]);
+
+  const shifts: ShiftClock[] = (shiftRows ?? []).map((row) => ({
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    startsAt: String(row.starts_at),
+    endsAt: String(row.ends_at),
+    overtimeUntil: row.overtime_until ? String(row.overtime_until) : null,
+    graceMinutes: row.grace_minutes ?? 0,
+  }));
+
+  const clock = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Karachi",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date());
+  const running = runningShift(shifts, today, clock);
+  const myShift = shifts.find((shift) => shift.id === mine?.shift_id) ?? null;
+
+  let shiftStats: {
+    rostered: number;
+    checkedIn: number;
+    late: number;
+    notIn: number;
+    checkedOut: number;
+    onOvertime: number;
+  } | null = null;
+
+  if (seesFloor && running) {
+    const { data: rostered } = await supabase
+      .from("profiles")
+      .select("id, flexible_hours")
+      .eq("status", "active")
+      .eq("requires_attendance", true)
+      .eq("shift_id", running.shift.id);
+
+    const roster = rostered ?? [];
+    const shiftDays = await selectAllInBatches<{
+      profile_id: string;
+      first_in: string | null;
+      last_out: string | null;
+      is_late: boolean | null;
+    }>(
+      roster.map((person) => person.id),
+      (ids, first, last) =>
+        supabase
+          .from("attendance_days")
+          .select("profile_id, first_in, last_out, is_late")
+          .eq("work_date", running.workDate)
+          .in("profile_id", ids)
+          .order("profile_id")
+          .range(first, last),
+      `Could not read the shift for ${running.workDate}`,
+    ).catch(() => []);
+
+    const dayOf = new Map(shiftDays.map((row) => [row.profile_id, row]));
+    const flexible = new Set(roster.filter((p) => p.flexible_hours).map((p) => p.id));
+    const pastGrace = running.minutesIn >= running.shift.graceMinutes;
+
+    const stats = {
+      rostered: roster.length,
+      checkedIn: 0,
+      late: 0,
+      notIn: 0,
+      checkedOut: 0,
+      onOvertime: 0,
+    };
+    for (const person of roster) {
+      const row = dayOf.get(person.id);
+      if (row?.first_in) {
+        stats.checkedIn += 1;
+        if (row.is_late && !flexible.has(person.id)) stats.late += 1;
+        if (row.last_out) stats.checkedOut += 1;
+        else if (running.inOvertime) stats.onOvertime += 1;
+      } else if (pastGrace && !flexible.has(person.id)) {
+        stats.notIn += 1;
+      }
+    }
+    shiftStats = stats;
+  }
+
   // Role names are data the office typed and render as stored; only the
   // "nobody has given you one" case is interface text.
   const roleLabel = session.roles.map((r) => r.name).join(" · ") || t.common.noRole;
@@ -190,6 +294,20 @@ export default async function DashboardPage() {
             session.profile.requiresAttendance
               ? t.dashboard.fromTerminal
               : t.dashboard.noClockInNeeded
+          }
+          action={
+            session.profile.requiresAttendance ? (
+              <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold text-foreground">
+                {t.dashboard.yourShift}:{" "}
+                {mine?.flexible_hours ? (
+                  t.dashboard.flexibleShift
+                ) : myShift ? (
+                  <Latin>{myShift.name}</Latin>
+                ) : (
+                  t.dashboard.noShift
+                )}
+              </span>
+            ) : null
           }
         />
         {session.profile.requiresAttendance ? (
@@ -233,6 +351,57 @@ export default async function DashboardPage() {
           </p>
         )}
       </Card>
+
+      {seesFloor && running && shiftStats ? (
+        <Card>
+          <SectionTitle
+            icon={CalendarClock}
+            title={
+              <>
+                {t.dashboard.shiftNow}: <Latin>{running.shift.name}</Latin>
+              </>
+            }
+            subtitle={
+              <>
+                <Fill
+                  template={t.dashboard.shiftWindow}
+                  values={{
+                    start: running.shift.startsAt.slice(0, 5),
+                    end: running.shift.endsAt.slice(0, 5),
+                    overtime: (running.shift.overtimeUntil ?? running.shift.endsAt).slice(0, 5),
+                  }}
+                />
+                {" · "}
+                <Latin>{formatDate(running.workDate)}</Latin>
+                {running.inOvertime ? ` · ${t.dashboard.onOvertime}` : ""}
+              </>
+            }
+          />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <Fact label={t.dashboard.rostered} value={<Latin>{shiftStats.rostered}</Latin>} />
+            <Fact
+              label={t.dashboard.checkedInShift}
+              value={<Latin>{shiftStats.checkedIn}</Latin>}
+              tone="success"
+            />
+            <Fact
+              label={t.dashboard.lateShift}
+              value={<Latin>{shiftStats.late}</Latin>}
+              {...(shiftStats.late > 0 ? { tone: "warning" as const } : {})}
+            />
+            <Fact
+              label={t.dashboard.notInShift}
+              value={<Latin>{shiftStats.notIn}</Latin>}
+              {...(shiftStats.notIn > 0 ? { tone: "warning" as const } : {})}
+            />
+            <Fact
+              label={t.dashboard.checkedOutShift}
+              value={<Latin>{shiftStats.checkedOut}</Latin>}
+            />
+            <Fact label={t.dashboard.onOvertime} value={<Latin>{shiftStats.onOvertime}</Latin>} />
+          </div>
+        </Card>
+      ) : null}
 
       {seesFloor ? (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

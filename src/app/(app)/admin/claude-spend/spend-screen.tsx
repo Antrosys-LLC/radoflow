@@ -50,6 +50,11 @@ export interface SpendView {
   appUsd: number;
   appCalls: number;
   canManage: boolean;
+  /**
+   * `leadership` is C-Level: the limit and this app's own tally, without the
+   * account statement or the rate and tax settings.
+   */
+  audience: "antrosys" | "leadership";
   /** The month's ceiling and what is left of it. */
   budget: BudgetState;
 }
@@ -69,73 +74,81 @@ export function SpendScreen({ view }: { view: SpendView }) {
 
   const toPkr = (usd: number) => usdToPkr(usd, view.usdToPkrRate, view.taxPercent);
 
+  const antrosys = view.audience === "antrosys";
+
   return (
     <div className="space-y-5 pb-6">
-      <Card className="p-4 sm:p-6">
-        <SectionTitle icon={ClaudeIcon} title={t.spend.title} subtitle={t.spend.subtitle} />
+      {antrosys ? (
+        <Card className="p-4 sm:p-6">
+          <SectionTitle icon={ClaudeIcon} title={t.spend.title} subtitle={t.spend.subtitle} />
 
-        {view.problem ? (
-          <div className="flex items-start gap-3 rounded-2xl bg-warning-soft px-4 py-3">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
-            <div className="text-sm text-foreground">
-              <p className="font-bold">
-                {view.problem.reason === "not-configured"
-                  ? t.spend.notConfigured
-                  : view.problem.reason === "refused"
-                    ? t.spend.refused
-                    : t.spend.unreachable}
-              </p>
-              <p className="mt-0.5 text-muted-foreground">
-                {view.problem.reason === "not-configured"
-                  ? t.spend.notConfiguredHint
-                  : t.spend.problemHint}
-              </p>
-              {/* The API's own words, in English, wrapped: a paraphrase would
-                  hide which of the several possible refusals this was. */}
-              {view.problem.detail ? (
-                <p className="mt-1 break-words font-latin text-[11px] text-muted-foreground">
-                  <Latin>{view.problem.detail}</Latin>
+          {view.problem ? (
+            <div className="flex items-start gap-3 rounded-2xl bg-warning-soft px-4 py-3">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
+              <div className="text-sm text-foreground">
+                <p className="font-bold">
+                  {view.problem.reason === "not-configured"
+                    ? t.spend.notConfigured
+                    : view.problem.reason === "refused"
+                      ? t.spend.refused
+                      : t.spend.unreachable}
                 </p>
+                <p className="mt-0.5 text-muted-foreground">
+                  {view.problem.reason === "not-configured"
+                    ? t.spend.notConfiguredHint
+                    : t.spend.problemHint}
+                </p>
+                {/* The API's own words, in English, wrapped: a paraphrase would
+                  hide which of the several possible refusals this was. */}
+                {view.problem.detail ? (
+                  <p className="mt-1 break-words font-latin text-[11px] text-muted-foreground">
+                    <Latin>{view.problem.detail}</Latin>
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Figure
+                  label={t.spend.perSecond}
+                  value={rupees(toPkr(perSecondUsd))}
+                  tone="primary"
+                >
+                  <Fill template={t.spend.averagedOver} values={{ days: view.days.length }} />
+                </Figure>
+                <Figure label={t.spend.today} value={rupees(toPkr(today))} />
+                <Figure label={t.spend.thisPeriod} value={rupees(toPkr(monthUsd))}>
+                  <Fill template={t.spend.acrossDays} values={{ days: view.days.length }} />
+                </Figure>
+              </div>
+
+              <Ticker perSecondPkr={toPkr(perSecondUsd)} label={t.spend.sinceMidnight} />
+
+              {view.days.length > 0 ? (
+                <ul className="mt-4 space-y-1.5">
+                  {[...view.days]
+                    .reverse()
+                    .slice(0, 10)
+                    .map((day) => (
+                      <li
+                        key={day.day}
+                        className="flex items-center justify-between gap-3 rounded-2xl bg-secondary px-4 py-2 text-sm"
+                      >
+                        <span className="text-muted-foreground">
+                          <Latin>{formatDate(day.day)}</Latin>
+                        </span>
+                        <span className="font-bold tabular-nums text-foreground">
+                          <Latin>{rupees(toPkr(day.usd))}</Latin>
+                        </span>
+                      </li>
+                    ))}
+                </ul>
               ) : null}
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="grid gap-3 sm:grid-cols-3">
-              <Figure label={t.spend.perSecond} value={rupees(toPkr(perSecondUsd))} tone="primary">
-                <Fill template={t.spend.averagedOver} values={{ days: view.days.length }} />
-              </Figure>
-              <Figure label={t.spend.today} value={rupees(toPkr(today))} />
-              <Figure label={t.spend.thisPeriod} value={rupees(toPkr(monthUsd))}>
-                <Fill template={t.spend.acrossDays} values={{ days: view.days.length }} />
-              </Figure>
-            </div>
-
-            <Ticker perSecondPkr={toPkr(perSecondUsd)} label={t.spend.sinceMidnight} />
-
-            {view.days.length > 0 ? (
-              <ul className="mt-4 space-y-1.5">
-                {[...view.days]
-                  .reverse()
-                  .slice(0, 10)
-                  .map((day) => (
-                    <li
-                      key={day.day}
-                      className="flex items-center justify-between gap-3 rounded-2xl bg-secondary px-4 py-2 text-sm"
-                    >
-                      <span className="text-muted-foreground">
-                        <Latin>{formatDate(day.day)}</Latin>
-                      </span>
-                      <span className="font-bold tabular-nums text-foreground">
-                        <Latin>{rupees(toPkr(day.usd))}</Latin>
-                      </span>
-                    </li>
-                  ))}
-              </ul>
-            ) : null}
-          </>
-        )}
-      </Card>
+            </>
+          )}
+        </Card>
+      ) : null}
 
       {/*
        * The ceiling, first, and above the account statement on purpose: the
@@ -206,18 +219,24 @@ export function SpendScreen({ view }: { view: SpendView }) {
         </div>
       </Card>
 
-      <Card className="p-4 sm:p-6">
-        <SectionTitle icon={Coins} title={t.spend.settingsTitle} subtitle={t.spend.settingsHint} />
-        {view.canManage ? (
-          <SettingsForm
-            rate={view.usdToPkrRate}
-            tax={view.taxPercent}
-            limit={view.budget.limitPkr}
+      {antrosys ? (
+        <Card className="p-4 sm:p-6">
+          <SectionTitle
+            icon={Coins}
+            title={t.spend.settingsTitle}
+            subtitle={t.spend.settingsHint}
           />
-        ) : (
-          <p className="text-sm text-muted-foreground">{t.spend.settingsReadOnly}</p>
-        )}
-      </Card>
+          {view.canManage ? (
+            <SettingsForm
+              rate={view.usdToPkrRate}
+              tax={view.taxPercent}
+              limit={view.budget.limitPkr}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">{t.spend.settingsReadOnly}</p>
+          )}
+        </Card>
+      ) : null}
     </div>
   );
 }

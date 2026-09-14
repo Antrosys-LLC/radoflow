@@ -20,6 +20,7 @@ export function ExportButtons({
   params = {},
   label,
   formats = ["xlsx", "pdf"],
+  variant = "quiet",
 }: {
   /** Matches the route segment: people, pay, attendance, payroll, payslip. */
   kind: string;
@@ -32,6 +33,8 @@ export function ExportButtons({
    */
   label?: string;
   formats?: ("xlsx" | "pdf")[];
+  /** `primary` is the one full-width button a sheet ends on, e.g. a payslip. */
+  variant?: "quiet" | "primary";
 }) {
   const t = useDictionary();
   const [busy, setBusy] = useState<string | null>(null);
@@ -109,6 +112,11 @@ export function ExportButtons({
     }
   }
 
+  const buttonClass =
+    variant === "primary"
+      ? "inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground transition-all hover:-translate-y-0.5 disabled:opacity-50"
+      : "inline-flex items-center gap-1.5 rounded-xl bg-secondary px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:text-primary disabled:opacity-50";
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       {formats.includes("xlsx") ? (
@@ -116,7 +124,7 @@ export function ExportButtons({
           type="button"
           disabled={busy !== null}
           onClick={() => download("xlsx")}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-secondary px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:text-primary disabled:opacity-50"
+          className={buttonClass}
         >
           {busy === "xlsx" ? (
             <Loader2 className="size-3.5 animate-spin" />
@@ -132,7 +140,7 @@ export function ExportButtons({
           type="button"
           disabled={busy !== null}
           onClick={() => download("pdf")}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-secondary px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:text-primary disabled:opacity-50"
+          className={buttonClass}
         >
           {busy === "pdf" ? (
             <Loader2 className="size-3.5 animate-spin" />

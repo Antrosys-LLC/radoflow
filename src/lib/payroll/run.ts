@@ -8,7 +8,7 @@ import {
   type LoanRow,
   type RecoveryRow,
 } from "./ledger";
-import { daysInMonthOf, roundMoney } from "./hours";
+import { daysBetween, daysInMonthOf, roundMoney } from "./hours";
 import { toEmployee, toLateTier, toPayComponent, toPayRule } from "./mappers";
 import type { AttendanceDay, DayType, PayComponent, PayrollResult } from "./types";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
@@ -97,7 +97,7 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     supabase
       .from("profiles")
       .select(
-        "id, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, payroll_exempt, duty_hours, sunday_policy, overtime_eligible",
+        "id, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, payroll_exempt, duty_hours, sunday_policy, overtime_eligible, flexible_hours",
       )
       .eq("site_id", period.site_id)
       .eq("status", "active"),
@@ -261,6 +261,7 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
    * whole run shares one divisor rather than deriving it person by person.
    */
   const daysInMonth = daysInMonthOf(period.period_start);
+  const periodDays = daysBetween(period.period_start, period.period_end);
 
   for (const person of staff) {
     /*
@@ -303,6 +304,7 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
       ],
       latePenaltyTiers: tiers,
       daysInMonth,
+      periodDays,
     });
 
     results.push(result);

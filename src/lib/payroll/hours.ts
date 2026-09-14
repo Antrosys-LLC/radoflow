@@ -290,3 +290,35 @@ export function countWorkingDays(days: readonly AttendanceDay[]): number {
     return attended ? total + 1 : total;
   }, 0);
 }
+
+/**
+ * Working days earned by someone with no fixed in or out time.
+ *
+ * They are paid for completing their hours, whenever they work them, so a day
+ * is earned in proportion to the duty hours it covered: eight of eight is a
+ * day, four of eight is half of one. Hours past the duty day never make it
+ * worth more than one — that is overtime, priced separately. Sundays earn no
+ * base pay for anybody, the same rule `countWorkingDays` follows.
+ */
+export function creditedDays(
+  days: readonly AttendanceDay[],
+  rule: PayRule,
+  dutyHours: number,
+): number {
+  const duty = dutyHours > 0 ? dutyHours : rule.standardHoursPerDay;
+  return round2(
+    days.reduce((total, day) => {
+      if (isSunday(day.workDate)) return total;
+      if (day.status !== "present" && day.status !== "partial") return total;
+      return total + Math.min(1, workedHoursOf(day, rule) / duty);
+    }, 0),
+  );
+}
+
+/** Calendar days from one `YYYY-MM-DD` to another, both included. */
+export function daysBetween(from: string, to: string): number {
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return 0;
+  return Math.round((end - start) / 86_400_000) + 1;
+}

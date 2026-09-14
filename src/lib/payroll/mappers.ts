@@ -62,6 +62,7 @@ export function toEmployee(row: Record<string, unknown>): Employee {
     dutyHours: row["duty_hours"] == null ? null : Number(row["duty_hours"]),
     sundayPolicy: (row["sunday_policy"] as Employee["sundayPolicy"]) ?? "off",
     overtimeEligible: row["overtime_eligible"] == null ? true : Boolean(row["overtime_eligible"]),
+    flexibleHours: Boolean(row["flexible_hours"] ?? false),
     monthlySalary: Number(row["monthly_salary"] ?? 0),
     hourlyRate: Number(row["hourly_rate"] ?? 0),
     otHourlyRate: row["ot_hourly_rate"] == null ? null : Number(row["ot_hourly_rate"]),

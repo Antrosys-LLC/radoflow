@@ -79,14 +79,14 @@ const WORK_MODULES: readonly NavItem[] = [
   {
     href: "/attendance/register",
     labelKey: "checkInOut",
-    icon: "attendance",
+    icon: "checkInOut",
     requires: ["attendance.view", "attendance.view.all"],
     description: "Who came in today, and when",
   },
   {
     href: "/attendance/logs",
     labelKey: "attendanceLog",
-    icon: "attendance",
+    icon: "attendanceLog",
     requires: ["attendance.view", "attendance.view.all"],
     description: "Punches, hours and what they pay",
   },
@@ -107,7 +107,7 @@ const WORK_MODULES: readonly NavItem[] = [
   {
     href: "/devices/live",
     labelKey: "liveFloor",
-    icon: "devices",
+    icon: "liveFloor",
     requires: ["devices.view", "devices.manage"],
     description: "Check-ins and check-outs as they happen",
   },
@@ -121,7 +121,7 @@ const WORK_MODULES: readonly NavItem[] = [
   {
     href: "/gate",
     labelKey: "gate",
-    icon: "devices",
+    icon: "gate",
     requires: ["gate.log", "gate.view", "gate.manage"],
     description: "Who and what came through the gate, and when",
   },
@@ -135,7 +135,7 @@ const WORK_MODULES: readonly NavItem[] = [
   {
     href: "/canteen/history",
     labelKey: "canteenHistory",
-    icon: "canteen",
+    icon: "canteenHistory",
     requires: ["canteen.view"],
     description: "Every meal served, and what it came to",
   },
@@ -165,7 +165,7 @@ const WORK_MODULES: readonly NavItem[] = [
   {
     href: "/salaries",
     labelKey: "salaries",
-    icon: "payroll",
+    icon: "salaries",
     requires: ["payroll.view", "payroll.pay", "payroll.run"],
     description: "Salaries handed over, advances, deductions and loans",
   },
@@ -179,7 +179,7 @@ const ANTROSYS_MODULES: readonly NavItem[] = [
   {
     href: "/admin/claude-spend",
     labelKey: "claudeSpend",
-    icon: "assistant",
+    icon: "claudeSpend",
     // Empty, because permissions cannot express this: the CEO holds every one
     // of them. `navigationFor` filters this list on the role instead.
     requires: [],
@@ -206,7 +206,7 @@ const GOVERNANCE_MODULES: readonly NavItem[] = [
   {
     href: "/canteen/settings",
     labelKey: "canteenSettings",
-    icon: "canteen",
+    icon: "canteenSettings",
     requires: ["canteen.manage"],
     description: "Serving times, and which terminals scan for meals",
   },
@@ -237,7 +237,15 @@ export function navigationFor(session: Session | null): NavSection[] {
         (item) => item.href !== "/assistant" || canUseAssistant(session),
       ),
     },
-    { titleKey: "administration", items: visible(GOVERNANCE_MODULES, session) },
+    {
+      titleKey: "administration",
+      items: [
+        ...visible(GOVERNANCE_MODULES, session),
+        // C-Level sees what the assistant costs against its monthly limit —
+        // not Antrosys's account statement or its rate settings.
+        ...(isCLevel(session) && !isAntrosys(session) ? ANTROSYS_MODULES : []),
+      ],
+    },
     // Filtered on the role, not on a permission — see ANTROSYS_MODULES.
     { titleKey: "antrosys", items: isAntrosys(session) ? [...ANTROSYS_MODULES] : [] },
     { titleKey: "myRecords", items: visible(SELF_MODULES, session) },

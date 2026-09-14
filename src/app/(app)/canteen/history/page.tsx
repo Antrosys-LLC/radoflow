@@ -8,11 +8,15 @@ import { Latin } from "@/components/latin";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { readMealPrice, summariseMeals, type MealClaimRow } from "@/lib/canteen/history";
+import { dayPrices } from "@/lib/canteen/menu";
+import { loadMenus } from "@/lib/canteen/menu-data";
 import { dictionaryFor } from "@/lib/i18n";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatPKR, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
+
+import { DayMenuCard, type DayMenuView } from "./day-menu-card";
 
 export const metadata: Metadata = {
   title: { absolute: "Canteen History | Rado Dyeing and Textile" },
@@ -50,9 +54,10 @@ function monthBounds(today: string, offset: number): { from: string; to: string 
 export default async function CanteenHistoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; day?: string }>;
 }) {
   const session = await requireAnyPermission(["canteen.view"]);
+  const canManage = session.isSuperuser || session.permissions.has("canteen.manage");
   const t = dictionaryFor(session.profile.language);
   const params = await searchParams;
   const today = todayInPakistan();
@@ -106,7 +111,57 @@ export default async function CanteenHistoryPage({
     if (!data || data.length < PAGE) break;
   }
 
-  const summary = summariseMeals(claims, currentPrice);
+  /*
+   * Each day's menu prices that day's meals. The day shown in the menu card is
+   * one the office picked, or the last day of the range; it is read on its own
+   * when it falls outside the range, so its totals are still real.
+   */
+  const pickedDay = readDate(params.day) ?? to;
+  const menu = await loadMenus(
+    supabase,
+    pickedDay < from ? pickedDay : from,
+    pickedDay > to ? pickedDay : to,
+  );
+  const prices = dayPrices(menu.menus);
+  const summary = summariseMeals(claims, currentPrice, prices);
+
+  let pickedMeals = summary.byDay.find((day) => day.date === pickedDay) ?? null;
+  if (!pickedMeals && (pickedDay < from || pickedDay > to)) {
+    const { data: dayClaims } = await supabase
+      .from("meal_claims")
+      .select("profile_id, meal_window_id, served_on, price_pkr")
+      .eq("served_on", pickedDay)
+      .range(0, 4999);
+    pickedMeals =
+      summariseMeals((dayClaims ?? []) as unknown as MealClaimRow[], currentPrice, prices)
+        .byDay[0] ?? null;
+  }
+
+  const plannedDay = menu.menus.find((m) => m.date === pickedDay);
+  const ownDishes = menu.days.get(pickedDay) ?? [];
+  const dayView: DayMenuView = {
+    date: pickedDay,
+    source: plannedDay?.source ?? "none",
+    working: plannedDay?.working ?? true,
+    fixed: (plannedDay?.fixed ?? []).map((item) => ({ name: item.name, price: item.price })),
+    options: (plannedDay?.options ?? []).map((item) => ({ name: item.name, price: item.price })),
+    price: plannedDay?.price ?? 0,
+    items:
+      plannedDay?.source === "day"
+        ? ownDishes.map((dish) => ({ id: dish.id, name: dish.name, price: dish.price }))
+        : (plannedDay?.items ?? []).map((item) => ({
+            id: null,
+            name: item.name,
+            price: item.price,
+          })),
+    meals: pickedMeals?.meals ?? 0,
+    amount: pickedMeals?.amount ?? 0,
+  };
+  const monthOfDay = monthBounds(pickedDay, 0);
+  // Days of alternatives in the range, already past, that nobody has recorded.
+  const needChoice = menu.menus.filter(
+    (m) => m.source === "choose" && m.date >= from && m.date <= to && m.date <= today,
+  );
 
   const profileIds = summary.byPerson.map((person) => person.profileId);
   const people =
@@ -196,6 +251,65 @@ export default async function CanteenHistoryPage({
             ))}
           </div>
         </form>
+      </Card>
+
+      {needChoice.length > 0 ? (
+        <p className="rounded-2xl bg-warning-soft px-4 py-3 text-sm font-semibold text-warning">
+          <Fill template={t.canteenMenu.needChoice} values={{ count: needChoice.length }} />{" "}
+          {needChoice.map((m, index) => (
+            <span key={m.date}>
+              {index > 0 ? ", " : null}
+              <Link
+                href={`/canteen/history?from=${from}&to=${to}&day=${m.date}`}
+                className="underline underline-offset-2"
+              >
+                <Latin>{formatDate(m.date)}</Latin>
+              </Link>
+            </span>
+          ))}
+        </p>
+      ) : null}
+
+      <DayMenuCard
+        day={dayView}
+        canManage={canManage}
+        available={menu.available}
+        onPickHref={`/canteen/history?from=${from}&to=${to}`}
+      />
+
+      <Card className="p-4 sm:p-6">
+        <SectionTitle
+          icon={Banknote}
+          title={`${t.canteenHistory.invoiceDaily} · ${t.canteenHistory.invoiceMonthly}`}
+          subtitle={t.canteenHistory.invoiceHint}
+        />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl bg-secondary p-4">
+            <p className="text-sm font-bold text-foreground">
+              {t.canteenHistory.invoiceDaily} · <Latin>{formatDate(pickedDay)}</Latin>
+            </p>
+            <div className="mt-3">
+              <ExportButtons
+                kind="canteen-invoice"
+                params={{ from: pickedDay, to: pickedDay }}
+                label={t.canteenHistory.invoiceDaily}
+              />
+            </div>
+          </div>
+          <div className="rounded-2xl bg-secondary p-4">
+            <p className="text-sm font-bold text-foreground">
+              {t.canteenHistory.invoiceMonthly} ·{" "}
+              <Latin>{`${formatDate(monthOfDay.from)} – ${formatDate(monthOfDay.to)}`}</Latin>
+            </p>
+            <div className="mt-3">
+              <ExportButtons
+                kind="canteen-invoice"
+                params={{ from: monthOfDay.from, to: monthOfDay.to }}
+                label={t.canteenHistory.invoiceMonthly}
+              />
+            </div>
+          </div>
+        </div>
       </Card>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">

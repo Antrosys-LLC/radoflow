@@ -60,7 +60,9 @@ export default async function PayrollPage({
      */
     const [{ data: rows }, { data: people }, { data: departments }] = await Promise.all([
       supabase.from("payroll_items").select("*").eq("period_id", selectedId),
-      supabase.from("employee_directory").select("id, full_name, employee_code, department_id"),
+      supabase
+        .from("employee_directory")
+        .select("id, full_name, employee_code, department_id, designation"),
       supabase.from("departments").select("id, name"),
     ]);
 
@@ -99,6 +101,25 @@ export default async function PayrollPage({
           paidAmount: row.paid_amount == null ? null : Number(row.paid_amount),
           paidDifference: row.paid_difference == null ? null : Number(row.paid_difference),
           paidNote: row.paid_note ?? null,
+          register: {
+            profileId: row.profile_id,
+            name: person?.full_name ?? t.payroll.unknownPerson,
+            code: person?.employee_code ?? "",
+            designation: person?.designation ?? "",
+            department: deptById.get(person?.department_id ?? "") ?? "—",
+            // Null on a run saved before the column existed; re-running fills it.
+            monthlySalary: row.monthly_salary == null ? 0 : Number(row.monthly_salary),
+            workingDays:
+              row.working_days == null ? Number(row.days_present) : Number(row.working_days),
+            basePay: Number(row.base_pay),
+            overtimeHours:
+              Number(row.ot_hours) + Number(row.weekend_hours) + Number(row.holiday_hours),
+            overtimePay: Number(row.ot_pay) + Number(row.weekend_pay) + Number(row.holiday_pay),
+            gross: Number(row.gross),
+            withheld: Number(row.deductions) + Number(row.tax),
+            net: Number(row.net),
+            lines: (row.breakdown ?? []) as ItemRow["breakdown"] as never,
+          },
         };
       })
       .sort((a, b) => b.net - a.net);

@@ -30,8 +30,43 @@ export function isAntrosys(session: Session | null): boolean {
   return session?.roles.some((role) => role.key === ANTROSYS_ROLE) ?? false;
 }
 
-/** The two roles that answer for what the system costs to run. */
-export const LEADERSHIP_ROLES = [ANTROSYS_ROLE, "ceo"] as const;
+/**
+ * The owners of the business — Arham Sethi and Ghaffar Sethi.
+ *
+ * Unrestricted, and the only people besides Antrosys who decide who gets
+ * access to anything, other C-Levels included. The database holds the same
+ * line in `app.guard_leadership_roles`; this is the courtesy in the screen.
+ */
+export const OWNER_ROLE = "owner";
+
+/**
+ * C-Level. The key stays `ceo` so nothing reading the key has to change; the
+ * role is named "C-Level" everywhere a person sees it.
+ */
+export const C_LEVEL_ROLE = "ceo";
+
+export function isOwner(session: Session | null): boolean {
+  return session?.roles.some((role) => role.key === OWNER_ROLE) ?? false;
+}
+
+/** An owner or any other C-Level. */
+export function isCLevel(session: Session | null): boolean {
+  return (
+    session?.roles.some((role) => role.key === OWNER_ROLE || role.key === C_LEVEL_ROLE) ?? false
+  );
+}
+
+/** May give or take away leadership roles: an owner, or Antrosys. */
+export function canGrantLeadership(session: Session | null): boolean {
+  return isOwner(session) || isAntrosys(session);
+}
+
+/** The roles that run the business and the system, and answer for their cost. */
+export const LEADERSHIP_ROLES = [ANTROSYS_ROLE, OWNER_ROLE, C_LEVEL_ROLE] as const;
+
+export function isLeadership(session: Session | null): boolean {
+  return session?.roles.some((role) => LEADERSHIP_ROLES.includes(role.key as never)) ?? false;
+}
 
 /**
  * Who may ask Claude anything.

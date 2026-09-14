@@ -4,6 +4,7 @@ import { BadgeCheck, Mail, Phone } from "lucide-react";
 import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
 import { Avatar, Card } from "@/components/ui-kit";
+import { isCLevel } from "@/lib/auth/antrosys";
 import { requireSession } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
@@ -50,6 +51,7 @@ export default async function SettingsPage() {
   const shiftName = shifts?.find((s) => s.id === profile?.shift_id)?.name ?? t.profile.notRecorded;
   const roleLabel = session.roles.map((r) => r.name).join(" · ") || t.common.noRole;
   const monthly = profile?.pay_class === "monthly";
+  const cLevel = isCLevel(session);
 
   return (
     <div className="space-y-5 pb-6">
@@ -98,29 +100,38 @@ export default async function SettingsPage() {
               word, and one word has one home. */}
           <Fact label={t.common.department} value={deptName} />
           <Fact label={t.common.site} value={siteName} />
-          <Fact label={t.profile.shift} value={shiftName} />
-          <Fact
-            label={t.profile.joinedOn}
-            value={<Latin>{formatDate(profile?.joined_on)}</Latin>}
-          />
-          <Fact
-            label={t.profile.payType}
-            value={monthly ? t.profile.monthlySalary : t.profile.hourlyWage}
-          />
-          <Fact
-            label={monthly ? t.profile.monthlySalary : t.profile.hourlyRate}
-            value={
-              <Latin>{formatPKR(monthly ? profile?.monthly_salary : profile?.hourly_rate)}</Latin>
-            }
-          />
-          <Fact
-            label={t.profile.clockInRequired}
-            value={profile?.requires_attendance ? t.common.yes : t.common.no}
-          />
-          <Fact
-            label={t.common.status}
-            value={profile ? t.status.employment[profile.status] : t.profile.notRecorded}
-          />
+          {/* Shift, service dates, pay and clock-in are facts about staff. A
+              C-Level owns the business rather than works a shift in it, and
+              those six rows only ever read as "not recorded" or "no". */}
+          {cLevel ? null : (
+            <>
+              <Fact label={t.profile.shift} value={shiftName} />
+              <Fact
+                label={t.profile.joinedOn}
+                value={<Latin>{formatDate(profile?.joined_on)}</Latin>}
+              />
+              <Fact
+                label={t.profile.payType}
+                value={monthly ? t.profile.monthlySalary : t.profile.hourlyWage}
+              />
+              <Fact
+                label={monthly ? t.profile.monthlySalary : t.profile.hourlyRate}
+                value={
+                  <Latin>
+                    {formatPKR(monthly ? profile?.monthly_salary : profile?.hourly_rate)}
+                  </Latin>
+                }
+              />
+              <Fact
+                label={t.profile.clockInRequired}
+                value={profile?.requires_attendance ? t.common.yes : t.common.no}
+              />
+              <Fact
+                label={t.common.status}
+                value={profile ? t.status.employment[profile.status] : t.profile.notRecorded}
+              />
+            </>
+          )}
         </dl>
 
         <p className="mt-4 text-xs text-muted-foreground">{t.profile.managedByAdmin}</p>

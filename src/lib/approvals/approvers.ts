@@ -1,3 +1,4 @@
+import { LEADERSHIP_ROLES } from "@/lib/auth/antrosys";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -25,10 +26,12 @@ export interface Approver {
 export async function listApprovers(): Promise<Approver[]> {
   const supabase = await createClient();
 
+  // By key rather than `is_superuser`: C-Level decides changes without being
+  // unrestricted, since only an owner hands out access.
   const { data: roles } = await supabase
     .from("roles")
     .select("id, name, key, is_superuser")
-    .eq("is_superuser", true);
+    .in("key", [...LEADERSHIP_ROLES]);
 
   const roleIds = (roles ?? []).map((role) => role.id);
   if (roleIds.length === 0) return [];

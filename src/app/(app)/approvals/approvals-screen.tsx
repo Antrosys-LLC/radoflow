@@ -1,23 +1,31 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, ClipboardCheck, Clock, Inbox, X } from "lucide-react";
+import { Check, ClipboardCheck, Clock, History, Inbox, RotateCcw, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
 import { Card, SectionTitle } from "@/components/ui-kit";
-import { cancelChangeRequest, decideChangeRequest } from "@/lib/approvals/actions";
+import {
+  cancelChangeRequest,
+  decideChangeRequest,
+  undoChangeDecision,
+} from "@/lib/approvals/actions";
+import { undoMinutesLeft } from "@/lib/approvals/changes";
 import { formatDateTime } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 /**
- * Changes waiting on somebody, in two lists.
+ * Changes waiting on somebody, in three lists.
  *
- * A director opens this to decide. Everybody else opens it to find out whether
- * what they asked for this morning has happened. One undifferentiated queue
- * serves neither, so the ones addressed to you come first and your own follow.
+ * A director opens this to decide, and — for an hour afterwards — to take a
+ * decision back if the wrong row was pressed. Everybody else opens it to find
+ * out whether what they asked for this morning has happened, and to withdraw
+ * or restore it. One undifferentiated queue serves none of those, so the ones
+ * addressed to you come first, then what you just decided, then your own.
  *
  * Titles and summaries are written in English when the request is made and
  * stored — a summary has to survive the row it describes changing underneath
@@ -27,7 +35,12 @@ import { cn } from "@/lib/utils";
  */
 
 export type RequestKind =
-  "attendance_correction" | "calendar_day" | "work_week" | "pay_change" | "contract_amount";
+  | "attendance_correction"
+  | "calendar_day"
+  | "work_week"
+  | "pay_change"
+  | "contract_amount"
+  | "calendar_override";
 
 export interface RequestView {
   id: string;
@@ -42,6 +55,7 @@ export interface RequestView {
   requestedBy: string;
   requestedByName: string;
   assignedToName: string | null;
+  decidedBy: string | null;
   decidedByName: string | null;
 }
 
@@ -52,21 +66,42 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: "bg-secondary text-muted-foreground",
 };
 
+/** Re-renders every thirty seconds so the minutes left to undo count down. */
+function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  return now;
+}
+
 export function ApprovalsScreen({
   requests,
   me,
   canDecide,
+  isLeader,
 }: {
   requests: RequestView[];
   me: string;
   canDecide: boolean;
+  isLeader: boolean;
 }) {
   const t = useDictionary();
+  const now = useNow();
 
   const pending = requests.filter((request) => request.status === "pending");
   // Your own never appear in your decide list: the whole value of this is the
   // second pair of eyes, and the server refuses it anyway.
   const toDecide = canDecide ? pending.filter((request) => request.requestedBy !== me) : [];
+  const recent = canDecide
+    ? requests.filter(
+        (request) =>
+          (request.status === "approved" || request.status === "rejected") &&
+          undoMinutesLeft(request.decidedAt, now) > 0 &&
+          (request.decidedBy === me || isLeader),
+      )
+    : [];
   const mine = requests.filter((request) => request.requestedBy === me);
 
   return (
@@ -83,11 +118,31 @@ export function ApprovalsScreen({
         ) : (
           <ul className="space-y-2">
             {toDecide.map((request) => (
-              <RequestRow key={request.id} request={request} canDecide mine={false} />
+              <RequestRow key={request.id} request={request} mode="decide" now={now} />
             ))}
           </ul>
         )}
       </Card>
+
+      {canDecide ? (
+        <Card className="p-4 sm:p-6">
+          <SectionTitle
+            icon={History}
+            title={t.approvals.recentlyDecided}
+            subtitle={t.approvals.recentlyDecidedHint}
+          />
+
+          {recent.length === 0 ? (
+            <Empty message={t.approvals.nothingRecent} />
+          ) : (
+            <ul className="space-y-2">
+              {recent.map((request) => (
+                <RequestRow key={request.id} request={request} mode="undo" now={now} />
+              ))}
+            </ul>
+          )}
+        </Card>
+      ) : null}
 
       <Card className="p-4 sm:p-6">
         <SectionTitle icon={Inbox} title={t.approvals.mine} subtitle={t.approvals.mineHint} />
@@ -97,7 +152,7 @@ export function ApprovalsScreen({
         ) : (
           <ul className="space-y-2">
             {mine.map((request) => (
-              <RequestRow key={request.id} request={request} canDecide={false} mine />
+              <RequestRow key={request.id} request={request} mode="mine" now={now} />
             ))}
           </ul>
         )}
@@ -116,32 +171,26 @@ function Empty({ message }: { message: string }) {
 
 function RequestRow({
   request,
-  canDecide,
-  mine,
+  mode,
+  now,
 }: {
   request: RequestView;
-  canDecide: boolean;
-  mine: boolean;
+  /** decide: approve or reject · undo: take a decision back · mine: withdraw or restore. */
+  mode: "decide" | "undo" | "mine";
+  now: number;
 }) {
   const t = useDictionary();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [note, setNote] = useState("");
 
-  function decide(decision: "approved" | "rejected") {
+  const minutesLeft = undoMinutesLeft(request.decidedAt, now);
+
+  function run(action: () => Promise<{ ok: boolean; message: string }>) {
     startTransition(async () => {
-      const result = await decideChangeRequest(request.id, decision, note);
+      const result = await action();
       if (result.ok) toast.success(result.message);
       else toast.error(result.message, { duration: 9000 });
-      router.refresh();
-    });
-  }
-
-  function withdraw() {
-    startTransition(async () => {
-      const result = await cancelChangeRequest(request.id);
-      if (result.ok) toast.success(result.message);
-      else toast.error(result.message);
       router.refresh();
     });
   }
@@ -162,7 +211,7 @@ function RequestRow({
                 request.status}
             </span>
             <span className="rounded-full bg-card px-2.5 py-0.5 text-[10px] font-bold text-muted-foreground">
-              {t.approvals.kind[request.kind]}
+              {t.approvals.kind[request.kind] ?? request.kind}
             </span>
           </p>
 
@@ -208,8 +257,8 @@ function RequestRow({
           ) : null}
         </div>
 
-        {canDecide && request.status === "pending" ? (
-          <div className="flex flex-col gap-2 sm:min-w-[16rem]">
+        {mode === "decide" && request.status === "pending" ? (
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[16rem]">
             <input
               type="text"
               value={note}
@@ -222,7 +271,7 @@ function RequestRow({
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => decide("approved")}
+                onClick={() => run(() => decideChangeRequest(request.id, "approved", note))}
                 className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-success px-3 py-2 text-xs font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-50"
               >
                 <Check className="size-3.5" aria-hidden />
@@ -231,7 +280,7 @@ function RequestRow({
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => decide("rejected")}
+                onClick={() => run(() => decideChangeRequest(request.id, "rejected", note))}
                 className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-danger-soft px-3 py-2 text-xs font-bold text-danger transition-all hover:-translate-y-0.5 disabled:opacity-50"
               >
                 <X className="size-3.5" aria-hidden />
@@ -241,17 +290,73 @@ function RequestRow({
           </div>
         ) : null}
 
-        {mine && request.status === "pending" ? (
+        {mode === "undo" && minutesLeft > 0 ? (
+          <UndoButton
+            label={t.approvals.undo}
+            hint={t.approvals.undoLeft}
+            minutes={minutesLeft}
+            disabled={pending}
+            icon="undo"
+            onClick={() => run(() => undoChangeDecision(request.id))}
+          />
+        ) : null}
+
+        {mode === "mine" && request.status === "pending" ? (
           <button
             type="button"
             disabled={pending}
-            onClick={withdraw}
+            onClick={() => run(() => cancelChangeRequest(request.id))}
             className="rounded-xl bg-card px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-danger disabled:opacity-50"
           >
             {t.approvals.withdraw}
           </button>
         ) : null}
+
+        {mode === "mine" && request.status === "cancelled" && minutesLeft > 0 ? (
+          <UndoButton
+            label={t.approvals.restore}
+            hint={t.approvals.undoLeft}
+            minutes={minutesLeft}
+            disabled={pending}
+            icon="restore"
+            onClick={() => run(() => undoChangeDecision(request.id))}
+          />
+        ) : null}
       </div>
     </li>
+  );
+}
+
+function UndoButton({
+  label,
+  hint,
+  minutes,
+  disabled,
+  icon,
+  onClick,
+}: {
+  label: string;
+  hint: string;
+  minutes: number;
+  disabled: boolean;
+  icon: "undo" | "restore";
+  onClick: () => void;
+}) {
+  const Icon = icon === "undo" ? Undo2 : RotateCcw;
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        className="inline-flex items-center gap-1.5 rounded-xl bg-card px-3 py-2 text-xs font-bold text-foreground ring-1 ring-border transition-all hover:-translate-y-0.5 hover:text-primary disabled:opacity-50"
+      >
+        <Icon className="size-3.5" aria-hidden />
+        {label}
+      </button>
+      <span className="text-[10px] text-muted-foreground">
+        <Fill template={hint} values={{ minutes }} />
+      </span>
+    </div>
   );
 }

@@ -21,6 +21,13 @@ import {
   setWeekdayWorking,
   type CalendarResult,
 } from "./actions";
+import { HolidaySuggestions } from "./holiday-suggestions";
+import {
+  ScopedDays,
+  type CalendarPerson,
+  type DepartmentOption,
+  type OverrideRow,
+} from "./scoped-days";
 
 /**
  * The working calendar: which days the factory runs.
@@ -115,11 +122,20 @@ export function WorkingCalendar({
   weekdays,
   days,
   canManage,
+  canAskClaude,
+  overrides,
+  departments,
+  people,
 }: {
   sites: SiteRow[];
   weekdays: WeekdayRow[];
   days: CalendarDayRow[];
   canManage: boolean;
+  /** Leadership, who may spend on a Claude lookup. */
+  canAskClaude: boolean;
+  overrides: OverrideRow[];
+  departments: DepartmentOption[];
+  people: CalendarPerson[];
 }) {
   const t = useDictionary();
   const [siteId, setSiteId] = useState(sites[0]?.id ?? "");
@@ -270,6 +286,24 @@ export function WorkingCalendar({
           </ul>
         )}
       </Card>
+
+      <ScopedDays
+        siteId={siteId}
+        approverId={approverId}
+        canManage={canManage}
+        departments={departments}
+        people={people}
+        overrides={overrides}
+      />
+
+      {canAskClaude ? (
+        <HolidaySuggestions
+          siteId={siteId}
+          approverId={approverId}
+          canManage={canManage}
+          existingDays={exceptions.map((row) => row.day)}
+        />
+      ) : null}
 
       {adding || editing ? (
         <ExceptionDialog

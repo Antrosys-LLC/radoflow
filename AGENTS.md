@@ -142,6 +142,51 @@ again. Without this, a demotion would not reach them until they happened to log
 out. Redirect stale sessions to `/auth/reauth`, never straight to `/login`: the
 middleware bounces anyone holding a valid cookie away from the login page.
 
+## Leadership, and who waits for approval
+
+- **C-Level is the `ceo` role, renamed; owners are the `owner` role.** Arham
+  Sethi and Ghaffar Sethi hold `owner` — unrestricted, and the only people
+  besides Antrosys who give or take away C-Level, owner or Antrosys roles.
+  C-Level holds every permission except `access.manage` and is not
+  `is_superuser`. The line is held in `app.guard_leadership_roles` on
+  `user_roles`; `setUserRole` only words the refusal.
+- **Leadership never queues.** `needsApproval` is false for owner, C-Level and
+  Antrosys (`isLeadership`). Everybody else's pay, calendar and attendance
+  changes wait in `change_requests`.
+- **A decision can be undone for an hour.** Approving stores what the row held
+  (`previous_values`, or `created_row`) and undo writes exactly that back. A
+  requester may withdraw, and restore within the hour; the trigger
+  `app.guard_change_request_requester` stops them editing what the approver
+  reads.
+
+## Shifts follow the floor
+
+Day 08:00–16:00 with overtime to 20:00; night 20:00–04:00 with overtime to
+08:00 (`shifts.overtime_until`). After `shifts.auto_switch_after_days` attended
+days in a row that all started on the other shift, a person is moved to it
+(`followShifts`, after the day is recomputed) unless
+`profiles.shift_follows_attendance` is off. A night worker's punch between
+05:00 and 10:00 belongs to the previous night while an evening check-in is
+open (`creditWorkDates`) — otherwise overtime would split one night into two
+dates. Both fail soft: a punch is never refused because the roster was unread.
+
+## The salary ledger
+
+The office sheet's ADVANCE, ADVANCE, LOAN DED. and SUITE DED. columns are
+`salary_adjustments` (one figure, one person, one month) and `employee_loans`.
+The payroll run turns them into payslip components with fixed codes
+(`LEDGER_CODES`), and the register reads its columns back out by code. A loan's
+balance is never stored: it is the principal less `loan_recoveries`, one
+payroll line per loan per month, replaced on a re-run so an installment is
+never taken twice. A short month takes the shortfall off loan lines first.
+
+## Downloads
+
+Every PDF and workbook carries the Rado letterhead and mark
+(`src/lib/export/brand-logo.ts`, generated from `public/`). Worksheet elements
+must stay in schema order — `autoFilter` before `mergeCells` before the print
+settings before `drawing` — or Excel "repairs" the file. The tests pin it.
+
 ## Access control
 
 Permissions live in the database, not in the code. A role's capabilities are

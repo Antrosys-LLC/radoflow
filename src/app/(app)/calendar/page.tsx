@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { canUseAssistant } from "@/lib/auth/antrosys";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { todayInPakistan } from "@/lib/time";
@@ -43,7 +44,14 @@ export default async function CalendarPage() {
   const from = new Date(`${todayInPakistan()}T00:00:00Z`);
   from.setUTCDate(from.getUTCDate() - 30);
 
-  const [{ data: sites }, { data: pattern }, { data: exceptions }] = await Promise.all([
+  const [
+    { data: sites },
+    { data: pattern },
+    { data: exceptions },
+    { data: overrideRows },
+    { data: departmentRows },
+    { data: peopleRows },
+  ] = await Promise.all([
     supabase.from("sites").select("id, name").order("name"),
     supabase.from("work_week").select("site_id, weekday, is_working"),
     supabase
@@ -51,6 +59,17 @@ export default async function CalendarPage() {
       .select("id, site_id, day, day_type, reason")
       .gte("day", from.toISOString().slice(0, 10))
       .order("day"),
+    // Empty on a database without the table — the section simply lists nothing.
+    supabase
+      .from("calendar_day_overrides")
+      .select("id, site_id, scope, department_id, profile_id, day, day_type, reason")
+      .gte("day", from.toISOString().slice(0, 10))
+      .order("day"),
+    supabase.from("departments").select("id, name, site_id").order("name"),
+    supabase
+      .from("employee_directory")
+      .select("id, full_name, employee_code, department_id")
+      .order("full_name"),
   ]);
 
   const siteRows: SiteRow[] = (sites ?? []).map((site) => ({ id: site.id, name: site.name }));
@@ -69,5 +88,40 @@ export default async function CalendarPage() {
     reason: row.reason,
   }));
 
-  return <WorkingCalendar sites={siteRows} weekdays={weekdays} days={days} canManage={canManage} />;
+  return (
+    <WorkingCalendar
+      sites={siteRows}
+      weekdays={weekdays}
+      days={days}
+      canManage={canManage}
+      canAskClaude={canUseAssistant(session)}
+      overrides={(overrideRows ?? []).map((row) => ({
+        id: row.id,
+        siteId: row.site_id,
+        scope: row.scope === "person" ? "person" : "department",
+        departmentId: row.department_id,
+        profileId: row.profile_id,
+        day: row.day,
+        dayType: row.day_type as DayType,
+        reason: row.reason,
+      }))}
+      departments={(departmentRows ?? []).map((row) => ({
+        id: row.id,
+        name: row.name,
+        siteId: row.site_id,
+      }))}
+      people={(peopleRows ?? []).flatMap((row) =>
+        row.id
+          ? [
+              {
+                id: row.id,
+                name: row.full_name ?? "",
+                code: row.employee_code ?? "",
+                departmentId: row.department_id,
+              },
+            ]
+          : [],
+      )}
+    />
+  );
 }

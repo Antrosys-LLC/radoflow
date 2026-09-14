@@ -1,6 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { buildPayslipPdf, buildTablePdf } from "@/lib/export/pdf";
+import {
+  canteenDocument,
+  liveRegisterDocument,
+  payslipFromRun,
+  registerDocument,
+  type Document,
+} from "@/lib/export/route-documents";
 import { buildWorkbook, type Sheet } from "@/lib/export/xlsx";
 import { getSession } from "@/lib/auth/session";
 import {
@@ -36,6 +43,9 @@ const REQUIRED_PERMISSION = {
   // A payslip is also allowed to its owner; that exception is handled below.
   payslip: "payroll.view",
   gate: "gate.view",
+  canteen: "canteen.view",
+  // The salary register of one saved pay run.
+  register: "payroll.view",
 } as const;
 
 type Kind = keyof typeof REQUIRED_PERMISSION;
@@ -52,6 +62,13 @@ function nextDay(date: string): string {
 
 function filename(kind: string, extension: string): string {
   return `radoflow-${kind}-${todayInPakistan()}.${extension}`;
+}
+
+/** A document the helpers built, or the reason they could not. */
+function documentResponse(document: Document) {
+  return document.ok
+    ? fileResponse(document.body, document.name, document.type)
+    : NextResponse.json({ error: document.error }, { status: document.status });
 }
 
 function fileResponse(body: Buffer, name: string, contentType: string) {
@@ -170,6 +187,25 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
     );
   }
 
+  /*
+   * The documents that read a saved record rather than recomputing one: the
+   * canteen register, a pay run's salary register, and a payslip from a run.
+   */
+  if (kind === "canteen") {
+    return documentResponse(await canteenDocument(supabase, { from, to, format }));
+  }
+
+  if (kind === "register") {
+    return documentResponse(
+      await registerDocument(supabase, { periodId: url.searchParams.get("period") ?? "", format }),
+    );
+  }
+
+  const periodId = url.searchParams.get("period");
+  if (kind === "payslip" && periodId) {
+    return documentResponse(await payslipFromRun(supabase, { periodId, profileId }));
+  }
+
   const { data: departments } = await supabase.from("departments").select("id, name");
   const deptName = new Map((departments ?? []).map((d) => [d.id, d.name]));
 
@@ -189,7 +225,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
   // ---- People ------------------------------------------------------------
   if (kind === "people" || kind === "pay") {
     const columns = [
-      { header: "Employee code", width: 16, format: "text" as const },
+      { header: "Unique ID", width: 16, format: "text" as const },
       { header: "Name", width: 26, format: "text" as const },
       { header: "Department", width: 20, format: "text" as const },
       { header: "Designation", width: 18, format: "text" as const },
@@ -385,7 +421,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
   // ---- Attendance --------------------------------------------------------
   if (kind === "attendance") {
     const columns = [
-      { header: "Employee code", width: 15, format: "text" as const },
+      { header: "Unique ID", width: 15, format: "text" as const },
       { header: "Name", width: 26, format: "text" as const },
       { header: "Department", width: 20, format: "text" as const },
       { header: "Working days", width: 13, format: "number" as const },
@@ -451,91 +487,20 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
     );
   }
 
-  // ---- Payroll -----------------------------------------------------------
-  const columns = [
-    { header: "Employee code", width: 15, format: "text" as const },
-    { header: "Name", width: 26, format: "text" as const },
-    { header: "Department", width: 20, format: "text" as const },
-    { header: "Paid as", width: 12, format: "text" as const },
-    { header: "Monthly salary", width: 15, format: "money" as const },
-    { header: "Daily rate", width: 13, format: "money" as const },
-    { header: "Working days", width: 13, format: "number" as const },
-    { header: "Base pay", width: 14, format: "money" as const },
-    { header: "Overtime hours", width: 14, format: "hours" as const },
-    { header: "Overtime pay", width: 14, format: "money" as const },
-    { header: "Earned", width: 15, format: "money" as const },
-  ];
-
-  const rows = computed.map((c) => [
-    c.person.employee_code,
-    c.person.full_name,
-    c.person.department_id ? (deptName.get(c.person.department_id) ?? "") : "",
-    c.contractor ? "Contractor" : "Employee",
-    Number(c.person.monthly_salary),
-    c.contractor ? null : c.perDay,
-    c.contractor ? null : c.workingDays,
-    money(c.base),
-    hours(c.overtime),
-    money(c.otPay),
-    money(c.base + c.otPay),
-  ]);
-
-  const earnedTotal = computed.reduce((t, c) => t + c.base + c.otPay, 0);
-
-  if (format === "pdf") {
-    return fileResponse(
-      buildTablePdf({
-        title: `Payroll — ${scopeNote}`,
-        subtitle: `${from} to ${to} · before deductions`,
-        columns: [
-          { header: "Code", width: 55 },
-          { header: "Name", width: 150 },
-          { header: "Department", width: 100 },
-          { header: "Days", width: 40, align: "right" },
-          { header: "Base", width: 70, align: "right" },
-          { header: "Overtime", width: 60, align: "right" },
-          { header: "Earned", width: 75, align: "right" },
-        ],
-        rows: computed.map((c) => [
-          c.person.employee_code,
-          c.person.full_name,
-          c.person.department_id ? (deptName.get(c.person.department_id) ?? "") : "",
-          c.contractor ? "-" : c.workingDays,
-          money(c.base),
-          money(c.otPay),
-          money(c.base + c.otPay),
-        ]),
-        totals: ["Total", `${computed.length} people`, "", "", "", "", money(earnedTotal)],
-        footer: "Base pay is the daily rate times days attended. Sundays are overtime.",
-      }),
-      filename("payroll", "pdf"),
-      "application/pdf",
-    );
-  }
-
-  return fileResponse(
-    buildWorkbook([
-      {
-        name: "Payroll",
-        title: `Payroll — ${scopeNote} · ${from} to ${to}`,
-        columns,
-        rows,
-        totals: [
-          "",
-          `${computed.length} people`,
-          "",
-          "",
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          earnedTotal,
-        ],
-      },
-    ]),
-    filename("payroll", "xlsx"),
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  // ---- Payroll: the salary register, worked out live ----------------------
+  return documentResponse(
+    await liveRegisterDocument(supabase, {
+      figures: computed.map((c) => ({
+        person: c.person,
+        workingDays: c.contractor ? 0 : c.workingDays,
+        overtime: c.overtime,
+        base: c.base,
+        otPay: c.otPay,
+      })),
+      from,
+      to,
+      scope: scopeNote,
+      format,
+    }),
   );
 }

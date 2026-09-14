@@ -3,6 +3,7 @@ import {
   minutesLateAgainstShift,
   type RawPunch,
 } from "@/lib/attendance/compute";
+import { creditWorkDates, followShifts } from "@/lib/attendance/follow-shift";
 import { ingestMealScans } from "@/lib/canteen/ingest";
 import { PAKISTAN_TIMEZONE } from "@/lib/time";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -139,9 +140,16 @@ export async function ingestPunches(
   // punch would land at a different instant depending on where this is hosted.
   const timeZone = device.timezone || "UTC";
 
+  /*
+   * Which date each punch is credited to. The night shift's overtime runs to
+   * 08:00, so a night worker's morning check-out belongs to the night before —
+   * see `creditWorkDates`. Everyone else keeps the 05:00 rule.
+   */
+  const workDates = await creditWorkDates(supabase, punches, profileByDeviceUser, timeZone);
+
   const rows = punches.flatMap((punch) => {
     const punchedAt = zonedWallClockToUtc(punch.localTimestamp, timeZone);
-    const workDate = workDateFromWallClock(punch.localTimestamp);
+    const workDate = workDates.get(punch) ?? workDateFromWallClock(punch.localTimestamp);
     if (!punchedAt || !workDate) return [];
 
     return [
@@ -197,6 +205,10 @@ export async function ingestPunches(
   for (const { profileId, workDate } of affected.values()) {
     await recomputeAttendanceDay(profileId, workDate, device.site_id);
   }
+
+  // After the days are rebuilt, so the check-in just recorded counts toward
+  // the run of days that decides somebody's shift.
+  await followShifts(supabase, [...new Set([...affected.values()].map((a) => a.profileId))]);
 
   return {
     accepted,

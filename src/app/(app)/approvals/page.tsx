@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { isAntrosys } from "@/lib/auth/antrosys";
+import { isLeadership } from "@/lib/auth/antrosys";
 import { SchemaOutOfDate } from "@/components/schema-out-of-date";
 import { requireSession } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
@@ -80,20 +80,24 @@ export default async function ApprovalsPage() {
     requestedBy: row.requested_by,
     requestedByName: nameOf.get(row.requested_by) ?? "",
     assignedToName: row.assigned_to ? (nameOf.get(row.assigned_to) ?? "") : null,
+    decidedBy: row.decided_by,
     decidedByName: row.decided_by ? (nameOf.get(row.decided_by) ?? "") : null,
   }));
 
   /*
-   * Whether this person may decide. Antrosys and any superuser can; so can
+   * Whether this person may decide. Leadership and any superuser can; so can
    * anyone holding either approval permission, which is what the row policy
    * tests. Computed here rather than in the client so the buttons are never
    * rendered for somebody the server would refuse.
    */
+  const leader = isLeadership(session);
   const canDecide =
     session.isSuperuser ||
-    isAntrosys(session) ||
+    leader ||
     session.permissions.has("payroll.approve") ||
     session.permissions.has("attendance.approve");
 
-  return <ApprovalsScreen requests={view} me={session.userId} canDecide={canDecide} />;
+  return (
+    <ApprovalsScreen requests={view} me={session.userId} canDecide={canDecide} isLeader={leader} />
+  );
 }

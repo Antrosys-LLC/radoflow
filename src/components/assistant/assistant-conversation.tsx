@@ -8,7 +8,8 @@ import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
 import { cn } from "@/lib/utils";
-import { DEFAULT_EFFORT, EFFORT_LEVELS, type EffortLevel } from "@/lib/assistant/models";
+import { DEFAULT_EFFORT, type EffortLevel } from "@/lib/assistant/models";
+import { EffortPicker } from "@/components/assistant/effort-picker";
 import type { AskContext } from "@/lib/assistant/context";
 import { LANGUAGE_LABELS, type LanguageCode } from "@/lib/i18n";
 
@@ -318,31 +319,6 @@ export function AssistantConversation({
         </div>
       </div>
 
-      <div className={cn("flex gap-1.5", compact ? "mt-1.5" : "mt-2")}>
-        {EFFORT_LEVELS.map((level) => {
-          // The ladder carries the order and the allowlist; the words are in
-          // the dictionary, keyed by the same five values.
-          const words = t.ask.effort[level.value];
-
-          return (
-            <button
-              key={level.value}
-              type="button"
-              onClick={() => setEffort(level.value)}
-              title={compact ? `${words.label} — ${words.hint}` : words.hint}
-              className={cn(
-                "flex-1 rounded-2xl font-bold transition-all",
-                compact ? "px-2 py-1.5 text-[0.65rem]" : "px-3 py-2 text-xs",
-                effort === level.value
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {compact ? words.short : words.label}
-            </button>
-          );
-        })}
-      </div>
       {sessionCostPkr > 0 ? (
         <p className={cn("mt-1 text-muted-foreground", compact ? "text-[0.65rem]" : "text-xs")}>
           {/* The currency and the figure are one Latin run — "Rs" is written
@@ -475,6 +451,8 @@ export function AssistantConversation({
             )}
           </button>
         ) : null}
+
+        <EffortPicker value={effort} onChange={setEffort} compact={compact} />
 
         <button
           type="submit"

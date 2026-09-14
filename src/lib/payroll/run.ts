@@ -1,8 +1,18 @@
 import { calculatePayroll, summarisePayroll } from "./engine";
+import {
+  collectedLoanDeductions,
+  ledgerFor,
+  loanBalance,
+  monthOf,
+  type AdjustmentRow,
+  type LoanRow,
+  type RecoveryRow,
+} from "./ledger";
 import { daysInMonthOf, roundMoney } from "./hours";
 import { toEmployee, toLateTier, toPayComponent, toPayRule } from "./mappers";
 import type { AttendanceDay, DayType, PayComponent, PayrollResult } from "./types";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
+import { isSchemaOutOfDate } from "@/lib/supabase/schema-error";
 import { createServiceClient } from "@/lib/supabase/service";
 
 /**
@@ -217,6 +227,20 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     extrasByProfile.set(row.profile_id, list);
   }
 
+  /*
+   * The salary ledger for the period's month: advances, suit and other
+   * deductions, allowances, and each active loan's installment. They become
+   * payslip components, so the engine applies them like any other line and
+   * the register can read its ADVANCE, LOAN and SUITE columns back out by code.
+   */
+  const month = monthOf(period.period_start);
+  const ledger = await loadLedger(
+    supabase,
+    staff.map((s) => s.id),
+    month,
+  );
+  const recoveryRows: RecoveryInsert[] = [];
+
   const results: PayrollResult[] = [];
   const skipped: RunSummary["skipped"] = [];
   const flagged: RunSummary["flagged"] = [];
@@ -260,16 +284,42 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
       continue;
     }
 
+    const personLedger = ledgerFor(
+      person.id,
+      month,
+      ledger.adjustments,
+      ledger.loans,
+      ledger.recoveries,
+    );
+
     const result = calculatePayroll({
       employee,
       rule,
       days,
-      components: [...siteComponents, ...(extrasByProfile.get(person.id) ?? [])],
+      components: [
+        ...siteComponents,
+        ...(extrasByProfile.get(person.id) ?? []),
+        ...personLedger.components,
+      ],
       latePenaltyTiers: tiers,
       daysInMonth,
     });
 
     results.push(result);
+
+    // What each loan actually got, after any month too short to cover it.
+    for (const line of collectedLoanDeductions(
+      personLedger.loanDeductions,
+      result.uncollectedDeductions,
+    )) {
+      recoveryRows.push({
+        loan_id: line.loanId,
+        period_id: period.id,
+        month,
+        amount: line.amount,
+        source: "payroll",
+      });
+    }
 
     if (result.flaggedHours > 0) {
       flagged.push({
@@ -283,6 +333,8 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
       period_id: period.id,
       profile_id: person.id,
       pay_class: employee.payClass,
+      monthly_salary: employee.monthlySalary,
+      working_days: result.workingDays,
       base_rate: result.baseRate,
       regular_hours: result.hours.regular,
       ot_hours: result.hours.overtime,
@@ -394,10 +446,42 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
   }
 
   if (rows.length > 0) {
-    const { error } = await supabase
+    let { error } = await supabase
       .from("payroll_items")
       .upsert(rows, { onConflict: "period_id,profile_id" });
+
+    /*
+     * The salary and working-day columns arrive with a migration. A database
+     * without them still gets its pay run; the register falls back to the
+     * profile's salary and the days present.
+     */
+    if (error && isSchemaOutOfDate(error)) {
+      const trimmed = rows.map((row) => {
+        const copy: Record<string, unknown> = { ...row };
+        delete copy["monthly_salary"];
+        delete copy["working_days"];
+        return copy;
+      });
+      ({ error } = await supabase
+        .from("payroll_items")
+        .upsert(trimmed as never, { onConflict: "period_id,profile_id" }));
+    }
+
     if (error) throw new Error(`Could not save payroll lines: ${error.message}`);
+  }
+
+  /*
+   * One payroll line per loan per month, replaced on a re-run, so running a
+   * month twice never takes the same installment twice.
+   */
+  if (recoveryRows.length > 0) {
+    const { error: recoveryError } = await supabase
+      .from("loan_recoveries")
+      .upsert(recoveryRows, { onConflict: "loan_id,month,source" });
+    if (recoveryError) {
+      throw new Error(`Could not record loan installments: ${recoveryError.message}`);
+    }
+    await settleLoans(supabase, ledger, recoveryRows);
   }
 
   if (contractRows.length > 0) {
@@ -434,4 +518,102 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     skipped,
     flagged,
   };
+}
+
+interface RecoveryInsert {
+  loan_id: string;
+  period_id: string;
+  month: string;
+  amount: number;
+  source: string;
+}
+
+interface Ledger {
+  adjustments: AdjustmentRow[];
+  loans: LoanRow[];
+  recoveries: RecoveryRow[];
+}
+
+/**
+ * The month's ledger for everybody in the run.
+ *
+ * A database without the ledger tables pays exactly as it did before. One that
+ * has them and cannot read them fails the run: paying people without their
+ * advances and loan installments taken off is not a smaller version of the
+ * right answer.
+ */
+async function loadLedger(
+  supabase: ReturnType<typeof createServiceClient>,
+  profileIds: string[],
+  month: string,
+): Promise<Ledger> {
+  const probe = await supabase.from("salary_adjustments").select("id").limit(1);
+  if (probe.error && isSchemaOutOfDate(probe.error)) {
+    return { adjustments: [], loans: [], recoveries: [] };
+  }
+
+  const adjustments = await selectAllInBatches<AdjustmentRow>(
+    profileIds,
+    (ids, first, last) =>
+      supabase
+        .from("salary_adjustments")
+        .select("profile_id, kind, amount, label, month")
+        .eq("month", month)
+        .in("profile_id", ids)
+        .order("profile_id")
+        .order("created_at")
+        .range(first, last),
+    "Could not read the salary ledger",
+  );
+
+  const loans = await selectAllInBatches<LoanRow>(
+    profileIds,
+    (ids, first, last) =>
+      supabase
+        .from("employee_loans")
+        .select("id, profile_id, principal, installment, installments, first_month, status")
+        .eq("status", "active")
+        .in("profile_id", ids)
+        .order("profile_id")
+        .order("id")
+        .range(first, last),
+    "Could not read loans",
+  );
+
+  const recoveries =
+    loans.length === 0
+      ? []
+      : await selectAllInBatches<RecoveryRow>(
+          loans.map((loan) => loan.id),
+          (ids, first, last) =>
+            supabase
+              .from("loan_recoveries")
+              .select("loan_id, month, amount, source")
+              .in("loan_id", ids)
+              .order("loan_id")
+              .order("month")
+              .range(first, last),
+          "Could not read loan recoveries",
+        );
+
+  return { adjustments, loans, recoveries };
+}
+
+/** Marks every loan this run finished paying back as settled. */
+async function settleLoans(
+  supabase: ReturnType<typeof createServiceClient>,
+  ledger: Ledger,
+  written: readonly RecoveryInsert[],
+) {
+  const replaced = (row: RecoveryRow) =>
+    written.some(
+      (line) =>
+        line.loan_id === row.loan_id && line.month === row.month && row.source === "payroll",
+    );
+  const all: RecoveryRow[] = [...ledger.recoveries.filter((row) => !replaced(row)), ...written];
+  const settled = ledger.loans.filter((loan) => loanBalance(loan, all) <= 0).map((loan) => loan.id);
+
+  if (settled.length > 0) {
+    await supabase.from("employee_loans").update({ status: "settled" }).in("id", settled);
+  }
 }

@@ -1,18 +1,20 @@
 import type { Session } from "@/lib/auth/session";
-import { isAntrosys } from "@/lib/auth/antrosys";
+import { isLeadership } from "@/lib/auth/antrosys";
 
 /**
  * Which changes have to be asked for, and what the asking says.
  *
- * The rule is short and it is the whole point: **anybody but Antrosys queues.**
- * Not "anybody without the permission" — the manager, the accountant and the
- * CEO all hold the permissions for these writes, and the ask is not about
+ * The rule is short and it is the whole point: **anybody below C-Level
+ * queues.** Not "anybody without the permission" — the manager and the
+ * accountant hold the permissions for these writes, and the ask is not about
  * capability. It is about a second pair of eyes on money and on the working
  * week, which is exactly what the floor asked for.
  *
- * Antrosys is exempt because they are who fixes this workflow when it goes
- * wrong. A maintainer who cannot correct a stuck request without finding a
- * director is a maintainer who cannot maintain.
+ * C-Level and the owners are exempt because they are the people the request
+ * would be sent to: the business is theirs, and a director asking another
+ * director for leave to change a salary is a queue with nobody at the end of
+ * it. Antrosys is exempt because they are who fixes this workflow when it goes
+ * wrong.
  *
  * Pure: no database, no session lookup of its own, no clock. The actions
  * supply the session and the values; this decides and words it.
@@ -52,12 +54,30 @@ export interface ChangeRequestRow {
 /**
  * Whether this person's change has to wait for somebody else.
  *
- * Everyone queues except Antrosys — see the note above. Written as a function
+ * Everyone queues except leadership — see the note above. Written as a function
  * of the session rather than of a role name at each call site so the rule
  * lives in one place and a future exemption is one edit.
  */
 export function needsApproval(session: Session | null): boolean {
-  return !isAntrosys(session);
+  return !isLeadership(session);
+}
+
+/**
+ * How long a decision can be taken back: an hour.
+ *
+ * Long enough to notice the wrong row was pressed; short enough that nothing
+ * downstream — a payroll run, a payslip handed over — is likely to have read
+ * the change as settled.
+ */
+export const UNDO_WINDOW_MS = 60 * 60 * 1000;
+
+/** Minutes left to undo, or zero when the window has closed or never opened. */
+export function undoMinutesLeft(decidedAt: string | null, now: number = Date.now()): number {
+  if (!decidedAt) return 0;
+  const decided = Date.parse(decidedAt);
+  if (Number.isNaN(decided)) return 0;
+  const left = decided + UNDO_WINDOW_MS - now;
+  return left > 0 ? Math.ceil(left / 60_000) : 0;
 }
 
 export function changeRequestRowFor(input: ChangeRequestInput): ChangeRequestRow {

@@ -3,6 +3,9 @@ import type { Metadata } from "next";
 import { requirePermission } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
+import { readMealPrice } from "@/lib/canteen/history";
+
+import { MealPriceCard } from "./meal-price-card";
 import { MealWindowSettings, type MealWindowRow, type TerminalRow } from "./meal-window-settings";
 
 export const metadata: Metadata = {
@@ -16,14 +19,20 @@ export default async function CanteenSettingsPage() {
   await requirePermission("canteen.manage");
   const supabase = await createClient();
 
-  const [{ data: sites }, { data: windows }, { data: devices }] = await Promise.all([
-    supabase.from("sites").select("id, name").order("name"),
-    supabase
-      .from("meal_windows")
-      .select("id, site_id, code, name, starts_at, ends_at, is_active, sort_order")
-      .order("sort_order"),
-    supabase.from("devices").select("id, name, site_id, purpose, is_active").order("name"),
-  ]);
+  const [{ data: sites }, { data: windows }, { data: devices }, { data: priceSetting }] =
+    await Promise.all([
+      supabase.from("sites").select("id, name").order("name"),
+      supabase
+        .from("meal_windows")
+        .select("id, site_id, code, name, starts_at, ends_at, is_active, sort_order")
+        .order("sort_order"),
+      supabase.from("devices").select("id, name, site_id, purpose, is_active").order("name"),
+      supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "canteen.meal_price_pkr")
+        .maybeSingle(),
+    ]);
 
   const rows: MealWindowRow[] = (windows ?? []).map((w) => ({
     id: w.id,
@@ -45,5 +54,10 @@ export default async function CanteenSettingsPage() {
     isActive: d.is_active,
   }));
 
-  return <MealWindowSettings sites={sites ?? []} windows={rows} terminals={terminals} />;
+  return (
+    <div className="space-y-5">
+      <MealPriceCard price={readMealPrice(priceSetting?.value)} />
+      <MealWindowSettings sites={sites ?? []} windows={rows} terminals={terminals} />
+    </div>
+  );
 }

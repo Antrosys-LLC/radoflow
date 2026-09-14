@@ -1,5 +1,7 @@
 "use server";
 
+import { canGrantLeadership, LEADERSHIP_ROLES } from "@/lib/auth/antrosys";
+
 import { revalidatePath } from "next/cache";
 
 import { verifyOwnPassword } from "@/lib/auth/reauth";
@@ -265,14 +267,39 @@ export async function setUserPassword(
  * back to the login box rather than keeping the access they had a minute ago.
  */
 export async function setUserRole(_prev: UserResult, form: FormData): Promise<UserResult> {
-  await requirePermission("access.manage");
+  const session = await requirePermission("access.manage");
 
   const userId = text(form, "user_id");
   const roleId = text(form, "role_id");
   if (!userId) return { ok: false, message: "No user selected." };
 
   const supabase = await createClient();
-  await supabase.from("user_roles").delete().eq("user_id", userId);
+
+  /*
+   * C-Level, owner and Antrosys are given and taken away by an owner or by
+   * Antrosys only — the database holds the same line in a trigger, and this
+   * is where the screen gets a sentence instead of a Postgres error.
+   */
+  if (!canGrantLeadership(session)) {
+    const leadership = [...LEADERSHIP_ROLES] as string[];
+    const [{ data: target }, { data: current }] = await Promise.all([
+      roleId
+        ? supabase.from("roles").select("key").eq("id", roleId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      supabase.from("user_roles").select("roles(key)").eq("user_id", userId),
+    ]);
+    const holdsLeadership = (current ?? []).some((row) => {
+      const role = (row as { roles?: { key?: string } | { key?: string }[] | null }).roles;
+      const keys = Array.isArray(role) ? role.map((r) => r.key) : [role?.key];
+      return keys.some((key) => leadership.includes(key ?? ""));
+    });
+    if (holdsLeadership || leadership.includes(target?.key ?? "")) {
+      return { ok: false, message: "Only an owner can give or take away C-Level access." };
+    }
+  }
+
+  const { error: removeError } = await supabase.from("user_roles").delete().eq("user_id", userId);
+  if (removeError) return { ok: false, message: removeError.message };
 
   if (roleId) {
     const { error } = await supabase

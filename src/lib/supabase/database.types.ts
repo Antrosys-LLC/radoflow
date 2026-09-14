@@ -512,6 +512,10 @@ export type Database = {
       }
       change_requests: {
         Row: {
+          created_row: boolean
+          previous_values: Json | null
+          undone_at: string | null
+          undone_by: string | null
           apply_error: string | null
           assigned_to: string | null
           created_at: string
@@ -530,6 +534,10 @@ export type Database = {
           title: string
         }
         Insert: {
+          created_row?: boolean
+          previous_values?: Json | null
+          undone_at?: string | null
+          undone_by?: string | null
           apply_error?: string | null
           assigned_to?: string | null
           created_at?: string
@@ -548,6 +556,10 @@ export type Database = {
           title: string
         }
         Update: {
+          created_row?: boolean
+          previous_values?: Json | null
+          undone_at?: string | null
+          undone_by?: string | null
           apply_error?: string | null
           assigned_to?: string | null
           created_at?: string
@@ -1394,6 +1406,7 @@ export type Database = {
       }
       meal_claims: {
         Row: {
+          price_pkr: number | null
           claimed_at: string
           device_id: string | null
           device_user_id: string | null
@@ -1407,6 +1420,7 @@ export type Database = {
           source: Database["public"]["Enums"]["punch_source"]
         }
         Insert: {
+          price_pkr?: number | null
           claimed_at?: string
           device_id?: string | null
           device_user_id?: string | null
@@ -1420,6 +1434,7 @@ export type Database = {
           source?: Database["public"]["Enums"]["punch_source"]
         }
         Update: {
+          price_pkr?: number | null
           claimed_at?: string
           device_id?: string | null
           device_user_id?: string | null
@@ -1843,6 +1858,8 @@ export type Database = {
       }
       payroll_items: {
         Row: {
+          monthly_salary: number | null
+          working_days: number | null
           allowances: number
           base_pay: number
           base_rate: number
@@ -1879,6 +1896,8 @@ export type Database = {
           weekend_pay: number
         }
         Insert: {
+          monthly_salary?: number | null
+          working_days?: number | null
           allowances?: number
           base_pay?: number
           base_rate?: number
@@ -1915,6 +1934,8 @@ export type Database = {
           weekend_pay?: number
         }
         Update: {
+          monthly_salary?: number | null
+          working_days?: number | null
           allowances?: number
           base_pay?: number
           base_rate?: number
@@ -2396,6 +2417,8 @@ export type Database = {
       }
       profiles: {
         Row: {
+          shift_changed_at: string | null
+          shift_follows_attendance: boolean
           cnic: string | null
           created_at: string
           department_id: string | null
@@ -2434,6 +2457,8 @@ export type Database = {
           worker_type: Database["public"]["Enums"]["worker_type"]
         }
         Insert: {
+          shift_changed_at?: string | null
+          shift_follows_attendance?: boolean
           cnic?: string | null
           created_at?: string
           department_id?: string | null
@@ -2472,6 +2497,8 @@ export type Database = {
           worker_type?: Database["public"]["Enums"]["worker_type"]
         }
         Update: {
+          shift_changed_at?: string | null
+          shift_follows_attendance?: boolean
           cnic?: string | null
           created_at?: string
           department_id?: string | null
@@ -2714,6 +2741,7 @@ export type Database = {
       }
       shifts: {
         Row: {
+          overtime_until: string | null
           break_minutes: number
           code: string
           created_at: string
@@ -2728,6 +2756,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          overtime_until?: string | null
           break_minutes?: number
           code: string
           created_at?: string
@@ -2742,6 +2771,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          overtime_until?: string | null
           break_minutes?: number
           code?: string
           created_at?: string
@@ -3001,6 +3031,219 @@ export type Database = {
           },
         ]
       }
+      calendar_day_overrides: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          day: string
+          day_type: Database["public"]["Enums"]["day_type"]
+          department_id: string | null
+          id: string
+          profile_id: string | null
+          reason: string | null
+          scope: string
+          scope_id: string | null
+          site_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          day: string
+          day_type: Database["public"]["Enums"]["day_type"]
+          department_id?: string | null
+          id?: string
+          profile_id?: string | null
+          reason?: string | null
+          scope: string
+          site_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          day?: string
+          day_type?: Database["public"]["Enums"]["day_type"]
+          department_id?: string | null
+          id?: string
+          profile_id?: string | null
+          reason?: string | null
+          scope?: string
+          site_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_day_overrides_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_day_overrides_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_day_overrides_site_id_fkey"
+            columns: ["site_id"]
+            isOneToOne: false
+            referencedRelation: "sites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_loans: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          first_month: string
+          id: string
+          installment: number
+          installments: number
+          note: string | null
+          principal: number
+          profile_id: string
+          status: string
+          taken_on: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          first_month: string
+          id?: string
+          installment: number
+          installments: number
+          note?: string | null
+          principal: number
+          profile_id: string
+          status?: string
+          taken_on?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          first_month?: string
+          id?: string
+          installment?: number
+          installments?: number
+          note?: string | null
+          principal?: number
+          profile_id?: string
+          status?: string
+          taken_on?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_loans_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loan_recoveries: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          loan_id: string
+          month: string
+          note: string | null
+          period_id: string | null
+          source: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          loan_id: string
+          month: string
+          note?: string | null
+          period_id?: string | null
+          source?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          loan_id?: string
+          month?: string
+          note?: string | null
+          period_id?: string | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loan_recoveries_loan_id_fkey"
+            columns: ["loan_id"]
+            isOneToOne: false
+            referencedRelation: "employee_loans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loan_recoveries_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_periods"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      salary_adjustments: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          given_on: string | null
+          id: string
+          kind: Database["public"]["Enums"]["salary_adjustment_kind"]
+          label: string | null
+          month: string
+          note: string | null
+          profile_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          given_on?: string | null
+          id?: string
+          kind: Database["public"]["Enums"]["salary_adjustment_kind"]
+          label?: string | null
+          month: string
+          note?: string | null
+          profile_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          given_on?: string | null
+          id?: string
+          kind?: Database["public"]["Enums"]["salary_adjustment_kind"]
+          label?: string | null
+          month?: string
+          note?: string | null
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_adjustments_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       employee_directory: {
@@ -3159,6 +3402,14 @@ export type Database = {
       }
     }
     Functions: {
+      effective_day_type: {
+        Args: { p_day: string; p_profile: string }
+        Returns: Database["public"]["Enums"]["day_type"]
+      }
+      refresh_day_types: {
+        Args: { p_day: string; p_site: string }
+        Returns: number
+      }
       claim_device_commands: {
         Args: { p_device: string; p_limit?: number }
         Returns: {
@@ -3227,6 +3478,7 @@ export type Database = {
         | "work_week"
         | "pay_change"
         | "contract_amount"
+        | "calendar_override"
       component_calc: "fixed" | "percent" | "slab" | "formula"
       component_kind: "earning" | "deduction" | "tax"
       day_type:
@@ -3261,6 +3513,12 @@ export type Database = {
       punch_direction: "in" | "out" | "unknown"
       punch_source: "device" | "manual" | "import"
       request_status: "pending" | "approved" | "rejected" | "cancelled"
+      salary_adjustment_kind:
+        | "advance"
+        | "advance_2"
+        | "suit"
+        | "allowance"
+        | "deduction"
       sunday_policy: "off" | "optional" | "compulsory" | "adjust_in_leave"
       worker_type: "employee" | "contractor"
     }
@@ -3408,6 +3666,7 @@ export const Constants = {
         "work_week",
         "pay_change",
         "contract_amount",
+        "calendar_override",
       ],
       component_calc: ["fixed", "percent", "slab", "formula"],
       component_kind: ["earning", "deduction", "tax"],
@@ -3446,6 +3705,7 @@ export const Constants = {
       punch_direction: ["in", "out", "unknown"],
       punch_source: ["device", "manual", "import"],
       request_status: ["pending", "approved", "rejected", "cancelled"],
+      salary_adjustment_kind: ["advance", "advance_2", "suit", "allowance", "deduction"],
       sunday_policy: ["off", "optional", "compulsory", "adjust_in_leave"],
       worker_type: ["employee", "contractor"],
     },

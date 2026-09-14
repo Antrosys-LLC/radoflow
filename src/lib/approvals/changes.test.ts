@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { changeRequestRowFor, describeFieldChanges, money, needsApproval } from "./changes";
+import {
+  changeRequestRowFor,
+  describeFieldChanges,
+  money,
+  needsApproval,
+  undoMinutesLeft,
+} from "./changes";
 import type { Session, SessionRole } from "@/lib/auth/session";
 
 function sessionWith(roles: Partial<SessionRole>[]): Session {
@@ -31,6 +37,23 @@ function sessionWith(roles: Partial<SessionRole>[]): Session {
   };
 }
 
+describe("undoMinutesLeft", () => {
+  const decided = "2026-09-13T10:00:00.000Z";
+  const at = (iso: string) => Date.parse(iso);
+
+  it("counts down the hour after a decision", () => {
+    expect(undoMinutesLeft(decided, at("2026-09-13T10:00:30.000Z"))).toBe(60);
+    expect(undoMinutesLeft(decided, at("2026-09-13T10:59:01.000Z"))).toBe(1);
+  });
+
+  it("is closed at the hour and after, and for anything undecided", () => {
+    expect(undoMinutesLeft(decided, at("2026-09-13T11:00:00.000Z"))).toBe(0);
+    expect(undoMinutesLeft(decided, at("2026-09-14T10:00:00.000Z"))).toBe(0);
+    expect(undoMinutesLeft(null)).toBe(0);
+    expect(undoMinutesLeft("not a date")).toBe(0);
+  });
+});
+
 describe("needsApproval", () => {
   it("exempts Antrosys", () => {
     // They are who fixes this workflow when it goes wrong. A maintainer who
@@ -40,11 +63,14 @@ describe("needsApproval", () => {
     expect(needsApproval(antrosys)).toBe(false);
   });
 
-  it("queues the CEO like everybody else", () => {
-    // The ask is not about capability — the CEO holds every permission. It is
-    // about a second pair of eyes on money and on the working week.
-    const ceo = sessionWith([{ key: "ceo", name: "CEO", isSuperuser: true, rank: 20 }]);
-    expect(needsApproval(ceo)).toBe(true);
+  it("never queues C-Level or an owner", () => {
+    // They are who a request would be sent to. The business is theirs.
+    const cLevel = sessionWith([{ key: "ceo", name: "C-Level", isSuperuser: false, rank: 20 }]);
+    const owner = sessionWith([
+      { key: "owner", name: "C-Level · Owner", isSuperuser: true, rank: 5 },
+    ]);
+    expect(needsApproval(cLevel)).toBe(false);
+    expect(needsApproval(owner)).toBe(false);
   });
 
   it("queues a manager and an accountant", () => {

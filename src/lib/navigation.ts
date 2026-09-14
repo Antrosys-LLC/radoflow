@@ -1,5 +1,5 @@
 import type { NavIconName } from "@/components/nav-icons";
-import { canUseAssistant, isAntrosys } from "@/lib/auth/antrosys";
+import { canUseAssistant, isAntrosys, isCLevel } from "@/lib/auth/antrosys";
 import type { Session } from "@/lib/auth/session";
 import type { Dictionary } from "@/lib/i18n";
 
@@ -133,6 +133,13 @@ const WORK_MODULES: readonly NavItem[] = [
     description: "The serving counter, and who has eaten",
   },
   {
+    href: "/canteen/history",
+    labelKey: "canteenHistory",
+    icon: "canteen",
+    requires: ["canteen.view"],
+    description: "Every meal served, and what it came to",
+  },
+  {
     href: "/approvals",
     labelKey: "approvals",
     icon: "leave",
@@ -154,6 +161,13 @@ const WORK_MODULES: readonly NavItem[] = [
     icon: "payroll",
     requires: ["payroll.view", "payroll.run"],
     description: "Pay runs and payslips",
+  },
+  {
+    href: "/salaries",
+    labelKey: "salaries",
+    icon: "payroll",
+    requires: ["payroll.view", "payroll.pay", "payroll.run"],
+    description: "Salaries handed over, advances, deductions and loans",
   },
 ];
 
@@ -240,7 +254,7 @@ export function navigationFor(session: Session | null): NavSection[] {
  */
 export function landingPathFor(session: Session | null): string {
   if (!session) return "/login";
-  if (session.isSuperuser) return "/";
+  if (session.isSuperuser || isCLevel(session)) return "/";
   if (session.permissions.has("attendance.view.all")) return "/attendance";
   if (session.permissions.has("attendance.view")) return "/attendance";
   if (session.permissions.has("payroll.view")) return "/payroll";

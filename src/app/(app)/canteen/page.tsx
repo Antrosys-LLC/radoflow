@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { History } from "lucide-react";
 
 import { requireAnyPermission } from "@/lib/auth/session";
+import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 import { pakistanDayStartUtc, todayInPakistan } from "@/lib/time";
 
@@ -183,6 +186,17 @@ export default async function CanteenPage() {
 
   return (
     <div className="space-y-4">
+      {canSeeCounts ? (
+        <div className="flex justify-end">
+          <Link
+            href="/canteen/history"
+            className="inline-flex items-center gap-2 rounded-2xl bg-secondary px-4 py-2.5 text-sm font-bold text-foreground transition-colors hover:text-primary"
+          >
+            <History className="size-4" aria-hidden />
+            {dictionaryFor(session.profile.language).canteenHistory.history}
+          </Link>
+        </div>
+      ) : null}
       <CounterScreen
         scan={scan}
         servedToday={servedToday ?? 0}

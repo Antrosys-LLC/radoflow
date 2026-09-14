@@ -202,6 +202,8 @@ export async function saveCalendarDay(
 
   if (error) return { ok: false, message: error.message };
 
+  // Punches already recorded on that date are priced by its new type.
+  await supabase.rpc("refresh_day_types", { p_site: siteId, p_day: day });
   refresh();
   return { ok: true, message: "Saved." };
 }
@@ -248,10 +250,18 @@ export async function deleteCalendarDay(
   }
 
   const supabase = await createClient();
+  const { data: removed } = await supabase
+    .from("calendar_days")
+    .select("site_id, day")
+    .eq("id", id)
+    .maybeSingle();
   const { error } = await supabase.from("calendar_days").delete().eq("id", id);
 
   if (error) return { ok: false, message: error.message };
 
+  if (removed) {
+    await supabase.rpc("refresh_day_types", { p_site: removed.site_id, p_day: removed.day });
+  }
   refresh();
   return { ok: true, message: "Removed." };
 }

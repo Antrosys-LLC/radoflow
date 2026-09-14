@@ -7,11 +7,13 @@ import { AlertTriangle, BadgeCheck, Banknote, Check, FileText, Play, Plus, X } f
 import { toast } from "sonner";
 
 import { AskAbout } from "@/components/assistant/ask-about";
+import { ExportButtons } from "@/components/export-buttons";
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import type { Dictionary } from "@/lib/i18n";
+import type { RegisterItem } from "@/lib/payroll/register";
 import { formatDate, formatDateTime, formatHours, formatPKR } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import {
@@ -23,6 +25,7 @@ import {
   runPeriod,
   type PayrollResultMessage,
 } from "./actions";
+import { RegisterTable } from "./register-table";
 
 const INITIAL: PayrollResultMessage = { ok: false, message: "" };
 
@@ -87,6 +90,8 @@ export interface ItemRow {
   paidAmount: number | null;
   paidDifference: number | null;
   paidNote: string | null;
+  /** The same pay line in the office's salary-sheet columns. */
+  register: RegisterItem;
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -437,7 +442,13 @@ export function PayrollClient({
       ) : null}
 
       {showNew ? <NewPeriodDialog sites={sites} onClose={() => setShowNew(false)} /> : null}
-      {slip ? <PayslipSheet item={slip} onClose={() => setSlip(null)} /> : null}
+      {selected && items.length > 0 ? (
+        <RegisterTable items={items.map((item) => item.register)} periodId={selected.id} />
+      ) : null}
+
+      {slip ? (
+        <PayslipSheet item={slip} periodId={selected?.id ?? ""} onClose={() => setSlip(null)} />
+      ) : null}
     </div>
   );
 }
@@ -805,7 +816,15 @@ function CreateButton() {
   );
 }
 
-function PayslipSheet({ item, onClose }: { item: ItemRow; onClose: () => void }) {
+function PayslipSheet({
+  item,
+  periodId,
+  onClose,
+}: {
+  item: ItemRow;
+  periodId: string;
+  onClose: () => void;
+}) {
   const t = useDictionary();
   const earnings = item.breakdown.filter((l) => l.kind === "base" || l.kind === "earning");
   const deductions = item.breakdown.filter((l) => l.kind === "deduction" || l.kind === "tax");
@@ -944,6 +963,17 @@ function PayslipSheet({ item, onClose }: { item: ItemRow; onClose: () => void })
             <Latin>{formatPKR(item.net)}</Latin>
           </p>
         </div>
+
+        {periodId ? (
+          <div className="mt-4 flex justify-center">
+            <ExportButtons
+              kind="payslip"
+              params={{ person: item.profile_id, period: periodId }}
+              label={t.payroll.payslip}
+              formats={["pdf"]}
+            />
+          </div>
+        ) : null}
 
         <button
           type="button"

@@ -1,10 +1,18 @@
 import type { Metadata } from "next";
-import { CircleDot, Clock, LogIn, TriangleAlert, UserCheck, Users } from "lucide-react";
+import {
+  ChevronDown,
+  CircleDot,
+  Clock,
+  LogIn,
+  TriangleAlert,
+  UserCheck,
+  Users,
+} from "lucide-react";
 
 import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refresh";
 import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
-import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
+import { Avatar, Card } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { dictionaryFor, type Dictionary } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
@@ -175,100 +183,120 @@ function PeopleCard({
   emptyText?: string;
   emptyTone?: "good";
 }) {
+  const Icon = icon;
+
+  /*
+   * A disclosure rather than a card that is always open. Four hundred people
+   * split across three lists made the board a scroll, and the tiles above
+   * already say how many are in each — the names are what you open a list
+   * for. `<details>` needs no script, so the board still works while the
+   * page is refreshing itself.
+   */
   return (
-    <Card className="p-4 sm:p-6">
-      <SectionTitle
-        icon={icon as never}
-        title={
-          <>
-            {title} · <Latin>{people.length}</Latin>
-          </>
-        }
-        subtitle={subtitle}
-      />
+    <Card className="p-0">
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-3xl p-4 transition-colors hover:bg-secondary/60 sm:p-6 [&::-webkit-details-marker]:hidden">
+          <span className="flex min-w-0 items-center gap-3">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+              <Icon className="size-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-lg font-semibold tracking-tight text-foreground">
+                {title} · <Latin>{people.length}</Latin>
+              </span>
+              <span className="block text-sm text-muted-foreground">{subtitle}</span>
+            </span>
+          </span>
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-secondary text-muted-foreground">
+            <ChevronDown className="size-4 transition-transform duration-300 group-open:rotate-180" />
+          </span>
+        </summary>
 
-      {people.length === 0 ? (
-        <div
-          className={cn(
-            "rounded-2xl p-6 text-center text-sm font-semibold",
-            emptyTone === "good"
-              ? "bg-success-soft text-success"
-              : "bg-secondary text-muted-foreground",
-          )}
-        >
-          {emptyText ?? t.attendance.nobodyHere}
-        </div>
-      ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {people.map((person) => {
-            const status = (person.live_status ?? "no_shift") as LiveStatus;
-            const meta = STATUS_META[status] ?? STATUS_META.no_shift;
+        <div className="px-4 pb-4 sm:px-6 sm:pb-6">
+          {people.length === 0 ? (
+            <div
+              className={cn(
+                "rounded-2xl p-6 text-center text-sm font-semibold",
+                emptyTone === "good"
+                  ? "bg-success-soft text-success"
+                  : "bg-secondary text-muted-foreground",
+              )}
+            >
+              {emptyText ?? t.attendance.nobodyHere}
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {people.map((person) => {
+                const status = (person.live_status ?? "no_shift") as LiveStatus;
+                const meta = STATUS_META[status] ?? STATUS_META.no_shift;
 
-            return (
-              <div
-                key={person.profile_id}
-                className="flex items-center gap-3 rounded-2xl bg-secondary p-3"
-              >
-                <Avatar name={person.full_name ?? "??"} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-foreground">
-                    <Latin>{person.full_name}</Latin>
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {/* The shift name is data the office typed, so it renders as
+                return (
+                  <div
+                    key={person.profile_id}
+                    className="flex items-center gap-3 rounded-2xl bg-secondary p-3"
+                  >
+                    <Avatar name={person.full_name ?? "??"} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        <Latin>{person.full_name}</Latin>
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {/* The shift name is data the office typed, so it renders as
                         stored; the code beside it is not, and must not be able
                         to reorder. */}
-                    <Latin>{person.employee_code}</Latin> ·{" "}
-                    {person.shift_name ?? t.attendance.noShift}
-                    {person.shift_starts_at ? (
-                      <>
-                        {" "}
-                        <Fill
-                          template={t.attendance.shiftFrom}
-                          values={{ time: person.shift_starts_at.slice(0, 5) }}
-                        />
-                      </>
-                    ) : null}
-                  </p>
-                  {person.is_late && person.minutes_late ? (
-                    <p className="mt-0.5 text-xs font-bold text-warning">
-                      <Fill
-                        template={t.common.minutesLate}
-                        values={{ minutes: person.minutes_late }}
-                      />
-                    </p>
-                  ) : null}
-                </div>
+                        <Latin>{person.employee_code}</Latin> ·{" "}
+                        {person.shift_name ?? t.attendance.noShift}
+                        {person.shift_starts_at ? (
+                          <>
+                            {" "}
+                            <Fill
+                              template={t.attendance.shiftFrom}
+                              values={{ time: person.shift_starts_at.slice(0, 5) }}
+                            />
+                          </>
+                        ) : null}
+                      </p>
+                      {person.is_late && person.minutes_late ? (
+                        <p className="mt-0.5 text-xs font-bold text-warning">
+                          <Fill
+                            template={t.common.minutesLate}
+                            values={{ minutes: person.minutes_late }}
+                          />
+                        </p>
+                      ) : null}
+                    </div>
 
-                <div className="shrink-0 text-end">
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold",
-                      meta.tone,
-                    )}
-                  >
-                    <span className={cn("size-1.5 rounded-full", meta.dot)} />
-                    {t.attendance[meta.labelKey]}
-                  </span>
-                  {person.first_in ? (
-                    <p className="mt-1 flex items-center justify-end gap-1 text-xs font-semibold text-foreground">
-                      {/* Not flipped: mirroring this glyph turns "in" into the
+                    <div className="shrink-0 text-end">
+                      <span
+                        className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold",
+                          meta.tone,
+                        )}
+                      >
+                        <span className={cn("size-1.5 rounded-full", meta.dot)} />
+                        {t.attendance[meta.labelKey]}
+                      </span>
+                      {person.first_in ? (
+                        <p className="mt-1 flex items-center justify-end gap-1 text-xs font-semibold text-foreground">
+                          {/* Not flipped: mirroring this glyph turns "in" into the
                           log-out icon, which is the opposite of what it says. */}
-                      <LogIn className="size-3" />
-                      <Latin>{formatTime(person.first_in)}</Latin>
-                    </p>
-                  ) : null}
-                  {person.regular_hours ? (
-                    <p className="text-[11px] text-muted-foreground">
-                      <Latin>{formatHours(person.regular_hours)}</Latin>
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
+                          <LogIn className="size-3" />
+                          <Latin>{formatTime(person.first_in)}</Latin>
+                        </p>
+                      ) : null}
+                      {person.regular_hours ? (
+                        <p className="text-[11px] text-muted-foreground">
+                          <Latin>{formatHours(person.regular_hours)}</Latin>
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+      </details>
     </Card>
   );
 }

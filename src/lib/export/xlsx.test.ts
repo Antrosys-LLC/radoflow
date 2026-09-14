@@ -138,8 +138,76 @@ describe("xlsx writer", () => {
       ]),
     ).get("xl/workbook.xml")!;
 
-    const names = [...workbook.matchAll(/name="([^"]*)"/g)].map((m) => m[1]);
+    const names = [...workbook.matchAll(/<sheet name="([^"]*)"/g)].map((m) => m[1]);
+    expect(names).toHaveLength(2);
     expect(new Set(names).size).toBe(2);
+  });
+
+  it("carries the company letterhead and mark on every sheet", () => {
+    const files = unzip(
+      buildWorkbook([
+        { ...sheet, name: "One" },
+        { ...sheet, name: "Two" },
+      ]),
+    );
+
+    expect(files.get("xl/worksheets/sheet1.xml")).toContain("RADO DYEING &amp; TEXTILE");
+    expect(files.has("xl/media/rado-logo.png")).toBe(true);
+    expect(files.get("xl/worksheets/_rels/sheet2.xml.rels")).toContain("drawing2.xml");
+    expect(files.get("xl/drawings/_rels/drawing2.xml.rels")).toContain("../media/rado-logo.png");
+    expect(files.get("[Content_Types].xml")).toContain('Extension="png"');
+    expect(files.get("[Content_Types].xml")).toContain("/xl/drawings/drawing2.xml");
+  });
+
+  it("writes worksheet elements in the order the schema requires", () => {
+    // Out of order, Excel offers to "repair" the file and drops the part —
+    // which is what a workbook that opens as corrupt actually is.
+    const xml = unzip(buildWorkbook([sheet])).get("xl/worksheets/sheet1.xml")!;
+    const order = [
+      "<sheetPr",
+      "<dimension",
+      "<sheetViews",
+      "<cols",
+      "<sheetData",
+      "<autoFilter",
+      "<mergeCells",
+      "<pageMargins",
+      "<pageSetup",
+      "<headerFooter",
+      "<drawing",
+    ].map((tag) => xml.indexOf(tag));
+
+    expect(order.every((position) => position >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
+  it("merges every department heading across the table and counts them right", () => {
+    const xml = unzip(
+      buildWorkbook([
+        {
+          ...sheet,
+          rows: [
+            { group: "01 - Administration" },
+            ["ISMAIL KHAN", 25, 46585, 4],
+            { subtotal: ["Administration", 25, 46585, 4] },
+            { group: "02 - Accounts" },
+            ["TARIQ SAEED", 26, 110000, 0],
+          ],
+        },
+      ]),
+    ).get("xl/worksheets/sheet1.xml")!;
+
+    const declared = Number(xml.match(/<mergeCells count="(\d+)"/)![1]);
+    expect((xml.match(/<mergeCell ref=/g) ?? []).length).toBe(declared);
+    expect(xml).toContain("01 - Administration");
+    expect(xml).toContain("<v>110000</v>");
+  });
+
+  it("leaves a non-finite number empty rather than writing a corrupt cell", () => {
+    const xml = unzip(buildWorkbook([{ ...sheet, rows: [["X", Number.NaN, 1, 2]] }])).get(
+      "xl/worksheets/sheet1.xml",
+    )!;
+    expect(xml).not.toContain("NaN");
   });
 
   it("writes several sheets, each with its own part and relationship", () => {

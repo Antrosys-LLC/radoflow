@@ -4,6 +4,8 @@ import {
   type RawPunch,
 } from "@/lib/attendance/compute";
 import { creditWorkDates, followShifts } from "@/lib/attendance/follow-shift";
+import { pakistanMinutesOfDay, shiftForArrival } from "@/lib/attendance/shift-detect";
+import type { ShiftClock } from "@/lib/attendance/shift-now";
 import { ingestMealScans } from "@/lib/canteen/ingest";
 import { PAKISTAN_TIMEZONE } from "@/lib/time";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -330,19 +332,45 @@ export async function recomputeAttendanceDay(
   let minutesLate = 0;
 
   if (shiftId && computed.firstIn && !flexible) {
-    const { data: shift } = await supabase
+    const { data: rows } = await supabase
       .from("shifts")
-      .select("starts_at, grace_minutes")
-      .eq("id", shiftId)
-      .maybeSingle();
+      .select("id, code, name, starts_at, ends_at, overtime_until, grace_minutes")
+      .eq("site_id", siteId)
+      .eq("is_active", true)
+      .order("sort_order");
 
-    if (shift) {
+    const shifts: ShiftClock[] = (rows ?? []).map((row) => ({
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      startsAt: String(row.starts_at),
+      endsAt: String(row.ends_at),
+      overtimeUntil: row.overtime_until ? String(row.overtime_until) : null,
+      graceMinutes: row.grace_minutes ?? 0,
+    }));
+
+    /*
+     * Judged against the shift they came in for, which is not always the one
+     * the roster holds — people rotate onto nights days before the office
+     * moves them, and `shiftForArrival` explains why that is not lateness.
+     * The roster still decides when nothing else claims the arrival.
+     */
+    const arrival = pakistanMinutesOfDay(computed.firstIn.toISOString());
+    const rostered = shifts.find((shift) => shift.id === shiftId) ?? null;
+    const against = arrival === null ? rostered : shiftForArrival(shifts, rostered, arrival);
+
+    if (against) {
+      /*
+       * Anchored to the work date, which is the date the punch was credited
+       * to — so a night that carries past midnight is measured from the 20:00
+       * its own date opened with, not from the next one.
+       */
       const shiftStart = zonedWallClockToUtc(
-        `${workDate} ${String(shift.starts_at).slice(0, 8)}`,
+        `${workDate} ${against.startsAt.slice(0, 8)}`,
         PAKISTAN_TIMEZONE,
       );
       if (shiftStart) {
-        minutesLate = minutesLateAgainstShift(computed.firstIn, shiftStart, shift.grace_minutes);
+        minutesLate = minutesLateAgainstShift(computed.firstIn, shiftStart, against.graceMinutes);
       }
     }
   }

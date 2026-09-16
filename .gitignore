@@ -44,3 +44,6 @@ supabase/.branches/
 # Backups of env files — *.local does not cover .env.local.bak
 .env*.bak
 .env.local.backup*
+
+# One-off repair scripts back up the rows they touch before writing.
+backups/

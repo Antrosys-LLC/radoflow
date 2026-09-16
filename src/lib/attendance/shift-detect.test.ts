@@ -5,7 +5,9 @@ import {
   belongsToPreviousNight,
   detectShift,
   pakistanMinutesOfDay,
+  shiftForArrival,
 } from "./shift-detect";
+import type { ShiftClock } from "./shift-now";
 
 /** A check-in at a Pakistan wall-clock time, as the ISO instant the database holds. */
 const pkt = (date: string, time: string) => new Date(`${date}T${time}:00+05:00`).toISOString();
@@ -96,5 +98,57 @@ describe("belongsToPreviousNight", () => {
     expect(
       belongsToPreviousNight({ hour: 10, onNightShift: true, openFromPreviousEvening: true }),
     ).toBe(false);
+  });
+});
+
+describe("shiftForArrival", () => {
+  const day: ShiftClock = {
+    id: "day",
+    code: "DAY",
+    name: "Day",
+    startsAt: "08:00:00",
+    endsAt: "16:00:00",
+    overtimeUntil: "20:00:00",
+    graceMinutes: 15,
+  };
+  const night: ShiftClock = {
+    id: "night",
+    code: "NIGHT",
+    name: "Night",
+    startsAt: "20:00:00",
+    endsAt: "04:00:00",
+    overtimeUntil: "08:00:00",
+    graceMinutes: 15,
+  };
+  const shifts = [day, night];
+  const at = (time: string) => pakistanMinutesOfDay(pkt("2026-09-15", time))!;
+
+  it("measures somebody who came in for the night against the night shift", () => {
+    // The roster still says days; the terminal says they arrived for the night.
+    expect(shiftForArrival(shifts, day, at("19:36"))?.id).toBe("night");
+    expect(shiftForArrival(shifts, day, at("23:00"))?.id).toBe("night");
+    expect(shiftForArrival(shifts, day, at("02:00"))?.id).toBe("night");
+  });
+
+  it("leaves a late day arrival on the day shift", () => {
+    expect(shiftForArrival(shifts, day, at("09:30"))?.id).toBe("day");
+    expect(shiftForArrival(shifts, day, at("16:00"))?.id).toBe("day");
+  });
+
+  it("keeps somebody who arrived early on the shift they are rostered to", () => {
+    expect(shiftForArrival(shifts, day, at("05:00"))?.id).toBe("day");
+    expect(shiftForArrival(shifts, day, at("07:00"))?.id).toBe("day");
+  });
+
+  it("moves a night worker covering a day onto the day shift", () => {
+    expect(shiftForArrival(shifts, night, at("07:00"))?.id).toBe("day");
+    expect(shiftForArrival(shifts, night, at("08:19"))?.id).toBe("day");
+  });
+
+  it("keeps the roster when no shift's window claims the arrival", () => {
+    expect(shiftForArrival(shifts, day, at("17:00"))?.id).toBe("day");
+    expect(shiftForArrival([], day, at("19:36"))?.id).toBe("day");
+    expect(shiftForArrival(shifts, null, at("19:36"))?.id).toBe("night");
+    expect(shiftForArrival([], null, at("19:36"))).toBeNull();
   });
 });

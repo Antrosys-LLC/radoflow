@@ -16,7 +16,7 @@ export function LoginForm({ next, reason }: { next: string; reason?: string | nu
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <span className="flex size-16 items-center justify-center rounded-3xl bg-white p-2.5 shadow-[0_12px_30px_rgb(0_0_0/0.15)] ring-1 ring-border">
+          <span className="flex size-16 items-center justify-center">
             {/* A plain img: a fixed 9 KB mark with a declared box, so there is
                 no layout shift for next/image to prevent. */}
             {/* eslint-disable-next-line @next/next/no-img-element */}

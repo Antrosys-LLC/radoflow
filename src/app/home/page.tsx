@@ -514,7 +514,7 @@ export default function HomePage() {
           {/* The plant on the map, and a route to it. Lazy: it is the heaviest
               thing on the page and it is the last thing anybody scrolls to. */}
           <div className="mx-auto max-w-6xl px-4 pb-14 sm:px-6">
-            <div className="reveal map-frame">
+            <div className="map-frame">
               <iframe
                 title="Rado Dyeing &amp; Textile Mills on the map"
                 src={`https://www.google.com/maps?q=${MAP_QUERY}&output=embed`}

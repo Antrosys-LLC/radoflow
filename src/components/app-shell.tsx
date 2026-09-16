@@ -52,7 +52,9 @@ export function AppShell({
               rather than one wrapping the other. */}
           <div className="flex items-center gap-3 ps-1 pe-2">
             <Link href="/" aria-label="Rado Dyeing &amp; Textile" className="shrink-0">
-              <span className="flex size-11 items-center justify-center rounded-2xl bg-white p-1.5 ring-1 ring-border">
+              {/* No plate behind it: the mark carries its own transparency,
+                  and a white tile on a cream header reads as a sticker. */}
+              <span className="flex size-11 items-center justify-center">
                 {/* A plain img: a fixed 9 KB mark with a declared box, so there
                     is no layout shift for next/image to prevent. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}

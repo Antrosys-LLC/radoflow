@@ -5,13 +5,20 @@
  * logo itself, so the browser tab, the installed app and the sign-in screen
  * all show the same thing. No image library: the mark is a small 8-bit RGBA
  * PNG, and node ships the deflate half of the format already, so the file is
- * decoded, scaled onto a square white ground and written back out here rather
- * than adding a dependency for four files generated once.
+ * decoded, scaled and written back out here rather than adding a dependency
+ * for six files generated once.
  *
  *   node scripts/make-icons.mjs
  *
- * Scaling is nearest-neighbour, which is exactly right for this mark: flat
- * areas of red, black and white with no gradients to band.
+ * Most of them keep the mark's own transparency, so the tab shows the logo and
+ * not a white tile. Two cannot:
+ *
+ *   - the Apple touch icon, because iOS composites transparency onto black;
+ *   - the maskable icons, because a launcher crops them to its own shape and
+ *     needs an opaque ground to crop.
+ *
+ * Scaling is nearest-neighbour, which is right for this mark: flat areas of
+ * red, black and white with no gradients to band.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -19,17 +26,19 @@ import { deflateSync, inflateSync } from "node:zlib";
 
 const SOURCE = "public/rado-logo.png";
 
-/** Icon files: path, pixel size, and how much of it the mark fills. */
+/**
+ * Icon files: path, pixel size, how much of the square the mark fills, and
+ * whether the ground is painted white or left transparent.
+ */
 const TARGETS = [
-  { path: "public/icon-192.png", size: 192, fill: 0.82 },
-  { path: "public/icon-512.png", size: 512, fill: 0.82 },
-  // Maskable icons are cropped to a circle by the launcher, so the mark sits
-  // inside the safe zone — a good deal smaller than the icon itself.
-  { path: "public/icon-192-maskable.png", size: 192, fill: 0.6 },
-  { path: "public/icon-512-maskable.png", size: 512, fill: 0.6 },
-  { path: "public/apple-touch-icon.png", size: 180, fill: 0.78 },
+  { path: "public/icon-192.png", size: 192, fill: 0.92, opaque: false },
+  { path: "public/icon-512.png", size: 512, fill: 0.92, opaque: false },
+  // Cropped to a circle by the launcher, so the mark sits inside the safe zone.
+  { path: "public/icon-192-maskable.png", size: 192, fill: 0.6, opaque: true },
+  { path: "public/icon-512-maskable.png", size: 512, fill: 0.6, opaque: true },
+  { path: "public/apple-touch-icon.png", size: 180, fill: 0.86, opaque: true },
   // Next serves this one as the favicon, from the app directory.
-  { path: "src/app/icon.png", size: 256, fill: 0.84 },
+  { path: "src/app/icon.png", size: 256, fill: 0.94, opaque: false },
 ];
 
 const CRC_TABLE = (() => {
@@ -124,13 +133,14 @@ function decodePng(file) {
   return { width, height, pixels };
 }
 
-/** Flat RGB (the icons are opaque) back into a PNG file. */
-function encodePng(width, height, rgb) {
-  const stride = width * 3;
+/** Flat pixels back into a PNG file: three bytes each, or four with alpha. */
+function encodePng(width, height, data, hasAlpha) {
+  const channels = hasAlpha ? 4 : 3;
+  const stride = width * channels;
   const raw = Buffer.alloc((stride + 1) * height);
   for (let y = 0; y < height; y++) {
     raw[y * (stride + 1)] = 0; // no filter: these are tiny and flat
-    rgb.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
+    data.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
   }
 
   const chunk = (type, body) => {
@@ -146,7 +156,7 @@ function encodePng(width, height, rgb) {
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8; // bit depth
-  ihdr[9] = 2; // truecolour
+  ihdr[9] = hasAlpha ? 6 : 2; // truecolour, with or without alpha
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk("IHDR", ihdr),
@@ -155,14 +165,12 @@ function encodePng(width, height, rgb) {
   ]);
 }
 
-/** The mark centred on white, at `size` square, filling `fill` of it. */
-function square(source, size, fill) {
-  const out = Buffer.alloc(size * size * 3, 0xff);
+/** The mark centred in a square, filling `fill` of it. */
+function square(source, size, fill, opaque) {
+  const channels = opaque ? 3 : 4;
+  const out = Buffer.alloc(size * size * channels, opaque ? 0xff : 0x00);
 
-  const scale = Math.min(
-    (size * fill) / source.width,
-    (size * fill) / source.height,
-  );
+  const scale = Math.min((size * fill) / source.width, (size * fill) / source.height);
   const drawnW = Math.round(source.width * scale);
   const drawnH = Math.round(source.height * scale);
   const offsetX = Math.round((size - drawnW) / 2);
@@ -173,13 +181,20 @@ function square(source, size, fill) {
     for (let x = 0; x < drawnW; x++) {
       const sourceX = Math.min(source.width - 1, Math.floor((x * source.width) / drawnW));
       const from = (sourceY * source.width + sourceX) * 4;
-      const alpha = source.pixels[from + 3] / 255;
-      if (alpha === 0) continue;
+      const alpha = source.pixels[from + 3];
+      const to = ((y + offsetY) * size + (x + offsetX)) * channels;
 
-      const to = ((y + offsetY) * size + (x + offsetX)) * 3;
-      // Composited onto white, because the icons are opaque.
-      for (let c = 0; c < 3; c++) {
-        out[to + c] = Math.round(source.pixels[from + c] * alpha + 255 * (1 - alpha));
+      if (opaque) {
+        // Composited onto white, because these two cannot be transparent.
+        const a = alpha / 255;
+        for (let c = 0; c < 3; c++) {
+          out[to + c] = Math.round(source.pixels[from + c] * a + 255 * (1 - a));
+        }
+      } else {
+        out[to] = source.pixels[from];
+        out[to + 1] = source.pixels[from + 1];
+        out[to + 2] = source.pixels[from + 2];
+        out[to + 3] = alpha;
       }
     }
   }
@@ -191,8 +206,8 @@ const source = decodePng(readFileSync(SOURCE));
 console.log(`${SOURCE}: ${source.width} x ${source.height}`);
 
 for (const target of TARGETS) {
-  const rgb = square(source, target.size, target.fill);
-  const file = encodePng(target.size, target.size, rgb);
+  const pixels = square(source, target.size, target.fill, target.opaque);
+  const file = encodePng(target.size, target.size, pixels, !target.opaque);
   writeFileSync(target.path, file);
 
   // Read it back, so a file that cannot be decoded never reaches the build.
@@ -200,5 +215,9 @@ for (const target of TARGETS) {
   if (check.width !== target.size || check.height !== target.size) {
     throw new Error(`${target.path} came back as ${check.width} x ${check.height}`);
   }
-  console.log(`${target.path}: ${target.size} x ${target.size}, ${file.length} bytes`);
+  const corner = check.pixels[3];
+  console.log(
+    `${target.path}: ${target.size}px, ${target.opaque ? "opaque" : "transparent"} ` +
+      `(corner alpha ${corner}), ${file.length} bytes`,
+  );
 }

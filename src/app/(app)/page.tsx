@@ -19,7 +19,12 @@ import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
 import { BarMeter, Card, SectionTitle, StatPill } from "@/components/ui-kit";
 import { dailyHourTotals } from "@/lib/attendance/daily-hours";
-import { runningShift, type ShiftClock } from "@/lib/attendance/shift-now";
+import {
+  liveWorkDate,
+  previousDay,
+  runningShift,
+  type ShiftClock,
+} from "@/lib/attendance/shift-now";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
 import { requireSession } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
@@ -53,16 +58,20 @@ export default async function DashboardPage() {
   const seesDevices = can("devices.view");
   const seesDirectory = can("directory.view");
 
-  const today = todayInPakistan();
+  // One instant for the date and the clock below: read apart, a load that
+  // straddles midnight pairs yesterday's date with today's time.
+  const now = new Date();
+  const today = todayInPakistan(now);
+  const yesterday = previousDay(today);
 
   const [liveResult, meResult, payrollResult, devicesResult, deptResult] = await Promise.all([
     seesFloor ? supabase.from("live_attendance").select("*") : Promise.resolve({ data: null }),
+    // Yesterday too: after midnight a night worker's own day is still last night.
     supabase
       .from("attendance_days")
-      .select("first_in, last_out, regular_hours, minutes_late, is_late, status")
+      .select("work_date, first_in, last_out, regular_hours, minutes_late, is_late, status")
       .eq("profile_id", session.userId)
-      .eq("work_date", today)
-      .maybeSingle(),
+      .in("work_date", [yesterday, today]),
     seesPayroll
       ? supabase
           .from("payroll_periods")
@@ -79,7 +88,6 @@ export default async function DashboardPage() {
   ]);
 
   const live = liveResult.data ?? [];
-  const me = meResult.data;
   const period = payrollResult.data?.[0] ?? null;
   const devices = devicesResult.data ?? [];
   const departments = deptResult.data ?? [];
@@ -197,9 +205,24 @@ export default async function DashboardPage() {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-  }).format(new Date());
+  }).format(now);
   const running = runningShift(shifts, today, clock);
   const myShift = shifts.find((shift) => shift.id === mine?.shift_id) ?? null;
+
+  // The same rule the live board draws, so this card and the board agree.
+  const myDays = meResult.data ?? [];
+  const myWorkDate = liveWorkDate(
+    myShift,
+    today,
+    clock,
+    myDays.map((day) => ({
+      workDate: day.work_date,
+      firstIn: day.first_in,
+      lastOut: day.last_out,
+    })),
+    now,
+  );
+  const me = myDays.find((day) => day.work_date === myWorkDate) ?? null;
 
   let shiftStats: {
     rostered: number;

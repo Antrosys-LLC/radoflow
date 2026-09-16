@@ -19,6 +19,8 @@
 
 import { deflateRawSync } from "node:zlib";
 
+import { MACHINE_NOTICE } from "./pdf";
+
 import { COMPANY_NAME, generatedStamp } from "./brand";
 import { RADO_LOGO_PNG_BASE64 } from "./brand-logo";
 
@@ -294,10 +296,9 @@ function sheetXml(sheet: Sheet): SheetLayout {
       ? `<mergeCells count="${merges.length}">${merges.map((ref) => `<mergeCell ref="${ref}"/>`).join("")}</mergeCells>`
       : "";
 
-  // `&` begins a header/footer code, so the company's own ampersand is doubled.
-  const footer = escapeXml(
-    `&LRado Dyeing && Textile — ${sheet.title ?? sheet.name}&RPage &P of &N`,
-  );
+  // `&` begins a header/footer code, so every ampersand in the sentence is
+  // doubled — the company's own included.
+  const footer = escapeXml(`&L${MACHINE_NOTICE.replace(/&/g, "&&")}&RPage &P of &N`);
 
   const xml =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +

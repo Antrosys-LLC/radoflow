@@ -38,6 +38,28 @@ export function formatTime(value: string | Date | null | undefined): string {
   }).format(date);
 }
 
+/**
+ * "07:58" — the same instant in the form a `type="time"` input takes.
+ *
+ * `formatTime` is for reading and produces "07:58 AM", which the control
+ * rejects. Both the attendance log and the live board fill correction dialogs
+ * from this, so it lives here with every other clock reading.
+ */
+export function clockTime(value: string | Date | null | undefined): string {
+  const date = toDate(value);
+  if (!date) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: PAKISTAN_TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "";
+  return hour && minute ? `${hour}:${minute}` : "";
+}
+
 /** "14 Aug 2026, 07:58 AM" */
 export function formatDateTime(value: string | Date | null | undefined): string {
   const date = toDate(value);

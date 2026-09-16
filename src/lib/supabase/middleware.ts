@@ -12,7 +12,17 @@ import { checkSupabaseEnv } from "@/lib/env";
  * threaded through rather than recreated.
  */
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+const PUBLIC_PATHS = ["/login", "/auth", "/home"];
+
+/**
+ * The public website, served at the root to anyone who is not signed in.
+ *
+ * A rewrite rather than a redirect: the address stays `/`, which is what a
+ * search engine indexes and what anybody types. Signing in swaps the same
+ * address for the dashboard, so the company's own site and the staff portal
+ * can share one domain without either of them living on a second path.
+ */
+const PUBLIC_HOME = "/home";
 
 /**
  * Machine-authenticated endpoints: the terminal itself, and the on-site agent.
@@ -94,6 +104,12 @@ export async function updateSession(request: NextRequest) {
   const isPublicRoute = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   if (isDeviceRoute) return response;
+
+  if (!user && pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = PUBLIC_HOME;
+    return NextResponse.rewrite(url, { headers: response.headers });
+  }
 
   if (!user && !isPublicRoute) {
     const redirectUrl = request.nextUrl.clone();

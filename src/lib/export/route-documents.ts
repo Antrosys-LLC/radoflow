@@ -10,7 +10,7 @@ import type { PayslipLine } from "@/lib/payroll/types";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { formatDate } from "@/lib/time";
 
-import { buildPayslipPdf, buildTablePdf, rs, standardFooter, type TableRow } from "./pdf";
+import { buildPayslipPdf, buildTablePdf, rs, type TableRow } from "./pdf";
 import { registerPdf, registerWorkbook } from "./payroll-documents";
 import { buildWorkbook, type SheetRow } from "./xlsx";
 
@@ -237,7 +237,6 @@ export async function canteenDocument(
           { label: "Price per meal", value: price === null ? "Not set" : rs(price) },
           { label: "People fed", value: summary.byPerson.length.toLocaleString("en-PK") },
         ],
-        footer: standardFooter(rangeLabel(from, to), note.replace(/\.$/, "")),
       }),
       name: `canteen-${from}-to-${to}.pdf`,
       type: PDF,
@@ -458,7 +457,6 @@ export async function canteenInvoiceDocument(
         rows,
         totals: ["", "TOTAL DUE", "", summary.total.meals, Math.round(summary.total.amount)],
         highlights,
-        footer: standardFooter(period, `Invoice ${reference}`),
       }),
       name: `canteen-invoice-${daily ? from : `${from}-to-${to}`}.pdf`,
       type: PDF,
@@ -604,7 +602,6 @@ export async function registerDocument(
   const meta = {
     title: "SALARY REGISTER",
     subtitle: `${period.label} · ${formatDate(period.period_start)} to ${formatDate(period.period_end)}`,
-    footer: standardFooter(rangeLabel(period.period_start, period.period_end)),
   };
   const month = period.period_start.slice(0, 7);
 
@@ -710,7 +707,6 @@ export async function payslipFromRun(
               on: item.paid_at ? formatDate(item.paid_at) : undefined,
             },
       loans,
-      footer: standardFooter(period.label),
     }),
     name: `payslip-${register.code || profileId.slice(0, 8)}-${period.period_start.slice(0, 7)}.pdf`,
     type: PDF,
@@ -829,7 +825,6 @@ export async function livePayslipDocument(supabase: Client, slip: LiveSlip): Pro
         .map((line) => ({ label: line.label, amount: line.amount })),
       net: slip.net,
       loans,
-      footer: standardFooter(period),
     }),
     name: `payslip-${slip.code || slip.profileId.slice(0, 8)}-${slip.from.slice(0, 7)}.pdf`,
     type: PDF,
@@ -845,7 +840,6 @@ export function registerFromItems(
   const meta = {
     title: "SALARY REGISTER",
     subtitle: `${scope} · ${formatDate(from)} to ${formatDate(to)} · worked out from attendance so far`,
-    footer: standardFooter(rangeLabel(from, to)),
   };
   const stamp = from.slice(0, 7);
 

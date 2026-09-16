@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, CreditCard, Fingerprint, KeyRound, ScanFace } from "lucide-react";
+import { CreditCard, Fingerprint, KeyRound, ScanFace } from "lucide-react";
 
 import { AntrosysRibbon, showsAntrosysRibbon } from "@/components/antrosys-ribbon";
 import { AssistantWidget } from "@/components/assistant/assistant-widget";
@@ -47,19 +47,48 @@ export function AppShell({
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-30 px-3 pt-3 sm:px-5 sm:pt-5">
         <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-3 rounded-3xl border border-border bg-card/90 p-3 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_rgb(0_0_0/0.05)] backdrop-blur">
-          <Link href="/" className="flex items-center gap-3 ps-1 pe-2">
-            <span className="flex size-11 items-center justify-center rounded-2xl bg-charcoal text-charcoal-foreground">
-              <Building2 className="size-5" />
-            </span>
+          {/* The mark and the name link home; the vendor's name links to the
+              vendor. Nested anchors are invalid, so the two are siblings
+              rather than one wrapping the other. */}
+          <div className="flex items-center gap-3 ps-1 pe-2">
+            <Link href="/" aria-label="Rado Dyeing &amp; Textile" className="shrink-0">
+              <span className="flex size-11 items-center justify-center rounded-2xl bg-white p-1.5 ring-1 ring-border">
+                {/* A plain img: a fixed 9 KB mark with a declared box, so there
+                    is no layout shift for next/image to prevent. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/rado-logo.png"
+                  alt=""
+                  aria-hidden
+                  width={44}
+                  height={44}
+                  className="size-full object-contain"
+                />
+              </span>
+            </Link>
             <div className="leading-tight">
-              <p className="text-sm font-bold tracking-tight text-foreground">
+              <Link href="/" className="text-sm font-bold tracking-tight text-foreground">
                 <Latin>Rado Dyeing &amp; Textile</Latin>
-              </p>
+              </Link>
               <p className="text-[11px] text-muted-foreground">
-                <Fill template={t.common.engineeredBy} values={{ company: "Antrosys" }} />
+                <Fill
+                  template={t.common.engineeredBy}
+                  values={{
+                    company: (
+                      <a
+                        href="https://www.antrosys.com"
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="underline-offset-2 hover:underline"
+                      >
+                        Antrosys
+                      </a>
+                    ),
+                  }}
+                />
               </p>
             </div>
-          </Link>
+          </div>
 
           <div className="ms-auto flex items-center gap-3">
             {/* How staff can identify themselves at a terminal. The model name

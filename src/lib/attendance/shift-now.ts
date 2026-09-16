@@ -37,10 +37,90 @@ export function minutesOf(time: string): number | null {
   return hour > 23 || minute > 59 ? null : hour * 60 + minute;
 }
 
-function previousDay(date: string): string {
+export function previousDay(date: string): string {
   const parsed = new Date(`${date}T00:00:00Z`);
   parsed.setUTCDate(parsed.getUTCDate() - 1);
   return parsed.toISOString().slice(0, 10);
+}
+
+/** Until when a night worker's still-open check-in keeps last night on the board. */
+const OPEN_NIGHT_UNTIL = 10 * 60;
+
+/** One of somebody's stored days, reduced to what the live rule reads. */
+export interface PersonDay {
+  workDate: string;
+  firstIn: string | null;
+  lastOut: string | null;
+}
+
+/** How long an open check-in still counts as somebody on the floor. */
+export const OPEN_CHECK_IN_HOURS = 16;
+
+/**
+ * The day somebody is on at this minute — the rule the live board draws.
+ *
+ * A check-in with no check-out in the last sixteen hours is that person on the
+ * floor now, on the date it belongs to, whatever their roster says: at 08:15
+ * that is the night shift finishing its overtime as well as the day shift that
+ * has just arrived. Past sixteen hours it is a missed check-out rather than a
+ * person still here, and a check-in ahead of the clock is a terminal whose
+ * time has run fast. Failing that, their own shift's date.
+ *
+ * The `live_attendance` view (20260922090000) decides the same way; change
+ * both together.
+ */
+export function liveWorkDate(
+  shift: ShiftClock | null,
+  localDate: string,
+  localTime: string,
+  days: readonly PersonDay[],
+  now: Date,
+): string {
+  const at = now.getTime();
+  const window = OPEN_CHECK_IN_HOURS * 3_600_000;
+
+  const open = days
+    .filter((day) => day.firstIn && !day.lastOut)
+    .map((day) => ({ day, since: Date.parse(day.firstIn!) }))
+    .filter((row) => Number.isFinite(row.since) && row.since <= at && at - row.since <= window)
+    .sort((a, b) => b.since - a.since)[0];
+
+  if (open) return open.day.workDate;
+
+  const lastNight = previousDay(localDate);
+  const stillOpen = days.some((day) => day.workDate === lastNight && day.firstIn && !day.lastOut);
+  return personalWorkDate(shift, localDate, localTime, stillOpen);
+}
+
+/**
+ * The attendance date one person's "today" is, on their own shift.
+ *
+ * For a shift that crosses midnight it is yesterday until the shift's overtime
+ * ends, and after that until 10:00 only while last night's check-in is still
+ * open — the window `creditWorkDates` gives a late check-out. Everyone else,
+ * and anyone without a shift, is on the calendar date. The `live_attendance`
+ * view draws the same line (20260922090000); change both together.
+ *
+ * `liveWorkDate` above is what the board and the dashboard call; this is the
+ * fallback it uses when nobody is mid-shift.
+ */
+export function personalWorkDate(
+  shift: ShiftClock | null,
+  localDate: string,
+  localTime: string,
+  lastNightStillOpen: boolean,
+): string {
+  const now = minutesOf(localTime);
+  if (!shift || now === null) return localDate;
+
+  const start = minutesOf(shift.startsAt);
+  const until = minutesOf(shift.overtimeUntil ?? shift.endsAt);
+  if (start === null || until === null || start <= until) return localDate;
+
+  if (now < until || (now < OPEN_NIGHT_UNTIL && lastNightStillOpen)) {
+    return previousDay(localDate);
+  }
+  return localDate;
 }
 
 /** Minutes from `from` forward to `to` on a 24-hour clock. */

@@ -3329,6 +3329,8 @@ export type Database = {
       }
       live_attendance: {
         Row: {
+          day_id: string | null
+          day_status: string | null
           department_id: string | null
           employee_code: string | null
           first_in: string | null

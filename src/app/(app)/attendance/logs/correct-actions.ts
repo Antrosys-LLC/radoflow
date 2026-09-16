@@ -79,12 +79,14 @@ export async function correctAttendanceDay(
   const session = await requirePermission("attendance.edit");
 
   const dayId = String(form.get("day_id") ?? "").trim();
+  const profileId = String(form.get("profile_id") ?? "").trim();
+  const workDate = String(form.get("work_date") ?? "").trim();
   const status = readStatus(form.get("status"));
   const firstIn = String(form.get("first_in") ?? "");
   const lastOut = String(form.get("last_out") ?? "");
   const reason = String(form.get("reason") ?? "").trim();
 
-  if (!dayId) return { ok: false, message: "No day selected." };
+  if (!dayId && !(profileId && workDate)) return { ok: false, message: "No day selected." };
   if (!status) return { ok: false, message: "Choose what the day counts as." };
   if (!reason) {
     // A correction with no reason is indistinguishable from a mistake, and the
@@ -94,13 +96,9 @@ export async function correctAttendanceDay(
 
   const supabase = await createClient();
 
-  const { data: before } = await supabase
-    .from("attendance_days")
-    .select("id, profile_id, work_date, first_in, last_out, regular_hours, status, site_id")
-    .eq("id", dayId)
-    .maybeSingle();
-
-  if (!before) return { ok: false, message: "That day is no longer there." };
+  const found = await dayToCorrect(supabase, { dayId, profileId, workDate });
+  if (!found.ok) return { ok: false, message: found.message };
+  const before = found.row;
 
   const newIn = instantFor(before.work_date, firstIn);
   const newOut = instantFor(before.work_date, lastOut);
@@ -141,7 +139,10 @@ export async function correctAttendanceDay(
     return submitChangeRequest({
       kind: "attendance_correction",
       entityTable: "attendance_days",
-      entityId: dayId,
+      // `before.id`, not the submitted one: a correction from the live board
+      // names a person and a date, and the row it applies to may have been
+      // made a moment ago by the lookup above.
+      entityId: before.id,
       payload,
       siteId: before.site_id,
       title: `${person?.full_name ?? "Attendance"} — ${before.work_date}`,
@@ -153,7 +154,7 @@ export async function correctAttendanceDay(
   const { data, error } = await supabase
     .from("attendance_days")
     .update(payload)
-    .eq("id", dayId)
+    .eq("id", before.id)
     .select("id");
 
   if (error) return { ok: false, message: error.message };
@@ -167,4 +168,78 @@ export async function correctAttendanceDay(
   revalidatePath("/attendance");
 
   return { ok: true, message: "Corrected." };
+}
+
+/** What `dayToCorrect` works on: the stored day, before the correction. */
+interface StoredDay {
+  id: string;
+  profile_id: string;
+  work_date: string;
+  first_in: string | null;
+  last_out: string | null;
+  regular_hours: number | null;
+  status: string | null;
+  site_id: string | null;
+}
+
+const DAY_COLUMNS = "id, profile_id, work_date, first_in, last_out, regular_hours, status, site_id";
+
+/**
+ * The day a correction is about — made if it is not there yet.
+ *
+ * The log always has a row to point at, because it lists stored days. The live
+ * board does not: somebody the terminal never saw has no attendance row at
+ * all, and that is exactly the person a supervisor needs to put right. So a
+ * correction identified by person and date makes the missing day first, as the
+ * signed-in user, which means the same policy decides it as decides the edit.
+ */
+async function dayToCorrect(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  keys: { dayId: string; profileId: string; workDate: string },
+): Promise<{ ok: true; row: StoredDay } | { ok: false; message: string }> {
+  if (keys.dayId) {
+    const { data } = await supabase
+      .from("attendance_days")
+      .select(DAY_COLUMNS)
+      .eq("id", keys.dayId)
+      .maybeSingle();
+    return data ? { ok: true, row: data } : { ok: false, message: "That day is no longer there." };
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(keys.workDate)) {
+    return { ok: false, message: "That date is not a date." };
+  }
+
+  const { data: existing } = await supabase
+    .from("attendance_days")
+    .select(DAY_COLUMNS)
+    .eq("profile_id", keys.profileId)
+    .eq("work_date", keys.workDate)
+    .maybeSingle();
+
+  if (existing) return { ok: true, row: existing };
+
+  const { data: person } = await supabase
+    .from("profiles")
+    .select("site_id")
+    .eq("id", keys.profileId)
+    .maybeSingle();
+
+  const { data: created, error } = await supabase
+    .from("attendance_days")
+    .insert({
+      profile_id: keys.profileId,
+      work_date: keys.workDate,
+      site_id: person?.site_id ?? null,
+      // What the day is worth is decided by the correction itself, a line
+      // below; until then it says what the terminal said, which is nothing.
+      status: "absent",
+    })
+    .select(DAY_COLUMNS)
+    .maybeSingle();
+
+  if (error) return { ok: false, message: error.message };
+  return created
+    ? { ok: true, row: created }
+    : { ok: false, message: "Nothing changed — that day is not yours to correct." };
 }

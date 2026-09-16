@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { buildTablePdf, standardFooter } from "@/lib/export/pdf";
+import { buildTablePdf } from "@/lib/export/pdf";
 import {
   canteenDocument,
   canteenInvoiceDocument,
@@ -188,7 +188,6 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
               row[5]!,
               row[6]!,
             ]),
-            footer: standardFooter(period),
           }),
           filename("gate", "pdf"),
           "application/pdf",
@@ -321,10 +320,6 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
               money(Number(p.monthly_salary)),
             ]),
             totals: ["Total", `${staff.length} people`, "", "", "", money(total)],
-            footer: standardFooter(
-              period,
-              "Monthly salary is a daily rate: salary divided by the days of the month",
-            ),
           }),
           filename("people", "pdf"),
           "application/pdf",
@@ -478,7 +473,6 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
               { label: "Overtime hours", value: String(totals[5]) },
               { label: "Late arrivals", value: String(totals[6]) },
             ],
-            footer: standardFooter(period),
           }),
           filename("attendance", "pdf"),
           "application/pdf",

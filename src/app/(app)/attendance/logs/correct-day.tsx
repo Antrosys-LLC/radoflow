@@ -37,7 +37,10 @@ const TIME_INPUT = cn(INPUT, "font-latin");
 const STATUSES = ["present", "absent", "partial", "leave", "holiday", "off", "pending"] as const;
 
 export interface CorrectableDay {
-  id: string;
+  /** Absent when nobody has punched: there is no stored day yet to point at. */
+  id?: string | null;
+  /** Who the day belongs to, so a day that does not exist can still be made. */
+  profileId: string;
   workDate: string;
   /** "HH:MM" in Pakistan time, or empty when the punch is missing. */
   firstIn: string;
@@ -106,7 +109,9 @@ function CorrectDialog({ day, onClose }: { day: CorrectableDay; onClose: () => v
         <p className="mt-1 text-xs text-muted-foreground">{t.logs.correctDayHint}</p>
 
         <form action={action} className="mt-4 space-y-4">
-          <input type="hidden" name="day_id" value={day.id} readOnly />
+          <input type="hidden" name="day_id" value={day.id ?? ""} readOnly />
+          <input type="hidden" name="profile_id" value={day.profileId} readOnly />
+          <input type="hidden" name="work_date" value={day.workDate} readOnly />
           <input type="hidden" name="approver_id" value={approverId} readOnly />
 
           <div className="grid gap-4 sm:grid-cols-2">

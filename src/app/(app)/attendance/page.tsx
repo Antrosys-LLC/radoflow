@@ -16,8 +16,10 @@ import { Avatar, Card } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { dictionaryFor, type Dictionary } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
-import { formatHours, formatTime, todayInPakistan } from "@/lib/time";
+import { clockTime, formatHours, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
+
+import { CorrectDayButton } from "./logs/correct-day";
 
 export const metadata: Metadata = {
   title: { absolute: "Attendance | Rado Dyeing and Textile" },
@@ -62,6 +64,19 @@ export default async function AttendancePage() {
   const session = await requireAnyPermission(["attendance.view", "attendance.view.all"]);
   const t = dictionaryFor(session.profile.language);
   const supabase = await createClient();
+
+  /*
+   * Putting a check-in or a check-out right, from the board itself.
+   *
+   * The same capability the attendance log gates its correction on, and the
+   * same dialog — a supervisor watching the floor is the person who knows a
+   * punch was missed, and sending them to another screen to say so is how a
+   * missed punch becomes a payroll argument a fortnight later.
+   */
+  const canCorrect =
+    session.isSuperuser ||
+    session.permissions.has("attendance.edit") ||
+    session.permissions.has("attendance.edit.all");
 
   const { data: rows } = await supabase.from("live_attendance").select("*").order("full_name");
 
@@ -116,6 +131,7 @@ export default async function AttendancePage() {
         title={t.attendance.notCheckedIn}
         subtitle={t.attendance.chaseFirst}
         people={missing}
+        canCorrect={canCorrect}
         emptyText={t.attendance.everyoneCheckedIn}
         emptyTone="good"
       />
@@ -126,6 +142,7 @@ export default async function AttendancePage() {
         title={t.attendance.onFloorNow}
         subtitle={t.attendance.checkedInStillWorking}
         people={working}
+        canCorrect={canCorrect}
         emptyText={t.attendance.nobodyClockedIn}
       />
 
@@ -136,6 +153,7 @@ export default async function AttendancePage() {
           title={t.attendance.shiftNotStartedYet}
           subtitle={t.attendance.notDueYet}
           people={pending}
+          canCorrect={canCorrect}
         />
       ) : null}
 
@@ -146,6 +164,7 @@ export default async function AttendancePage() {
           title={t.attendance.finishedToday}
           subtitle={t.attendance.clockedOut}
           people={finished}
+          canCorrect={canCorrect}
         />
       ) : null}
     </div>
@@ -164,6 +183,11 @@ interface LiveRow {
   minutes_late: number | null;
   is_late: boolean | null;
   live_status: string | null;
+  /** The date this row is on — last night's, for a shift that crossed midnight. */
+  work_date: string | null;
+  /** Null when the terminal never saw them: the correction makes the row. */
+  day_id: string | null;
+  day_status: string | null;
 }
 
 function PeopleCard({
@@ -172,6 +196,7 @@ function PeopleCard({
   title,
   subtitle,
   people,
+  canCorrect,
   emptyText,
   emptyTone,
 }: {
@@ -180,6 +205,8 @@ function PeopleCard({
   title: string;
   subtitle: string;
   people: LiveRow[];
+  /** Whether each row offers the correction dialog. */
+  canCorrect: boolean;
   emptyText?: string;
   emptyTone?: "good";
 }) {
@@ -290,6 +317,22 @@ function PeopleCard({
                         </p>
                       ) : null}
                     </div>
+
+                    {/* The same dialog the attendance log uses. For somebody
+                        with no row yet it names the person and the date, and
+                        the correction makes the day. */}
+                    {canCorrect ? (
+                      <CorrectDayButton
+                        day={{
+                          id: person.day_id,
+                          profileId: person.profile_id ?? "",
+                          workDate: person.work_date ?? todayInPakistan(),
+                          firstIn: clockTime(person.first_in),
+                          lastOut: clockTime(person.last_out),
+                          status: person.day_status ?? "present",
+                        }}
+                      />
+                    ) : null}
                   </div>
                 );
               })}

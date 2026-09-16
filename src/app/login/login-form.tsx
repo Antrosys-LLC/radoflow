@@ -1,33 +1,47 @@
 "use client";
 
-import { useActionState, useTransition } from "react";
+import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
-import { Building2, LogIn, TriangleAlert } from "lucide-react";
-
-import { toast } from "sonner";
+import { LogIn, TriangleAlert } from "lucide-react";
 
 import { CnicInput, PasswordInput } from "@/components/credential-inputs";
-import { requestAntrosysReset } from "./reset-actions";
 import { signIn, type LoginState } from "./actions";
 
 const INITIAL: LoginState = { error: null };
 
 export function LoginForm({ next, reason }: { next: string; reason?: string | null }) {
   const [state, formAction] = useActionState(signIn, INITIAL);
-  const [resetting, startReset] = useTransition();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
-          <span className="flex size-16 items-center justify-center rounded-3xl bg-charcoal text-charcoal-foreground shadow-[0_12px_30px_rgb(0_0_0/0.15)]">
-            <Building2 className="size-8" />
+          <span className="flex size-16 items-center justify-center rounded-3xl bg-white p-2.5 shadow-[0_12px_30px_rgb(0_0_0/0.15)] ring-1 ring-border">
+            {/* A plain img: a fixed 9 KB mark with a declared box, so there is
+                no layout shift for next/image to prevent. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/rado-logo.png"
+              alt=""
+              aria-hidden
+              width={44}
+              height={44}
+              className="size-full object-contain"
+            />
           </span>
           <h1 className="mt-4 text-2xl font-bold tracking-tight text-foreground">
             Rado Dyeing &amp; Textile
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Attendance &amp; Payroll · Engineered by Antrosys
+            Attendance &amp; Payroll · Engineered by{" "}
+            <a
+              href="https://www.antrosys.com"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="font-semibold text-foreground underline-offset-2 hover:underline"
+            >
+              Antrosys
+            </a>
           </p>
         </div>
 
@@ -88,24 +102,25 @@ export function LoginForm({ next, reason }: { next: string; reason?: string | nu
         {/*
          * Only for the Antrosys administrator, and deliberately understated:
          * every other account here is recovered in person by the office, which
-         * is faster and needs no mailbox. This exists because the person at the
-         * top of that chain has nobody to ask, and the link goes to one fixed
-         * address rather than to anything typed on this page.
+         * is faster and needs no mailbox.
+         *
+         * This opens the administrator's own mail app with the message already
+         * addressed, rather than asking the server to send a recovery link. The
+         * link depended on Supabase delivering mail, which it was not doing —
+         * the screen said one was on its way and nothing ever arrived. A
+         * message the person sends themselves either goes or visibly does not.
          */}
         <p className="mt-2 text-center text-xs text-muted-foreground">
-          <button
-            type="button"
-            disabled={resetting}
-            onClick={() =>
-              startReset(async () => {
-                const result = await requestAntrosysReset();
-                toast.success(result.message, { duration: 12000 });
-              })
+          <a
+            href={
+              "mailto:umar@antrosys.com" +
+              "?subject=RadoFlow%20password%20reset" +
+              "&body=Please%20reset%20my%20RadoFlow%20password.%0A%0AName%3A%0ACNIC%3A%0A"
             }
-            className="font-semibold text-primary underline-offset-2 hover:underline disabled:opacity-60"
+            className="font-semibold text-primary underline-offset-2 hover:underline"
           >
-            Antrosys administrator? Email me a reset link
-          </button>
+            Antrosys administrator? Email umar@antrosys.com for a reset
+          </a>
         </p>
       </div>
     </div>

@@ -31,7 +31,7 @@ import { SchemaOutOfDate } from "@/components/schema-out-of-date";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { isSchemaOutOfDate } from "@/lib/supabase/schema-error";
 import { createClient } from "@/lib/supabase/server";
-import { formatHours, formatTime, todayInPakistan } from "@/lib/time";
+import { clockTime, formatHours, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 import { ApproveRange } from "./approve-range";
@@ -95,26 +95,6 @@ function statusLabel(t: Dictionary, status: string | null): string {
  * literal `[]`, which infers as `never[]` and makes every field below an error
  * that has nothing to do with the actual shape.
  */
-/**
- * A stored instant as "HH:MM" on the factory's clock.
- *
- * `formatTime` is for reading — it produces "07:58 AM", which a `type="time"`
- * input rejects. This is the same instant in the form the control takes.
- */
-function clockTime(value: string | null): string {
-  if (!value) return "";
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Karachi",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(new Date(value));
-
-  const hour = parts.find((part) => part.type === "hour")?.value ?? "";
-  const minute = parts.find((part) => part.type === "minute")?.value ?? "";
-  return hour && minute ? `${hour}:${minute}` : "";
-}
-
 interface DayRow {
   id: string;
   profile_id: string;
@@ -999,6 +979,7 @@ function PersonLog({
                         <CorrectDayButton
                           day={{
                             id: row.id,
+                            profileId: row.profile_id,
                             workDate: row.work_date,
                             // The dialog's time inputs want HH:MM on the
                             // factory's clock; the column stores an instant.

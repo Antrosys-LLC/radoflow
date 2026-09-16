@@ -1,0 +1,210 @@
+/*
+ * The public website's own palette, kept apart from the portal's.
+ *
+ * Every value is taken from the mill's mark: its signal red, its black, and
+ * the bone white it sits on. Scoped to `.rado-site` and stated in plain terms
+ * so the staff portal's theme — which follows the reader's light or dark
+ * setting — cannot repaint a company website that has one fixed appearance.
+ */
+
+.rado-site {
+  --red: #d81f26;
+  --red-deep: #a3121a;
+  --ink: #0d0d0d;
+  --ink-soft: #3d3b39;
+  --bone: #f4f1ec;
+  --bone-deep: #e6e0d6;
+  --paper: #ffffff;
+  --rule: #d6cfc2;
+
+  color-scheme: light;
+  background: var(--bone);
+  color: var(--ink);
+  font-family: var(--font-body, system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The display face is used only where it earns the room: it is condensed,
+   uppercase and tightly tracked, which is unreadable at paragraph length. */
+.rado-site .display {
+  font-family: var(--font-display, "Oswald", system-ui, sans-serif);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 0.95;
+}
+
+.rado-site .eyebrow {
+  font-family: var(--font-display, "Oswald", system-ui, sans-serif);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--red);
+}
+
+.rado-site section {
+  scroll-margin-top: 5.5rem;
+}
+
+/*
+ * The signature: a shade card.
+ *
+ * A dye house is judged on whether a colour comes out of the vessel matching
+ * the lab dip, so the page is built around a strip of them. The swatches are
+ * the dye classes named in the copy — reactive, disperse, vat, pigment and an
+ * optically whitened ground — rather than decoration invented to fill a row.
+ */
+.shade-card {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  gap: 1px;
+  overflow: hidden;
+}
+
+.shade {
+  position: relative;
+  min-height: 7.5rem;
+  padding: 0.75rem;
+  display: flex;
+  align-items: flex-end;
+  color: var(--paper);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transition: min-height 240ms ease;
+}
+
+.shade[data-tone="white"] {
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .shade-card:hover .shade {
+    min-height: 6.75rem;
+  }
+
+  .shade-card .shade:hover {
+    min-height: 9.5rem;
+  }
+}
+
+/* A hairline spec table, the way a lab report is set. */
+.spec-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--rule);
+}
+
+.spec-row:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+
+@media (max-width: 640px) {
+  .shade-card {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .spec-row {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}
+
+.rado-site a:focus-visible,
+.rado-site button:focus-visible {
+  outline: 2px solid var(--red);
+  outline-offset: 3px;
+}
+
+/*
+ * Motion.
+ *
+ * Two kinds, and no more: the hero settles once on load, and each section
+ * lifts into place as it is scrolled to. The scroll work is done by the
+ * browser's own view timeline rather than by a scroll listener, so nothing
+ * here costs a frame on a phone — and where that is unsupported the content
+ * simply sits where it belongs, visible, rather than waiting for a script that
+ * is never coming. Anybody who has asked their system for less movement gets
+ * none of it.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .rado-site .rise {
+    animation: rise 620ms cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+    animation-delay: var(--delay, 0ms);
+  }
+
+  @supports (animation-timeline: view()) {
+    .rado-site .reveal {
+      animation: rise 1ms linear both;
+      animation-timeline: view();
+      animation-range: entry 8% cover 22%;
+    }
+  }
+
+  .rado-site .lift {
+    transition:
+      transform 260ms ease,
+      box-shadow 260ms ease;
+  }
+
+  .rado-site .lift:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 30px rgb(13 13 13 / 9%);
+  }
+
+  /* The quote and visit buttons: the red deepens and the label steps forward. */
+  .rado-site .press {
+    transition:
+      background-color 200ms ease,
+      transform 160ms ease;
+  }
+
+  .rado-site .press:active {
+    transform: translateY(1px);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The map keeps its shape on every screen and never scrolls the page sideways. */
+.map-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--ink);
+  background: var(--bone-deep);
+  overflow: hidden;
+}
+
+.map-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  /* The embed is a colour photograph of a street map; this settles it into the
+     page's own palette until somebody looks at it properly. */
+  filter: saturate(0.9) contrast(1.02);
+}
+
+@media (min-width: 1024px) {
+  .map-frame {
+    aspect-ratio: 4 / 3;
+    height: 100%;
+  }
+}

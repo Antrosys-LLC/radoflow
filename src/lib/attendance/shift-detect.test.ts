@@ -5,6 +5,7 @@ import {
   belongsToPreviousNight,
   detectShift,
   pakistanMinutesOfDay,
+  presenceWindowHours,
   shiftForArrival,
 } from "./shift-detect";
 import type { ShiftClock } from "./shift-now";
@@ -150,5 +151,34 @@ describe("shiftForArrival", () => {
     expect(shiftForArrival([], day, at("19:36"))?.id).toBe("day");
     expect(shiftForArrival(shifts, null, at("19:36"))?.id).toBe("night");
     expect(shiftForArrival([], null, at("19:36"))).toBeNull();
+  });
+});
+
+describe("presenceWindowHours", () => {
+  const shift = (startsAt: string, endsAt: string, overtimeUntil: string | null): ShiftClock => ({
+    id: "s",
+    code: "S",
+    name: "S",
+    startsAt,
+    endsAt,
+    overtimeUntil,
+    graceMinutes: 15,
+  });
+
+  it("covers the shift and its overtime, plus the margin somebody may arrive early by", () => {
+    // 08:00 to 20:00 including overtime, and they may be at the gate from
+    // 06:00: fourteen hours is the longest they can legitimately be on site.
+    expect(presenceWindowHours(shift("08:00:00", "16:00:00", "20:00:00"))).toBe(14);
+    expect(presenceWindowHours(shift("20:00:00", "04:00:00", "08:00:00"))).toBe(14);
+  });
+
+  it("never narrows below the twelve hours every day was measured by before", () => {
+    // A shift with no overtime declared would otherwise compute ten, and a
+    // worker three hours past their eight would lose the lot.
+    expect(presenceWindowHours(shift("08:00:00", "16:00:00", null))).toBe(12);
+  });
+
+  it("gives nothing for a shift whose times cannot be read", () => {
+    expect(presenceWindowHours(shift("not a time", "16:00:00", null))).toBeNull();
   });
 });

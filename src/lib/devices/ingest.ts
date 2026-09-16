@@ -4,7 +4,11 @@ import {
   type RawPunch,
 } from "@/lib/attendance/compute";
 import { creditWorkDates, followShifts } from "@/lib/attendance/follow-shift";
-import { pakistanMinutesOfDay, shiftForArrival } from "@/lib/attendance/shift-detect";
+import {
+  pakistanMinutesOfDay,
+  presenceWindowHours,
+  shiftForArrival,
+} from "@/lib/attendance/shift-detect";
 import type { ShiftClock } from "@/lib/attendance/shift-now";
 import { ingestMealScans } from "@/lib/canteen/ingest";
 import { PAKISTAN_TIMEZONE } from "@/lib/time";
@@ -243,7 +247,7 @@ export async function recomputeAttendanceDay(
 
   if (existing?.is_manual || existing?.locked) return;
 
-  const [{ data: punchRows }, { data: profile }, dayType] = await Promise.all([
+  const [{ data: punchRows }, { data: profile }, dayType, { data: shiftRows }] = await Promise.all([
     supabase
       .from("punches")
       .select("id, punched_at, direction, device_id")
@@ -256,6 +260,14 @@ export async function recomputeAttendanceDay(
       .eq("id", profileId)
       .single(),
     resolveDayType(siteId, workDate),
+    // Read before the punches are paired: how long one stretch of attendance
+    // can be, and which shift an arrival was for, both come from this table.
+    supabase
+      .from("shifts")
+      .select("id, code, name, starts_at, ends_at, overtime_until, grace_minutes")
+      .eq("site_id", siteId)
+      .eq("is_active", true)
+      .order("sort_order"),
   ]);
 
   const punches: RawPunch[] = (punchRows ?? []).map((row) => ({
@@ -272,9 +284,25 @@ export async function recomputeAttendanceDay(
   const shiftId = profile?.shift_id ?? null;
   const enforcedShift = Boolean(shiftId) && !flexible;
 
+  const shifts: ShiftClock[] = (shiftRows ?? []).map((row) => ({
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    startsAt: String(row.starts_at),
+    endsAt: String(row.ends_at),
+    overtimeUntil: row.overtime_until ? String(row.overtime_until) : null,
+    graceMinutes: row.grace_minutes ?? 0,
+  }));
+
+  const rostered = shifts.find((shift) => shift.id === shiftId) ?? null;
+  // Their own shift's window, so a long day is one long day rather than two
+  // halves of one that pay nothing. Absent a shift, the old fixed twelve.
+  const sessionWindowHours = rostered ? presenceWindowHours(rostered) : null;
+
   const computed = computeDayFromPunches(punches, dayType, {
     requiresAttendance: profile?.requires_attendance ?? true,
     floorFinalOut: enforcedShift,
+    ...(sessionWindowHours === null ? {} : { sessionWindowHours }),
   });
 
   /*
@@ -322,8 +350,12 @@ export async function recomputeAttendanceDay(
   );
 
   /*
-   * Lateness is judged against the shift the person is rostered on, anchored
-   * to Pakistan time — the clock the factory floor actually works to.
+   * Lateness is judged against the shift the person came in for, anchored to
+   * Pakistan time — the clock the factory floor actually works to. That is not
+   * always the shift the roster holds: people rotate onto nights days before
+   * the office moves them, and `shiftForArrival` explains why that is the
+   * roster being stale rather than a worker being late. The roster still
+   * decides whenever nothing else claims the arrival.
    *
    * Staff on flexible hours keep no in or out time, so nothing here applies to
    * them. They stay on their shift for the roster: knowing a fitter works
@@ -332,31 +364,7 @@ export async function recomputeAttendanceDay(
   let minutesLate = 0;
 
   if (shiftId && computed.firstIn && !flexible) {
-    const { data: rows } = await supabase
-      .from("shifts")
-      .select("id, code, name, starts_at, ends_at, overtime_until, grace_minutes")
-      .eq("site_id", siteId)
-      .eq("is_active", true)
-      .order("sort_order");
-
-    const shifts: ShiftClock[] = (rows ?? []).map((row) => ({
-      id: row.id,
-      code: row.code,
-      name: row.name,
-      startsAt: String(row.starts_at),
-      endsAt: String(row.ends_at),
-      overtimeUntil: row.overtime_until ? String(row.overtime_until) : null,
-      graceMinutes: row.grace_minutes ?? 0,
-    }));
-
-    /*
-     * Judged against the shift they came in for, which is not always the one
-     * the roster holds — people rotate onto nights days before the office
-     * moves them, and `shiftForArrival` explains why that is not lateness.
-     * The roster still decides when nothing else claims the arrival.
-     */
     const arrival = pakistanMinutesOfDay(computed.firstIn.toISOString());
-    const rostered = shifts.find((shift) => shift.id === shiftId) ?? null;
     const against = arrival === null ? rostered : shiftForArrival(shifts, rostered, arrival);
 
     if (against) {

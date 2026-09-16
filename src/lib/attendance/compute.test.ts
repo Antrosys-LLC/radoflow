@@ -230,3 +230,37 @@ describe("computing a day with flooring on", () => {
     expect(day.breakMinutes).toBe(60);
   });
 });
+
+describe("how long one stretch of attendance can be", () => {
+  /** A punch at a wall-clock time on a given day of August 2026. */
+  const on = (day: number, hour: number, minute = 0): RawPunch => ({
+    punchedAt: new Date(2026, 7, day, hour, minute, 0),
+    direction: "unknown",
+  });
+
+  it("keeps a day longer than twelve hours in one stretch when the shift is that long", () => {
+    // A real day off the floor: in at 07:33, out at 19:53. The day shift runs
+    // 08:00 to 16:00 with overtime to 20:00, so this is one ordinary long
+    // day — but at twelve hours and twenty minutes it cleared the fixed
+    // twelve-hour window, split into two blocks of one punch each, and was
+    // paid as nothing at all.
+    const day = computeDayFromPunches([on(14, 7, 33), on(14, 19, 53)], "workday", {
+      sessionWindowHours: 14,
+    });
+
+    expect(day.hoursWorked).toBe(12.33);
+    expect(day.anomaly).toBeNull();
+    expect(day.status).toBe("present");
+  });
+
+  it("still separates punches too far apart to be one stretch", () => {
+    // Somebody who never clocked out, and came back the next morning. A window
+    // wide enough for a long shift must not pay for the night in between.
+    const day = computeDayFromPunches([on(14, 8), on(15, 7, 55)], "workday", {
+      sessionWindowHours: 14,
+    });
+
+    expect(day.hoursWorked).toBe(0);
+    expect(day.anomaly).toBe("Missing clock-out");
+  });
+});

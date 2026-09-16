@@ -69,6 +69,20 @@ export interface ComputeOptions {
    * to twenty-nine minutes off a day they were asked to complete by hours.
    */
   floorFinalOut?: boolean;
+  /**
+   * The longest one stretch of attendance can be, in hours.
+   *
+   * Punches further apart than this are two separate stretches rather than one
+   * very long one — the rule that stops a night at home being read as a lunch
+   * break. It belongs to the shift, not to this function: both of Rado's
+   * shifts run twelve hours once their overtime is counted, so the fixed
+   * twelve this used to assume was not a ceiling above a long day but exactly
+   * the length of one. A worker who arrived at 07:33 and left at 19:53 cleared
+   * it by twenty minutes, split into two blocks of a single punch each, and
+   * was paid for none of it. The caller passes the person's own window; the
+   * default is the old twelve, for anybody with no shift to measure.
+   */
+  sessionWindowHours?: number;
 }
 
 export function computeDayFromPunches(
@@ -89,7 +103,7 @@ export function computeDayFromPunches(
     };
   }
 
-  const split = splitIntoSessions(punches);
+  const split = splitIntoSessions(punches, options.sessionWindowHours);
   const first = split.sessions[0]!;
   const lastSession = split.sessions[split.sessions.length - 1]!;
 

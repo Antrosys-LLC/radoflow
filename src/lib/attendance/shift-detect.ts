@@ -175,3 +175,26 @@ export function shiftForArrival(
 
   return claims.reduce((best, shift) => (distance(shift) < distance(best) ? shift : best));
 }
+
+/**
+ * The longest one stretch of attendance on this shift can legitimately be.
+ *
+ * From the earliest somebody may turn up — the same margin `shiftForArrival`
+ * allows — to the end of the shift's overtime. Punches further apart than this
+ * are two separate stretches rather than one long one, which is the rule that
+ * keeps a night at home from being paid as a very long lunch break.
+ *
+ * Never narrower than the fixed twelve hours every day used to be measured by.
+ * A shift with no overtime declared would otherwise compute ten, and a worker
+ * who stayed three hours past their eight would have the whole day split in
+ * two and paid as nothing — which is the failure this exists to end, not one
+ * to reintroduce from the other side.
+ */
+export function presenceWindowHours(shift: ShiftClock): number | null {
+  const start = minutesOf(shift.startsAt);
+  const until = minutesOf(shift.overtimeUntil ?? shift.endsAt);
+  if (start === null || until === null) return null;
+
+  const span = (until - start + 1440) % 1440 || 1440;
+  return Math.max(12, (span + EARLY_MARGIN_MINUTES) / 60);
+}

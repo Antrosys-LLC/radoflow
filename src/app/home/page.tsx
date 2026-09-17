@@ -49,12 +49,13 @@ const PHONES = [
 /**
  * Where the plant is, for the embedded map and the directions link.
  *
- * The plot and the estate, not the trade name: an address resolves on a map
- * whoever has or has not listed their business on it.
+ * The pin the mill dropped on its own gate, not a line of text a map has to
+ * guess at: a plot number inside an industrial estate lands a text search at
+ * the estate, somewhere among a few hundred neighbours. A coordinate lands it
+ * on the mill.
  */
-const MAP_QUERY = encodeURIComponent(
-  "Plot 80, Quaid-e-Azam Industrial Estate, Kot Lakhpat, Lahore, Pakistan",
-);
+const MAP_PIN = { lat: 31.454278, lng: 74.326935 };
+const MAP_QUERY = `${MAP_PIN.lat},${MAP_PIN.lng}`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -116,6 +117,12 @@ const STRUCTURED_DATA = {
     addressRegion: ADDRESS.region,
     addressCountry: ADDRESS.country,
   },
+  geo: {
+    "@type": "GeoCoordinates",
+    latitude: MAP_PIN.lat,
+    longitude: MAP_PIN.lng,
+  },
+  hasMap: `https://www.google.com/maps/search/?api=1&query=${MAP_QUERY}`,
   telephone: PHONES.map((phone) => phone.label),
   memberOf: {
     "@type": "Organization",
@@ -517,7 +524,7 @@ export default function HomePage() {
             <div className="map-frame">
               <iframe
                 title="Rado Dyeing &amp; Textile Mills on the map"
-                src={`https://www.google.com/maps?q=${MAP_QUERY}&output=embed`}
+                src={`https://www.google.com/maps?q=${MAP_QUERY}&z=17&output=embed`}
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
                 allowFullScreen

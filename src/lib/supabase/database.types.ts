@@ -976,6 +976,7 @@ export type Database = {
           port: number
           purpose: Database["public"]["Enums"]["device_purpose"]
           serial_number: string | null
+          sync_role: string
           site_id: string
           status: Database["public"]["Enums"]["device_status"]
           sync_interval_seconds: number
@@ -1001,6 +1002,7 @@ export type Database = {
           port?: number
           purpose?: Database["public"]["Enums"]["device_purpose"]
           serial_number?: string | null
+          sync_role?: string
           site_id: string
           status?: Database["public"]["Enums"]["device_status"]
           sync_interval_seconds?: number
@@ -1026,6 +1028,7 @@ export type Database = {
           port?: number
           purpose?: Database["public"]["Enums"]["device_purpose"]
           serial_number?: string | null
+          sync_role?: string
           site_id?: string
           status?: Database["public"]["Enums"]["device_status"]
           sync_interval_seconds?: number

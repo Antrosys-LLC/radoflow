@@ -70,6 +70,11 @@ export interface DeviceRecord {
    * number of times.
    */
   direction: "auto" | "in" | "out";
+  /**
+   * `receive_only` is the kitchen: it is sent what the gates hold, and what it
+   * holds is never copied, relayed or deleted anywhere else.
+   */
+  sync_role: "peer" | "receive_only";
 }
 
 /**
@@ -91,16 +96,29 @@ export async function recordDeviceContact(serialNumber: string): Promise<DeviceR
     .from("devices")
     .select("id, site_id, timezone, purpose, direction")
     .eq("serial_number", serialNumber)
-    .single<DeviceRecord>();
+    .single<Omit<DeviceRecord, "sync_role">>();
 
   if (error || !device) return null;
+
+  /*
+   * Read apart from the rest, and failing soft to `peer`: this runs on every
+   * handshake, and a database that has not had 20260923090000 yet must keep
+   * answering its terminals rather than treat all three as unknown.
+   */
+  const { data: role } = await supabase
+    .from("devices")
+    .select("sync_role")
+    .eq("id", device.id)
+    .maybeSingle();
+  const syncRole: DeviceRecord["sync_role"] =
+    role?.sync_role === "receive_only" ? "receive_only" : "peer";
 
   await supabase
     .from("devices")
     .update({ last_seen_at: new Date().toISOString(), status: "online", last_error: null })
     .eq("id", device.id);
 
-  return device;
+  return { ...device, sync_role: syncRole };
 }
 
 export async function ingestPunches(

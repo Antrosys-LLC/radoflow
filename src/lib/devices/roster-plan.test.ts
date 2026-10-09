@@ -419,6 +419,32 @@ describe("planRosterUpload — deletions", () => {
   });
 });
 
+describe("planRosterUpload — a terminal that only receives", () => {
+  const upload = parseOperlog(
+    [
+      "USER PIN=5001\tName=Stranger\tPri=0\tCard=",
+      "USER PIN=2070\tName=Aslam\tPri=14\tCard=777",
+      `FP PIN=5001\tFID=1\tSize=1200\tValid=1\tTMP=${TMP_A}`,
+    ].join("\n"),
+  );
+
+  it("relays nothing it holds to the gates", () => {
+    const fromGate = planRosterUpload(upload, GATE_IN, profiles(ASLAM), ALL);
+    const fromKitchen = planRosterUpload(upload, KITCHEN, profiles(ASLAM), ALL, true);
+
+    expect(fromGate.relays.length).toBeGreaterThan(0);
+    expect(fromKitchen.relays).toEqual([]);
+  });
+
+  it("does not let it change what RadoFlow holds about a person", () => {
+    const plan = planRosterUpload(upload, KITCHEN, profiles(ASLAM), ALL, true);
+
+    expect(plan.identityUpdates).toEqual([]);
+    // It still shows what the kitchen holds, so the merge sends only the gaps.
+    expect(plan.inventory.map((row) => row.pin).sort()).toEqual(["2070", "5001", "5001"]);
+  });
+});
+
 describe("chunk", () => {
   it("slices without losing or repeating anything", () => {
     expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);

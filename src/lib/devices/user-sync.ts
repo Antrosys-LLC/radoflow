@@ -127,6 +127,7 @@ export async function applyRosterUpload(
     device.id,
     profilesByPin,
     (targets ?? []).map((t) => t.id),
+    device.sync_role === "receive_only",
   );
 
   const reportedAt = new Date().toISOString();

@@ -132,6 +132,12 @@ export function planRosterUpload(
   sourceDeviceId: string,
   profilesByPin: ReadonlyMap<string, KnownProfile>,
   targetDeviceIds: readonly string[],
+  /**
+   * The uploading terminal only receives (the kitchen). What it holds is its
+   * own business: strangers on it are not relayed, and its card and privilege
+   * readings do not become RadoFlow's.
+   */
+  sourceReceivesOnly = false,
 ): RosterPlan {
   const enrollments = new Map<string, EnrollmentRow>();
   const templates = new Map<string, TemplateRow>();
@@ -150,6 +156,7 @@ export function planRosterUpload(
   };
 
   const relay = (kind: QueuedCommand["kind"], body: string) => {
+    if (sourceReceivesOnly) return;
     for (const deviceId of targetDeviceIds) {
       if (deviceId === sourceDeviceId) continue;
       // Keyed on target and body, so a batch naming the same stranger twice
@@ -200,7 +207,7 @@ export function planRosterUpload(
      */
     const privilege = Math.max(user.privilege, profile.privilege);
     const card = user.cardNumber ?? profile.card;
-    if (privilege !== profile.privilege || card !== profile.card) {
+    if (!sourceReceivesOnly && (privilege !== profile.privilege || card !== profile.card)) {
       identityUpdates.set(profile.id, { profileId: profile.id, privilege, card });
     }
 

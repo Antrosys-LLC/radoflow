@@ -138,6 +138,13 @@ two on their own. Rules worth knowing before touching that path:
   in `roster-plan.ts` catches it on every upload, `app.restore_administrators`
   at the end of a merge catches a box that is not going to upload. A terminal
   left with no administrator opens its menu to whoever presses the button.
+- **The kitchen receives and never sends** (`devices.sync_role = 'receive_only'`,
+  migration `20260923090000`). The gates are peers; the kitchen is sent
+  everything they hold and nothing on it is ever merged, relayed, fanned out or
+  deleted elsewhere. Its inventory still counts, so it is only sent its gaps.
+  Enforced in `reconcile_rosters` (peers are the only donors),
+  `app.fan_out_person`, `fan_out_removal_from_device` and
+  `planRosterUpload`'s `sourceReceivesOnly`.
 - **Pull mode is the kill switch.** Setting every terminal's `mode` to `pull`
   stops all fan-out and relays without a deploy; punches and meals still
   record, and queued instructions are still delivered.

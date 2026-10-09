@@ -209,7 +209,17 @@ the migration.
 
 ---
 
-## Nothing on a terminal is ever overwritten by another terminal
+## Edits on a gate reach the other terminals
+
+Rename somebody, give them a card, or re-enrol a finger or face on either gate
+and the other two follow within a poll. RadoFlow notices because the gate
+reports a record different from the one it last reported itself. Only the name
+and card are written, onto each terminal's own record. Edits on the kitchen
+stay on the kitchen, administrators keep their own names, and a privilege is
+only ever raised. Two terminals that already disagree stay as they are until
+one of them is edited.
+
+## Everything else is never overwritten by another terminal
 
 Each terminal is sent only what it does not already have. RadoFlow keeps an
 inventory of every user and every finger on each box, and a finger a terminal

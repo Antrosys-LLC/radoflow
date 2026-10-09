@@ -3447,6 +3447,7 @@ export type Database = {
         Returns: number
       }
       queue_device_commands: { Args: { p_commands: Json }; Returns: number }
+      propagate_roster_edits: { Args: { p_slots: Json; p_source: string }; Returns: number }
       merge_terminal_rosters: {
         Args: never
         Returns: {

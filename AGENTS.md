@@ -145,6 +145,16 @@ two on their own. Rules worth knowing before touching that path:
   Enforced in `reconcile_rosters` (peers are the only donors),
   `app.fan_out_person`, `fan_out_removal_from_device` and
   `planRosterUpload`'s `sourceReceivesOnly`.
+- **An edit made on a gate reaches the others** (`app.propagate_roster_edits`,
+  migration `20260924090000`). "Only sent what it lacks" governs slots a
+  terminal has never held; it does not freeze a record that was edited. A roster
+  upload is compared with the inventory as it stood (`applyRosterUpload` calls
+  it before writing): a changed name or card is written onto each other
+  terminal's own record, a changed finger or face replaces the old template.
+  Not an edit: a terminal that was never touched, whatever it disagrees about;
+  anything on the kitchen; an administrator's name (PIN 1 and 2 stay two
+  names) — and a privilege only ever goes up. Fails soft: a slot whose check
+  errored is left out of the inventory write so it is found again.
 - **Pull mode is the kill switch.** Setting every terminal's `mode` to `pull`
   stops all fan-out and relays without a deploy; punches and meals still
   record, and queued instructions are still delivered.

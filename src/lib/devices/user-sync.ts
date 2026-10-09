@@ -2,7 +2,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import type { Json } from "@/lib/supabase/database.types";
 
 import type { DeviceRecord } from "./ingest";
-import { chunk, planRosterUpload, type KnownProfile } from "./roster-plan";
+import { chunk, planRosterUpload, type InventoryRow, type KnownProfile } from "./roster-plan";
 import { parseOperlog, type CommandResult } from "./zkteco/userinfo";
 
 /**
@@ -133,6 +133,45 @@ export async function applyRosterUpload(
   const reportedAt = new Date().toISOString();
 
   /*
+   * Edits made on this terminal, passed on to the others.
+   *
+   * Before the inventory is written, because the database decides what is an
+   * edit by comparing with the inventory as it stood: a user whose name or
+   * card differs from what this same terminal last reported, a finger or face
+   * whose template bytes differ. The kitchen's edits are ignored there.
+   *
+   * Fails soft. A slot whose check did not complete is left out of the
+   * inventory write, so the next time the terminal reports it the difference
+   * is still there to be found — and a fault here costs a late edit, not a
+   * refused upload that the terminal would resend every thirty-five seconds.
+   * A database without the function yet skips the step altogether.
+   */
+  const slotKey = (r: InventoryRow) =>
+    `${r.pin}|${r.record_type}|${r.bio_type}|${r.finger_index}`;
+  const unchecked = new Set<string>();
+  if (device.sync_role !== "receive_only") {
+    await Promise.all(
+      chunk(plan.inventory, 150).map(async (rows) => {
+        const { error } = await supabase.rpc("propagate_roster_edits", {
+          p_source: device.id,
+          p_slots: rows.map((r) => ({
+            pin: r.pin,
+            record_type: r.record_type,
+            bio_type: r.bio_type,
+            finger_index: r.finger_index,
+            command_body: r.command_body,
+          })) as unknown as Json,
+        });
+        if (error && error.code !== "PGRST202") {
+          console.error(`[iclock] could not pass on edits from ${device.id}: ${error.message}`);
+          for (const r of rows) unchecked.add(slotKey(r));
+        }
+      }),
+    );
+  }
+  const inventoryRows = plan.inventory.filter((r) => !unchecked.has(slotKey(r)));
+
+  /*
    * The writes are independent of one another, so they go together. Any
    * failure fails the request, which makes the terminal resend — safe, because
    * nothing below does anything the second time that it did the first.
@@ -149,7 +188,7 @@ export async function applyRosterUpload(
         .from("person_biometrics")
         .upsert(rows, { onConflict: "profile_id,bio_type,finger_index" }),
     ),
-    ...chunk(plan.inventory, WRITE_CHUNK).map((rows) =>
+    ...chunk(inventoryRows, WRITE_CHUNK).map((rows) =>
       supabase.from("device_inventory").upsert(
         rows.map((r) => ({ ...r, reported_at: reportedAt })),
         { onConflict: "device_id,pin,record_type,bio_type,finger_index" },

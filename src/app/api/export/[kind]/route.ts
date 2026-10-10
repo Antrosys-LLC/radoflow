@@ -19,7 +19,13 @@ import type { RegisterItem } from "@/lib/payroll/register";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
-import { formatDateTime, pakistanDayStartUtc, todayInPakistan } from "@/lib/time";
+import {
+  formatDate,
+  formatDateTime,
+  formatTime,
+  pakistanDayStartUtc,
+  todayInPakistan,
+} from "@/lib/time";
 
 /**
  * Downloads: the same figures the screens show, as a file.
@@ -44,6 +50,8 @@ const REQUIRED_PERMISSION = {
   people: "people.manage",
   pay: "rates.view",
   attendance: "attendance.view.all",
+  // Every day's check-in and check-out, row by row, for a date range.
+  "attendance-log": "attendance.view.all",
   payroll: "payroll.view",
   // A payslip is also allowed to its owner; that exception is handled below.
   payslip: "payroll.view",
@@ -103,6 +111,17 @@ interface DayRow {
   hours_are_final: boolean | null;
 }
 
+interface LogRow {
+  profile_id: string;
+  work_date: string;
+  first_in: string | null;
+  last_out: string | null;
+  regular_hours: number | string | null;
+  status: string | null;
+  minutes_late: number | null;
+  is_late: boolean | null;
+}
+
 export async function GET(request: NextRequest, context: { params: Promise<{ kind: string }> }) {
   const { kind: rawKind } = await context.params;
   const kind = rawKind as Kind;
@@ -134,7 +153,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
   const today = todayInPakistan();
   const from = url.searchParams.get("from") || `${today.slice(0, 7)}-01`;
   const to = url.searchParams.get("to") || today;
-  const deptFilter = url.searchParams.get("dept") ?? "";
+  // One department id, or several joined with commas.
+  const deptIds = (url.searchParams.get("dept") ?? "").split(",").filter(Boolean);
   const period = rangeLabel(from, to);
 
   try {
@@ -255,8 +275,15 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
       .order("full_name");
 
     const everyone = staffRows ?? [];
-    const staff = deptFilter ? everyone.filter((p) => p.department_id === deptFilter) : everyone;
-    const scopeNote = deptFilter ? (deptName.get(deptFilter) ?? "Department") : "Whole factory";
+    const staff = deptIds.length
+      ? everyone.filter((p) => p.department_id && deptIds.includes(p.department_id))
+      : everyone;
+    const scopeNote =
+      deptIds.length === 1
+        ? (deptName.get(deptIds[0]!) ?? "Department")
+        : deptIds.length > 1
+          ? `${deptIds.length} departments`
+          : "Whole factory";
 
     // ---- People ------------------------------------------------------------
     if (kind === "people" || kind === "pay") {
@@ -337,6 +364,157 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
           },
         ]),
         filename("people", "xlsx"),
+        XLSX,
+      );
+    }
+
+    // ---- Attendance log: every day's check-in and check-out ----------------
+    if (kind === "attendance-log") {
+      const people = profileId ? staff.filter((p) => p.id === profileId) : staff;
+      if (profileId && people.length === 0) {
+        return NextResponse.json({ error: "No such person." }, { status: 404 });
+      }
+
+      const logRows = await selectAllInBatches<LogRow>(
+        people.map((p) => p.id),
+        (ids, first, last) =>
+          supabase
+            .from("attendance_days")
+            .select(
+              "profile_id, work_date, first_in, last_out, regular_hours, status, minutes_late, is_late",
+            )
+            .in("profile_id", ids)
+            .gte("work_date", from)
+            .lte("work_date", to)
+            .order("profile_id")
+            .order("work_date")
+            .range(first, last),
+        `Could not read attendance for ${from} to ${to}`,
+      );
+
+      const personOf = new Map(people.map((p) => [p.id, p]));
+      const label = (status: string | null) =>
+        status ? status.charAt(0).toUpperCase() + status.slice(1) : "Pending";
+
+      // Every date in the range, so a day with no punches shows as such
+      // instead of silently not being in the file.
+      const dates: string[] = [];
+      for (let d = from; d <= to && dates.length < 93; d = nextDay(d)) dates.push(d);
+
+      const dayOf = new Map(logRows.map((row) => [`${row.profile_id}|${row.work_date}`, row]));
+      const sorted = [...people].sort((a, b) => a.full_name.localeCompare(b.full_name));
+
+      const table = sorted.flatMap((person) =>
+        dates.map((date) => {
+          const row = dayOf.get(`${person.id}|${date}`);
+          return {
+            personId: person.id,
+            iso: date,
+            date: formatDate(date),
+            code: person.employee_code,
+            name: person.full_name,
+            department: departmentOf(person.department_id),
+            checkIn: row?.first_in ? formatTime(row.first_in) : "—",
+            checkOut: row?.last_out ? formatTime(row.last_out) : "—",
+            hours: hours(Number(row?.regular_hours ?? 0)),
+            // A flexible-hours person is never late, whatever the stored flag says.
+            late: row && !person.flexible_hours && row.is_late ? (row.minutes_late ?? 0) : 0,
+            status: row
+              ? label(row.status)
+              : new Date(`${date}T00:00:00Z`).getUTCDay() === 0
+                ? "Sunday"
+                : "No record",
+          };
+        }),
+      );
+
+      const totalHours = hours(table.reduce((t, r) => t + r.hours, 0));
+      const title = `Check-in and check-out log — ${profileId ? (people[0]?.full_name ?? "") : scopeNote}`;
+      const cells = (r: (typeof table)[number]) => [
+        r.date,
+        r.code,
+        r.name,
+        r.department,
+        r.checkIn,
+        r.checkOut,
+        r.hours,
+        r.late,
+        r.status,
+      ];
+
+      if (format === "pdf") {
+        return fileResponse(
+          buildTablePdf({
+            title,
+            subtitle: `${period} · ${table.length} rows`,
+            columns: [
+              { header: "Date", width: 62 },
+              { header: "Code", width: 52 },
+              { header: "Name", width: 130 },
+              { header: "Department", width: 92 },
+              { header: "Check in", width: 56 },
+              { header: "Check out", width: 56 },
+              { header: "Hours", width: 40, align: "right" },
+              { header: "Late (min)", width: 44, align: "right" },
+              { header: "Status", width: 48 },
+            ],
+            rows: table.map(cells),
+            totals: ["Total", "", `${people.length} people`, "", "", "", totalHours, "", ""],
+            orientation: "landscape",
+          }),
+          filename("attendance-log", "pdf"),
+          "application/pdf",
+        );
+      }
+
+      return fileResponse(
+        buildWorkbook([
+          {
+            name: "Check-in and check-out",
+            title,
+            subtitle: period,
+            columns: [
+              { header: "Date", width: 14, format: "text" },
+              { header: "Unique ID", width: 14, format: "text" },
+              { header: "Name", width: 26, format: "text" },
+              { header: "Department", width: 20, format: "text" },
+              { header: "Check in", width: 12, format: "text" },
+              { header: "Check out", width: 12, format: "text" },
+              { header: "Hours", width: 10, format: "hours" },
+              { header: "Late (min)", width: 11, format: "number" },
+              { header: "Status", width: 12, format: "text" },
+            ],
+            rows: table.map(cells),
+            totals: ["", "", `${people.length} people`, "", "", "", totalHours, "", ""],
+          },
+          {
+            name: "By date",
+            title: `${title} (in – out)`,
+            subtitle: period,
+            columns: [
+              { header: "Unique ID", width: 14, format: "text" },
+              { header: "Name", width: 26, format: "text" },
+              { header: "Department", width: 20, format: "text" },
+              ...dates.map((d) => ({
+                header: formatDate(d).slice(0, 6),
+                width: 15,
+                format: "text" as const,
+              })),
+            ],
+            rows: sorted.map((person) => [
+              person.employee_code,
+              person.full_name,
+              departmentOf(person.department_id),
+              ...dates.map((date) => {
+                const row = dayOf.get(`${person.id}|${date}`);
+                const a = row?.first_in ? formatTime(row.first_in) : "";
+                const b = row?.last_out ? formatTime(row.last_out) : "";
+                return a || b ? `${a || "?"} – ${b || "?"}` : "";
+              }),
+            ]),
+          },
+        ]),
+        filename("attendance-log", "xlsx"),
         XLSX,
       );
     }

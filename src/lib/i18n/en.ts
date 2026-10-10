@@ -863,6 +863,15 @@ const en = {
     flexibleNote: "No in or out time is enforced for this person, so they are never recorded late.",
     payslip: "Payslip",
     backToEveryone: "Back to everyone",
+    // The check-in / check-out download and the editable day-by-day view.
+    downloadLogTitle: "Download check-in and check-out log",
+    downloadLogHint:
+      "Pick any date range. Uses the person or departments chosen above; otherwise everyone.",
+    downloadLogLabel: "Check-in/out log",
+    viewSummary: "Summary",
+    viewDays: "Days — edit check-in / out",
+    daysCapped: "Showing the first {count} days. Narrow the dates or pick a department to see the rest.",
+    noDaysBetween: "No attendance recorded between these dates.",
     // The day table.
     clocked: "Clocked",
     duty: "Duty",

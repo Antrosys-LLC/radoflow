@@ -35,6 +35,7 @@ import { clockTime, formatHours, formatTime, todayInPakistan } from "@/lib/time"
 import { cn } from "@/lib/utils";
 
 import { ApproveRange } from "./approve-range";
+import { LogDownload } from "./log-download";
 
 export const metadata: Metadata = {
   title: { absolute: "Attendance Log | Rado Dyeing and Textile" },
@@ -145,6 +146,7 @@ export default async function AttendanceLogPage({
     person?: string;
     dept?: string | string[];
     q?: string;
+    view?: string;
   }>;
 }) {
   const session = await requireAnyPermission(["attendance.view", "attendance.view.all"]);
@@ -321,6 +323,12 @@ export default async function AttendanceLogPage({
    */
   const showsToday = to >= todayInPakistan();
 
+  const daysView = params.view === "days";
+  // The filters the toggle must carry across, so switching view keeps the cohort.
+  const viewQuery = new URLSearchParams({ from, to });
+  if (params.q) viewQuery.set("q", params.q);
+  for (const id of selectedDepts) viewQuery.append("dept", id);
+
   return (
     <div className="space-y-5 pb-6">
       {showsToday ? <AutoRefresh seconds={ATTENDANCE_REFRESH_SECONDS} /> : null}
@@ -340,7 +348,11 @@ export default async function AttendanceLogPage({
                   facts: { from, to, people: visible.length, days: days.length },
                 }}
               />
-              <ExportButtons kind="attendance" params={{ from, to, dept: selectedDepts[0] }} />
+              <ExportButtons
+                kind="attendance"
+                label={t.logs.viewSummary}
+                params={{ from, to, dept: selectedDepts.join(",") || undefined }}
+              />
               <Link
                 href="/attendance"
                 className="rounded-xl bg-secondary px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:text-primary"
@@ -354,6 +366,8 @@ export default async function AttendanceLogPage({
         {/* A plain GET form: the filters belong in the URL so a log can be
             linked to in a message about a disputed payslip. */}
         <form className="space-y-3">
+          {/* Pressing Show keeps the view that was open. */}
+          {params.view === "days" ? <input type="hidden" name="view" value="days" /> : null}
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_9rem_9rem_auto]">
             <label className="block">
               <span className="text-xs font-semibold text-muted-foreground">{t.common.person}</span>
@@ -470,7 +484,20 @@ export default async function AttendanceLogPage({
             </fieldset>
           ) : null}
         </form>
+
+        {/* Not offered to someone held to their own record: the export route
+            needs attendance.view.all and would refuse it. */}
+        {canSeeEveryone ? (
+          <LogDownload
+            defaultFrom={from}
+            defaultTo={to}
+            person={person?.id}
+            departments={selectedDepts}
+          />
+        ) : null}
       </Card>
+
+      {!person ? <ViewToggle t={t} current={daysView ? "days" : "summary"} query={viewQuery} /> : null}
 
       {person ? (
         <PersonLog
@@ -482,6 +509,16 @@ export default async function AttendanceLogPage({
           to={to}
           departmentName={person.department_id ? deptName.get(person.department_id) : undefined}
           canApprove={canApprove}
+          canCorrect={canCorrect}
+        />
+      ) : daysView ? (
+        <DaysView
+          t={t}
+          people={cohort}
+          days={days}
+          deptName={deptName}
+          from={from}
+          to={to}
           canCorrect={canCorrect}
         />
       ) : (
@@ -497,6 +534,180 @@ export default async function AttendanceLogPage({
         />
       )}
     </div>
+  );
+}
+
+/** Summary or day-by-day. Plain links: the choice belongs in the URL. */
+function ViewToggle({
+  t,
+  current,
+  query,
+}: {
+  t: Dictionary;
+  current: "summary" | "days";
+  query: URLSearchParams;
+}) {
+  const options = [
+    { view: "summary", label: t.logs.viewSummary },
+    { view: "days", label: t.logs.viewDays },
+  ] as const;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map(({ view, label }) => {
+        const next = new URLSearchParams(query);
+        if (view === "days") next.set("view", "days");
+        return (
+          <Link
+            key={view}
+            href={`/attendance/logs?${next.toString()}`}
+            className={cn(
+              "rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
+              current === view
+                ? "bg-charcoal text-charcoal-foreground"
+                : "bg-secondary text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The most day rows drawn at once; a month of the whole factory is thousands. */
+const DAYS_CAP = 300;
+
+/** Every stored day in scope, each with the control to correct its check-in / out. */
+function DaysView({
+  t,
+  people,
+  days,
+  deptName,
+  from,
+  to,
+  canCorrect,
+}: {
+  t: Dictionary;
+  people: { id: string; full_name: string; employee_code: string; department_id: string | null }[];
+  days: DayRow[];
+  deptName: Map<string, string>;
+  from: string;
+  to: string;
+  canCorrect: boolean;
+}) {
+  const byId = new Map(people.map((p) => [p.id, p]));
+  const rows = days
+    .filter((d) => byId.has(d.profile_id))
+    .sort((a, b) =>
+      a.work_date === b.work_date
+        ? byId.get(a.profile_id)!.full_name.localeCompare(byId.get(b.profile_id)!.full_name)
+        : a.work_date < b.work_date
+          ? 1
+          : -1,
+    );
+  const shown = rows.slice(0, DAYS_CAP);
+
+  return (
+    <>
+      <Card className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[44rem] text-sm">
+            <thead>
+              <tr className="border-b border-border text-start text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-4 py-3 font-semibold">{t.common.date}</th>
+                <th className="px-4 py-3 font-semibold">{t.common.person}</th>
+                <th className="px-4 py-3 font-semibold">{t.common.department}</th>
+                <th className="px-4 py-3 font-semibold">{t.common.checkedIn}</th>
+                <th className="px-4 py-3 font-semibold">{t.common.checkedOut}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.clocked}</th>
+                <th className="px-4 py-3 font-semibold">{t.common.status}</th>
+                {canCorrect ? <th className="px-4 py-3" /> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((row) => {
+                const person = byId.get(row.profile_id)!;
+                return (
+                  <tr key={row.id} className="border-b border-border/60 last:border-0">
+                    <td className="px-4 py-3 font-semibold">
+                      <Latin>{row.work_date}</Latin>
+                      {row.is_manual ? (
+                        <span className="ms-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
+                          {t.logs.edited}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/attendance/logs?person=${person.id}&from=${from}&to=${to}`}
+                        className="font-semibold text-foreground hover:text-primary"
+                      >
+                        <Latin>{person.full_name}</Latin>
+                      </Link>
+                      <span className="ms-2 text-xs text-muted-foreground">
+                        <Latin>{person.employee_code}</Latin>
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                      {person.department_id && deptName.get(person.department_id) ? (
+                        <Latin>{deptName.get(person.department_id)}</Latin>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-4 py-3 tabular-nums">
+                      {row.first_in ? <Latin>{formatTime(row.first_in)}</Latin> : "—"}
+                    </td>
+                    <td className="px-4 py-3 tabular-nums">
+                      {row.last_out ? <Latin>{formatTime(row.last_out)}</Latin> : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-end tabular-nums">
+                      <Latin>{formatHours(Number(row.regular_hours ?? 0))}</Latin>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                      {statusLabel(t, row.status)}
+                    </td>
+                    {canCorrect ? (
+                      <td className="px-4 py-3 text-end">
+                        <CorrectDayButton
+                          day={{
+                            id: row.id,
+                            profileId: row.profile_id,
+                            workDate: row.work_date,
+                            firstIn: clockTime(row.first_in),
+                            lastOut: clockTime(row.last_out),
+                            status: row.status ?? "present",
+                          }}
+                        />
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })}
+
+              {rows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={canCorrect ? 8 : 7}
+                    className="px-4 py-10 text-center text-sm text-muted-foreground"
+                  >
+                    {t.logs.noDaysBetween}
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {rows.length > DAYS_CAP ? (
+        <p className="px-1 text-xs text-muted-foreground">
+          <Fill template={t.logs.daysCapped} values={{ count: DAYS_CAP }} />
+        </p>
+      ) : null}
+    </>
   );
 }
 

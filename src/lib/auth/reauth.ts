@@ -48,7 +48,21 @@ export async function verifyOwnPassword(userId: string, password: string): Promi
   });
 
   const { error } = await throwaway.auth.signInWithPassword({ email, password: typed });
-  if (error) return { ok: false, message: "That password is not right." };
+  if (error) {
+    /*
+     * Only a wrong password is called one. Every other refusal — too many
+     * attempts, an address that was never confirmed, the auth server being
+     * unreachable — used to read "that password is not right" too, which sent
+     * people round in circles retyping a password that was fine.
+     */
+    if (error.code === "invalid_credentials" || error.status === 400) {
+      return {
+        ok: false,
+        message: `That is not the password for ${email}. It must be your own sign-in password, not the new one.`,
+      };
+    }
+    return { ok: false, message: `Could not check your password: ${error.message}` };
+  }
 
   /*
    * Discarded immediately. The sign-in existed to answer one question, and

@@ -324,7 +324,7 @@ export async function setUserOverride(
   permissionId: string,
   effect: "grant" | "deny" | "clear",
 ): Promise<UserResult> {
-  await requirePermission("access.manage");
+  const session = await requirePermission("access.manage");
 
   const supabase = await createClient();
 
@@ -336,12 +336,29 @@ export async function setUserOverride(
       .eq("permission_id", permissionId);
     if (error) return { ok: false, message: error.message };
   } else {
-    const { error } = await supabase
+    /*
+     * Replace, not upsert.
+     *
+     * The table is unique on (user, permission, coalesce(site, zero-uuid)) — an
+     * expression index, because a plain unique treats two NULL sites as
+     * different. PostgREST's on_conflict can only name columns, so it cannot
+     * target that index and every save failed with "no unique or exclusion
+     * constraint matching the ON CONFLICT specification".
+     */
+    const { error: removeError } = await supabase
       .from("user_permission_overrides")
-      .upsert(
-        { user_id: userId, permission_id: permissionId, effect },
-        { onConflict: "user_id,permission_id,site_id" },
-      );
+      .delete()
+      .eq("user_id", userId)
+      .eq("permission_id", permissionId)
+      .is("site_id", null);
+    if (removeError) return { ok: false, message: removeError.message };
+
+    const { error } = await supabase.from("user_permission_overrides").insert({
+      user_id: userId,
+      permission_id: permissionId,
+      effect,
+      granted_by: session.userId,
+    });
     if (error) return { ok: false, message: error.message };
   }
 

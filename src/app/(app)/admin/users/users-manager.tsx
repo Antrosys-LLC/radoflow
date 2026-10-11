@@ -126,7 +126,10 @@ export function UsersManager({
 }) {
   const t = useDictionary();
   const [showAdd, setShowAdd] = useState(false);
-  const [tuning, setTuning] = useState<UserRow | null>(null);
+  // The id, not the row: a row copied here goes stale the moment the list
+  // refreshes, and the access dialog would show the old settings until reopened.
+  const [tuningId, setTuningId] = useState<string | null>(null);
+  const tuning = tuningId ? (users.find((u) => u.id === tuningId) ?? null) : null;
   const [paying, setPaying] = useState<UserRow | null>(null);
   const [editing, setEditing] = useState<UserRow | null>(null);
 
@@ -263,7 +266,7 @@ export function UsersManager({
               canManageAccess={canManageAccess}
               selected={selected.has(user.id)}
               onSelect={() => toggleSelected(user.id)}
-              onTune={() => setTuning(user)}
+              onTune={() => setTuningId(user.id)}
               onPay={() => setPaying(user)}
               onEdit={() => setEditing(user)}
             />
@@ -317,7 +320,7 @@ export function UsersManager({
       ) : null}
 
       {tuning ? (
-        <AccessDialog user={tuning} permissions={permissions} onClose={() => setTuning(null)} />
+        <AccessDialog user={tuning} permissions={permissions} onClose={() => setTuningId(null)} />
       ) : null}
 
       {paying ? <PayDialog user={paying} onClose={() => setPaying(null)} /> : null}
@@ -1123,13 +1126,33 @@ function AccessDialog({
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
+  /*
+   * What was just clicked, shown at once.
+   *
+   * The server value arrives with the refresh that follows the save, a round
+   * trip later; until then the buttons would not move and a click would look
+   * like it did nothing. An entry here wins over the stored value and is
+   * dropped if the save is refused.
+   */
+  const [chosen, setChosen] = useState<Record<string, string>>({});
+
   const effectFor = (permissionId: string) =>
-    user.overrides.find((o) => o.permissionId === permissionId)?.effect ?? "role";
+    chosen[permissionId] ??
+    user.overrides.find((o) => o.permissionId === permissionId)?.effect ??
+    "role";
 
   function set(permissionId: string, effect: "grant" | "deny" | "clear") {
+    setChosen((was) => ({ ...was, [permissionId]: effect === "clear" ? "role" : effect }));
+
     startTransition(async () => {
       const result = await setUserOverride(user.id, permissionId, effect);
-      if (!result.ok) toast.error(result.message);
+      if (!result.ok) {
+        toast.error(result.message);
+        setChosen((was) => {
+          const { [permissionId]: _dropped, ...rest } = was;
+          return rest;
+        });
+      }
       router.refresh();
     });
   }

@@ -138,13 +138,20 @@ two on their own. Rules worth knowing before touching that path:
   in `roster-plan.ts` catches it on every upload, `app.restore_administrators`
   at the end of a merge catches a box that is not going to upload. A terminal
   left with no administrator opens its menu to whoever presses the button.
-- **The kitchen receives and never sends** (`devices.sync_role = 'receive_only'`,
-  migration `20260923090000`). The gates are peers; the kitchen is sent
-  everything they hold and nothing on it is ever merged, relayed, fanned out or
-  deleted elsewhere. Its inventory still counts, so it is only sent its gaps.
-  Enforced in `reconcile_rosters` (peers are the only donors),
-  `app.fan_out_person`, `fan_out_removal_from_device` and
-  `planRosterUpload`'s `sourceReceivesOnly`.
+- **The kitchen is a peer again** (`devices.sync_role = 'peer'`, migration
+  `20261011090000`). It was receive-only from `20260923090000` so its long
+  tail of people would not be copied to the gates; the office wanted people
+  enrolled there to reach the gates, so it now sends as well as receives. The
+  mechanism is still there: set a terminal to `receive_only` and it is sent
+  everything the peers hold while nothing on it is merged, relayed, fanned out
+  or deleted elsewhere (`reconcile_rosters`, `app.fan_out_person`,
+  `fan_out_removal_from_device`, `planRosterUpload`'s `sourceReceivesOnly`).
+  Note what peer means for DELETE: removing someone on the kitchen counter
+  removes them from the gates too.
+- **A person on a terminal but not in RadoFlow can't be counted.** Their scans
+  come back as an unknown person. `scripts/add-people-from-terminal.mjs`
+  makes a profile for each (PIN = enrolment number); thousands-range PINs are
+  skipped because the factory renumbered those to their last three digits.
 - **An edit made on a gate reaches the others** (`app.propagate_roster_edits`,
   migration `20260924090000`). "Only sent what it lacks" governs slots a
   terminal has never held; it does not freeze a record that was edited. A roster

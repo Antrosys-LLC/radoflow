@@ -1,0 +1,21 @@
+-- ============================================================================
+-- The kitchen sends as well as receives.
+--
+-- 20260923090000 made the kitchen receive-only so that its long tail of people
+-- would not be copied to the gates. The office now wants it the other way: the
+-- kitchen is where some people are first enrolled, and they need to reach the
+-- gates and RadoFlow without being re-keyed by hand.
+--
+-- A canteen terminal becomes a peer again:
+--
+--   - a person or finger enrolled on it is stored centrally and queued to the
+--     other terminals (`app.fan_out_person`);
+--   - strangers on its roster uploads are relayed (user-sync.ts);
+--   - the merge treats it as a donor;
+--   - DELETE pressed on it is fanned out to the others, like on a gate.
+--
+-- Reverting is one statement:
+--   update public.devices set sync_role = 'receive_only' where purpose = 'canteen';
+-- ============================================================================
+
+update public.devices set sync_role = 'peer' where purpose = 'canteen';

@@ -291,7 +291,7 @@ function WindowDialog({
   }, [state, router]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-3 backdrop-blur-sm sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-3 sm:items-center">
       <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-card p-6 shadow-[0_18px_40px_rgb(0_0_0/0.18)]">
         <div className="flex items-start justify-between">
           <div>

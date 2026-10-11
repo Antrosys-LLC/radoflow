@@ -95,7 +95,7 @@ export function MobileNav({
   const items = sections.flatMap((s) => s.items).slice(0, 5);
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 px-2 py-2 backdrop-blur lg:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 px-2 py-2 lg:hidden">
       <div className="flex items-stretch justify-around gap-1">
         {items.map((item) => {
           const active = isActive(pathname, item.href);

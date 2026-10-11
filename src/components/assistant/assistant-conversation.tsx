@@ -468,7 +468,7 @@ export function AssistantConversation({
       </form>
 
       {pendingTranscript !== null ? (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-charcoal/40 p-3 backdrop-blur-sm sm:items-center">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-charcoal/40 p-3 sm:items-center">
           <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-[0_18px_40px_rgb(0_0_0/0.18)]">
             <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
               {t.ask.heard}

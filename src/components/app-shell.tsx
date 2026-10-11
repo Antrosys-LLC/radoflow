@@ -46,7 +46,7 @@ export function AppShell({
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-30 px-3 pt-3 sm:px-5 sm:pt-5">
-        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-3 rounded-3xl border border-border bg-card/90 p-3 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_rgb(0_0_0/0.05)] backdrop-blur">
+        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-3 rounded-3xl border border-border bg-card p-3 shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_rgb(0_0_0/0.05)]">
           {/* The mark and the name link home; the vendor's name links to the
               vendor. Nested anchors are invalid, so the two are siblings
               rather than one wrapping the other. */}

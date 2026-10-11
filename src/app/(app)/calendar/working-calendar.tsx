@@ -466,7 +466,7 @@ function ExceptionDialog({
   }, [state]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-0 sm:items-center sm:p-4">
       <div className="max-h-[90vh] w-full overflow-y-auto rounded-t-3xl border border-border bg-card p-5 shadow-[0_24px_60px_rgb(0_0_0/0.25)] sm:max-w-lg sm:rounded-3xl">
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-base font-bold text-foreground">

@@ -99,7 +99,7 @@ export function AskAbout({
             type="button"
             aria-label={t.common.close}
             onClick={() => setOpen(false)}
-            className="fixed inset-0 z-40 cursor-default bg-charcoal/20 backdrop-blur-[1px]"
+            className="fixed inset-0 z-40 cursor-default bg-charcoal/20"
           />
 
           <div

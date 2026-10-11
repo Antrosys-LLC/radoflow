@@ -235,7 +235,7 @@ export default function HomePage() {
         Skip to capabilities
       </a>
 
-      <header className="sticky top-0 z-40 border-b border-[var(--rule)] bg-[var(--bone)]/95 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-[var(--rule)] bg-[var(--bone)]/95">
         <nav
           className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3 sm:px-6"
           aria-label="Main"

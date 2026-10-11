@@ -753,7 +753,7 @@ function NewPeriodDialog({
     "mt-1 w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-3 backdrop-blur-sm sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-3 sm:items-center">
       <div className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-[0_18px_40px_rgb(0_0_0/0.18)]">
         <div className="flex items-start justify-between">
           <h2 className="text-lg font-bold tracking-tight text-foreground">
@@ -830,7 +830,7 @@ function PayslipSheet({
   const deductions = item.breakdown.filter((l) => l.kind === "deduction" || l.kind === "tax");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-3 backdrop-blur-sm sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-3 sm:items-center">
       <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-card p-6 shadow-[0_18px_40px_rgb(0_0_0/0.18)]">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">

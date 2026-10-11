@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useActionState, useDeferredValue, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { Banknote, KeyRound, Pencil, Plus, Search, Trash2, UserPlus, X } from "lucide-react";
@@ -145,12 +145,15 @@ export function UsersManager({
     });
   }
 
+  // The box stays responsive; the four hundred cards catch up behind it.
+  const deferredQuery = useDeferredValue(query);
+
   const shown = users.filter((user) => {
     if (roleFilter && user.roleId !== roleFilter) return false;
     if (statusFilter === "active" && user.status !== "active") return false;
     if (statusFilter === "suspended" && user.status === "active") return false;
     if (statusFilter === "no-cnic" && user.cnic) return false;
-    return matchesPerson(user, query);
+    return matchesPerson(user, deferredQuery);
   });
 
   // Only what is on screen can be selected in one go — "select all" over a

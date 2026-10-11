@@ -69,6 +69,23 @@ export function AutoRefresh({ seconds = ATTENDANCE_REFRESH_SECONDS }: { seconds?
        */
       if (busy.current) return;
 
+      /*
+       * Never while somebody is typing.
+       *
+       * A refresh re-renders the whole server tree, and on a long register
+       * that is long enough to freeze the main thread — the letters being
+       * typed show up late, in a burst. The data is at most one interval
+       * stale; the next tick, after they click away, catches it up.
+       */
+      const focused = document.activeElement;
+      if (
+        focused instanceof HTMLInputElement ||
+        focused instanceof HTMLTextAreaElement ||
+        focused instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+
       startTransition(() => {
         router.refresh();
       });

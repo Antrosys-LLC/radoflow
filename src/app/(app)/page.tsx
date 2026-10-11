@@ -64,6 +64,58 @@ export default async function DashboardPage() {
   const today = todayInPakistan(now);
   const yesterday = previousDay(today);
 
+  const monthStart = today.slice(0, 7) + "-01";
+  const canSeeEveryone = session.isSuperuser || session.permissions.has("attendance.view.all");
+
+  /*
+   * Started here, awaited where the chart needs it.
+   *
+   * The month's hours and the shift list do not depend on anything the first
+   * batch below returns, but they used to wait for it — and for each other —
+   * so the dashboard paid for four round trips in a row. Run together, it pays
+   * for the slowest.
+   */
+  const monthPromise = (async () => {
+    const staffQuery = supabase
+      .from("profiles")
+      .select("id, duty_hours, overtime_eligible, sunday_policy")
+      .eq("status", "active");
+
+    const { data: chartPeople } = canSeeEveryone
+      ? await staffQuery
+      : await staffQuery.eq("id", session.userId);
+
+    const monthDays = await selectInBatches(
+      (chartPeople ?? []).map((p) => p.id),
+      (ids) =>
+        supabase
+          .from("attendance_days")
+          .select("profile_id, work_date, day_type, regular_hours, status, hours_are_final")
+          .in("profile_id", ids)
+          .gte("work_date", monthStart)
+          .lte("work_date", today),
+      `Could not read attendance for ${monthStart} to ${today}`,
+    );
+
+    return { chartPeople, monthDays };
+  })();
+  const shiftsPromise = Promise.all([
+    supabase
+      .from("shifts")
+      .select("id, code, name, starts_at, ends_at, overtime_until, grace_minutes, is_active")
+      .eq("is_active", true)
+      .order("sort_order"),
+    supabase
+      .from("profiles")
+      .select("shift_id, flexible_hours")
+      .eq("id", session.userId)
+      .maybeSingle(),
+  ]);
+
+  // If the first batch throws, nobody awaits these; don't let that be unhandled.
+  monthPromise.catch(() => undefined);
+  shiftsPromise.catch(() => undefined);
+
   const [liveResult, meResult, payrollResult, devicesResult, deptResult] = await Promise.all([
     seesFloor ? supabase.from("live_attendance").select("*") : Promise.resolve({ data: null }),
     // Yesterday too: after midnight a night worker's own day is still last night.
@@ -117,31 +169,7 @@ export default async function DashboardPage() {
    * screen and the payroll run cannot tell three different stories about the
    * same month.
    */
-  const monthStart = today.slice(0, 7) + "-01";
-  const canSeeEveryone = session.isSuperuser || session.permissions.has("attendance.view.all");
-
-  const staffQuery = supabase
-    .from("profiles")
-    .select("id, duty_hours, overtime_eligible, sunday_policy")
-    .eq("status", "active");
-
-  const { data: chartPeople } = canSeeEveryone
-    ? await staffQuery
-    : await staffQuery.eq("id", session.userId);
-
-  const chartIds = (chartPeople ?? []).map((p) => p.id);
-
-  const monthDays = await selectInBatches(
-    chartIds,
-    (ids) =>
-      supabase
-        .from("attendance_days")
-        .select("profile_id, work_date, day_type, regular_hours, status, hours_are_final")
-        .in("profile_id", ids)
-        .gte("work_date", monthStart)
-        .lte("work_date", today),
-    `Could not read attendance for ${monthStart} to ${today}`,
-  );
+  const { chartPeople, monthDays } = await monthPromise;
 
   const monthByPerson = new Map<string, AttendanceDay[]>();
   for (const row of monthDays ?? []) {
@@ -177,18 +205,7 @@ export default async function DashboardPage() {
    * yesterday. Someone with no fixed time is counted on the shift but never
    * late — that is what "no fixed time" means.
    */
-  const [{ data: shiftRows }, { data: mine }] = await Promise.all([
-    supabase
-      .from("shifts")
-      .select("id, code, name, starts_at, ends_at, overtime_until, grace_minutes, is_active")
-      .eq("is_active", true)
-      .order("sort_order"),
-    supabase
-      .from("profiles")
-      .select("shift_id, flexible_hours")
-      .eq("id", session.userId)
-      .maybeSingle(),
-  ]);
+  const [{ data: shiftRows }, { data: mine }] = await shiftsPromise;
 
   const shifts: ShiftClock[] = (shiftRows ?? []).map((row) => ({
     id: row.id,

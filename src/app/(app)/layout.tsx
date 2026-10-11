@@ -24,20 +24,24 @@ export const dynamic = "force-dynamic";
  * can never render a page with an empty shell.
  */
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const [session, store] = await Promise.all([requireSession(), cookies()]);
-
   /*
-   * Requests waiting on this person, for the badge.
+   * The approvals badge is asked for alongside the session, not after it.
    *
-   * A `head` count rather than a read: the number is all the menu needs, and
-   * this runs on every navigation. The row policy already limits it to what
-   * they may see, so an ordinary employee counts nothing.
+   * The count needs only the cookie, which the client reads itself, and the row
+   * policy limits it to what this person may see. Waiting for the session first
+   * put a whole round trip to the database in front of every page. If there is
+   * no session, requireSession() redirects and the count is simply discarded.
    */
   const supabase = await createClient();
-  const { count: pendingApprovals } = await supabase
-    .from("change_requests")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "pending");
+  const [session, store, pending] = await Promise.all([
+    requireSession(),
+    cookies(),
+    supabase
+      .from("change_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending"),
+  ]);
+  const pendingApprovals = pending.count;
   const theme = resolveThemeChoice(store.get(THEME_COOKIE)?.value);
 
   /*

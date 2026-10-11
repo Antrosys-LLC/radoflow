@@ -870,7 +870,8 @@ const en = {
     downloadLogLabel: "Check-in/out log",
     viewSummary: "Summary",
     viewDays: "Days — edit check-in / out",
-    daysCapped: "Showing the first {count} days. Narrow the dates or pick a department to see the rest.",
+    daysCapped:
+      "Showing the first {count} days. Narrow the dates or pick a department to see the rest.",
     noDaysBetween: "No attendance recorded between these dates.",
     // The day table.
     clocked: "Clocked",
@@ -1691,6 +1692,7 @@ const en = {
     // Selecting people, and changing them together.
     selectPerson: "Select {name}",
     selectAllShown: "Select all shown",
+    showMore: "Show {count} more ({left} not shown)",
     selectedCount: "{count} selected",
     bulkAction: "What to change",
     bulkValue: "Change it to",

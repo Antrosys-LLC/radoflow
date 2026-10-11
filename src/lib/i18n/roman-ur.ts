@@ -777,7 +777,8 @@ const roman: Dictionary = {
     downloadLogLabel: "Check-in/out record",
     viewSummary: "Khulasa",
     viewDays: "Din — check-in / out theek karein",
-    daysCapped: "Pehle {count} din dikhaye ja rahe hain. Baqi dekhne ke liye tareekhein ya shobe kam karein.",
+    daysCapped:
+      "Pehle {count} din dikhaye ja rahe hain. Baqi dekhne ke liye tareekhein ya shobe kam karein.",
     noDaysBetween: "In tareekhon ke darmiyan koi haazri darj nahi.",
     clocked: "Lage ghante",
     duty: "Duty",
@@ -1297,6 +1298,7 @@ const roman: Dictionary = {
     customAccessCount: "{count} khusoosi rasai ki tabdeeliyan",
     selectPerson: "{name} ko muntakhib karein",
     selectAllShown: "Sab muntakhib karein",
+    showMore: "{count} aur dikhayein ({left} baqi)",
     selectedCount: "{count} muntakhib",
     bulkAction: "Kya tabdeel karna hai",
     bulkValue: "Kis mein tabdeel karein",

@@ -497,7 +497,9 @@ export default async function AttendanceLogPage({
         ) : null}
       </Card>
 
-      {!person ? <ViewToggle t={t} current={daysView ? "days" : "summary"} query={viewQuery} /> : null}
+      {!person ? (
+        <ViewToggle t={t} current={daysView ? "days" : "summary"} query={viewQuery} />
+      ) : null}
 
       {person ? (
         <PersonLog

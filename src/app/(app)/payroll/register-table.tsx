@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { Children, useMemo, useState, type ReactNode } from "react";
 import { ChevronDown, Sheet } from "lucide-react";
 
 import { ExportButtons } from "@/components/export-buttons";
@@ -62,6 +62,29 @@ function Figures({ totals, withOther }: { totals: RegisterTotals; withOther: boo
   );
 }
 
+/**
+ * A collapsible section that builds its body only once opened.
+ *
+ * A native <details> keeps its collapsed content in the page, so a register of
+ * five hundred people was thirty thousand elements for the browser to hydrate
+ * before any button on the screen would respond. The first child is the
+ * always-visible <summary>; the rest is drawn on demand.
+ */
+function LazyDetails({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [summary, ...body] = Children.toArray(children);
+
+  return (
+    <details
+      className="group rounded-2xl bg-secondary"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      {summary}
+      {open ? body : null}
+    </details>
+  );
+}
+
 export function RegisterTable({ items, periodId }: { items: RegisterItem[]; periodId: string }) {
   const t = useDictionary();
 
@@ -104,7 +127,7 @@ export function RegisterTable({ items, periodId }: { items: RegisterItem[]; peri
 
       <div className="space-y-2">
         {groups.map((group) => (
-          <details key={group.department} className="group rounded-2xl bg-secondary">
+          <LazyDetails key={group.department}>
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
               <span className="text-sm font-bold text-foreground">
                 <Latin>{`${group.department} · ${group.rows.length}`}</Latin>
@@ -160,7 +183,7 @@ export function RegisterTable({ items, periodId }: { items: RegisterItem[]; peri
                 </tbody>
               </table>
             </div>
-          </details>
+          </LazyDetails>
         ))}
       </div>
 

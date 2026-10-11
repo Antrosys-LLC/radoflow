@@ -1269,6 +1269,7 @@ const ur: Dictionary = {
     customAccessCount: "{count} خصوصی رسائی کی تبدیلیاں",
     selectPerson: "{name} کو منتخب کریں",
     selectAllShown: "سب منتخب کریں",
+    showMore: "{count} مزید دکھائیں ({left} باقی)",
     selectedCount: "{count} منتخب",
     bulkAction: "کیا تبدیل کرنا ہے",
     bulkValue: "کس میں تبدیل کریں",

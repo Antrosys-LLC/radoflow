@@ -101,6 +101,9 @@ const STATUS_TONE: Record<string, string> = {
   paid: "bg-success-soft text-success",
 };
 
+/** Payroll rows drawn before "Show more". */
+const ROW_PAGE = 60;
+
 export function PayrollClient({
   periods,
   items,
@@ -119,6 +122,8 @@ export function PayrollClient({
   const [pending, startTransition] = useTransition();
   const [showNew, setShowNew] = useState(false);
   const [slip, setSlip] = useState<ItemRow | null>(null);
+  // Rows drawn so far; every row is a dozen controls to hydrate.
+  const [rowLimit, setRowLimit] = useState(ROW_PAGE);
 
   const selected = periods.find((p) => p.id === selectedId) ?? null;
 
@@ -355,7 +360,7 @@ export function PayrollClient({
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item) => (
+                    {items.slice(0, rowLimit).map((item) => (
                       <tr key={item.id} className="bg-secondary/70">
                         <td className="rounded-l-2xl px-4 py-3">
                           <div className="flex items-center gap-3">
@@ -435,6 +440,21 @@ export function PayrollClient({
                     ))}
                   </tbody>
                 </table>
+                {items.length > rowLimit ? (
+                  <button
+                    type="button"
+                    onClick={() => setRowLimit((was) => was + ROW_PAGE)}
+                    className="mt-2 w-full rounded-2xl bg-secondary px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:text-primary"
+                  >
+                    <Fill
+                      template={t.users.showMore}
+                      values={{
+                        count: Math.min(ROW_PAGE, items.length - rowLimit),
+                        left: items.length - rowLimit,
+                      }}
+                    />
+                  </button>
+                ) : null}
               </div>
             )}
           </Card>

@@ -1,6 +1,13 @@
 "use client";
 
-import { useActionState, useDeferredValue, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useActionState,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { Banknote, KeyRound, Pencil, Plus, Search, Trash2, UserPlus, X } from "lucide-react";
@@ -97,6 +104,9 @@ export interface PermissionOption {
   label: string;
 }
 
+/** How many people are drawn before "Show more". */
+const PAGE_SIZE = 50;
+
 export function UsersManager({
   users,
   roles,
@@ -128,6 +138,9 @@ export function UsersManager({
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  // Cards drawn so far. 560 of them is ~30,000 page elements, and until React
+  // has hydrated every one the buttons do nothing — typing and clicks stall.
+  const [limit, setLimit] = useState(PAGE_SIZE);
 
   /*
    * Held as a set of ids rather than a flag on each row: the list is filtered
@@ -158,7 +171,8 @@ export function UsersManager({
 
   // Only what is on screen can be selected in one go — "select all" over a
   // hidden remainder is how the wrong forty people get suspended.
-  const allShownSelected = shown.length > 0 && shown.every((user) => selected.has(user.id));
+  const visible = shown.slice(0, limit);
+  const allShownSelected = visible.length > 0 && visible.every((user) => selected.has(user.id));
 
   return (
     <div className="space-y-5">
@@ -232,7 +246,7 @@ export function UsersManager({
               type="checkbox"
               checked={allShownSelected}
               onChange={() =>
-                setSelected(allShownSelected ? new Set() : new Set(shown.map((u) => u.id)))
+                setSelected(allShownSelected ? new Set() : new Set(visible.map((u) => u.id)))
               }
               className="size-4 rounded border-input"
             />
@@ -241,7 +255,7 @@ export function UsersManager({
         </div>
 
         <div className="grid gap-2 lg:grid-cols-2">
-          {shown.map((user) => (
+          {visible.map((user) => (
             <UserCard
               key={user.id}
               user={user}
@@ -255,6 +269,22 @@ export function UsersManager({
             />
           ))}
         </div>
+
+        {shown.length > limit ? (
+          <button
+            type="button"
+            onClick={() => setLimit((was) => was + PAGE_SIZE)}
+            className="mt-3 w-full rounded-2xl bg-secondary px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:text-primary"
+          >
+            <Fill
+              template={t.users.showMore}
+              values={{
+                count: Math.min(PAGE_SIZE, shown.length - limit),
+                left: shown.length - limit,
+              }}
+            />
+          </button>
+        ) : null}
 
         {shown.length === 0 ? (
           <p className="rounded-2xl bg-secondary px-4 py-8 text-center text-sm text-muted-foreground">

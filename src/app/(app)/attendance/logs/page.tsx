@@ -493,6 +493,7 @@ export default async function AttendanceLogPage({
             defaultTo={to}
             person={person?.id}
             departments={selectedDepts}
+            allDepartments={departments ?? []}
           />
         ) : null}
       </Card>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { splitIntoSessions } from "./sessions";
+import { splitByDeclaredDirection, splitIntoSessions } from "./sessions";
 
 /** A punch on 14 August 2026 at the given wall-clock time. */
 function at(hour: number, minute = 0, day = 14) {
@@ -81,5 +81,50 @@ describe("splitIntoSessions", () => {
     expect(split.workedHours).toBe(0);
     expect(split.breakMinutes).toBe(0);
     expect(split.hasOpenSession).toBe(false);
+  });
+});
+
+describe("splitByDeclaredDirection", () => {
+  const t = (hhmm: string) => new Date(`2026-10-17T${hhmm}:00+05:00`);
+  const punch = (hhmm: string, direction: "in" | "out") => ({ punchedAt: t(hhmm), direction });
+
+  it("pairs a clean day", () => {
+    const split = splitByDeclaredDirection([punch("08:00", "in"), punch("16:00", "out")]);
+    expect(split.workedHours).toBe(8);
+    expect(split.hasOpenSession).toBe(false);
+  });
+
+  it("is not thrown by a check-in scanned twice", () => {
+    // By position this reads in-out-in and leaves the man 'working' all night.
+    const split = splitByDeclaredDirection([
+      punch("08:00", "in"),
+      punch("08:01", "in"),
+      punch("16:00", "out"),
+    ]);
+    expect(split.workedHours).toBe(8);
+    expect(split.hasOpenSession).toBe(false);
+  });
+
+  it("ignores a check-out with nothing open", () => {
+    const split = splitByDeclaredDirection([punch("05:16", "out")]);
+    expect(split.sessions).toEqual([]);
+    expect(split.strayOuts).toBe(1);
+  });
+
+  it("keeps a lunch break as a break", () => {
+    const split = splitByDeclaredDirection([
+      punch("08:00", "in"),
+      punch("12:00", "out"),
+      punch("13:00", "in"),
+      punch("17:00", "out"),
+    ]);
+    expect(split.workedHours).toBe(8);
+    expect(split.breakMinutes).toBe(60);
+  });
+
+  it("leaves the check-in open when the out is beyond the window", () => {
+    const split = splitByDeclaredDirection([punch("04:00", "in"), punch("20:00", "out")], 12);
+    expect(split.hasOpenSession).toBe(true);
+    expect(split.strayOuts).toBe(1);
   });
 });

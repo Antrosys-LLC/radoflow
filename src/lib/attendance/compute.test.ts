@@ -264,3 +264,46 @@ describe("how long one stretch of attendance can be", () => {
     expect(day.anomaly).toBe("Missing clock-out");
   });
 });
+
+describe("a day paired by the gates", () => {
+  const gate = (iso: string, direction: "in" | "out") => ({
+    punchedAt: new Date(`${iso}+05:00`),
+    direction,
+    declared: true,
+  });
+
+  it("is closed by the check-out gate even after a double scan on the way in", () => {
+    const day = computeDayFromPunches(
+      [
+        gate("2026-10-17T08:00:00", "in"),
+        gate("2026-10-17T08:00:40", "in"),
+        gate("2026-10-17T16:05:00", "out"),
+      ],
+      "workday",
+    );
+    expect(day.lastOut).not.toBeNull();
+    expect(day.anomaly).toBeNull();
+  });
+
+  it("is not a day at all when it holds only a check-out", () => {
+    const day = computeDayFromPunches([gate("2026-10-18T05:16:37", "out")], "workday");
+    expect(day.firstIn).toBeNull();
+    expect(day.lastOut).toBeNull();
+  });
+});
+
+describe("a night the roster still calls a day", () => {
+  it("is one night, not an arrival with no departure", () => {
+    const day = computeDayFromPunches(
+      [
+        { punchedAt: new Date("2026-10-13T19:52:22+05:00"), direction: "in", declared: true },
+        { punchedAt: new Date("2026-10-14T07:53:30+05:00"), direction: "out", declared: true },
+      ],
+      "workday",
+      { sessionWindowHours: 12 },
+    );
+    expect(day.lastOut).not.toBeNull();
+    expect(day.hoursWorked).toBeGreaterThan(12);
+    expect(day.anomaly).toBeNull();
+  });
+});

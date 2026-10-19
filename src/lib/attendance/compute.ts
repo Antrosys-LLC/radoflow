@@ -1,4 +1,5 @@
-import { splitIntoSessions } from "./sessions";
+import { CHECK_OUT_WINDOW_HOURS } from "./check-out-dates";
+import { splitByDeclaredDirection, splitIntoSessions } from "./sessions";
 import { round2 } from "@/lib/payroll/hours";
 import type { AttendanceStatus, DayType } from "@/lib/payroll/types";
 
@@ -15,6 +16,12 @@ import type { AttendanceStatus, DayType } from "@/lib/payroll/types";
 export interface RawPunch {
   punchedAt: Date;
   direction: "in" | "out" | "unknown";
+  /**
+   * The direction was fixed by the terminal's place on the wall, not inferred.
+   * When every punch of a day is declared, the gates pair them; otherwise the
+   * day is paired by position.
+   */
+  declared?: boolean;
 }
 
 export interface ComputedDay {
@@ -103,7 +110,25 @@ export function computeDayFromPunches(
     };
   }
 
-  const split = splitIntoSessions(punches, options.sessionWindowHours);
+  const allDeclared = punches.every((p) => p.declared && p.direction !== "unknown");
+  const split = allDeclared
+    ? splitByDeclaredDirection(
+        punches.map((p) => ({ punchedAt: p.punchedAt, direction: p.direction as "in" | "out" })),
+        // The gates say which scans are departures, so the window no longer
+        // has to tell a night at home from a lunch break. It only has to be
+        // as long as the longest real stretch — and a night worker the roster
+        // still has on days is on a twelve-hour shift with a longer night.
+        Math.max(options.sessionWindowHours ?? 0, CHECK_OUT_WINDOW_HOURS),
+      )
+    : splitIntoSessions(punches, options.sessionWindowHours);
+
+  if (split.sessions.length === 0) {
+    // Nothing but check-outs. They close a check-in that belongs to another
+    // day; on their own they are not an arrival.
+    const empty = computeDayFromPunches([], dayType, options);
+    return { ...empty, anomaly: "Check-out with no check-in", directions: split.directions };
+  }
+
   const first = split.sessions[0]!;
   const lastSession = split.sessions[split.sessions.length - 1]!;
 

@@ -49,6 +49,87 @@ const EMPTY: SessionSplit = {
   hasOpenSession: false,
 };
 
+export interface DeclaredPunch extends TimedPunch {
+  direction: "in" | "out";
+}
+
+export interface DeclaredSplit extends SessionSplit {
+  /** Check-outs with no check-in before them: they close nothing. */
+  strayOuts: number;
+}
+
+/**
+ * Pairing for punches whose direction was declared by the terminal they came
+ * from — the check-in gate and the check-out gate.
+ *
+ * `splitIntoSessions` pairs by position: first punch in, second out, third in.
+ * That is the right guess for a terminal with no in/out keys, and the wrong
+ * one for two gates, because one extra scan flips every pairing after it. Two
+ * taps on the way in read in-out; the real check-out then reads as a fresh
+ * check-in, and a man who went home at four is "working" until midnight.
+ *
+ * Here the gate decides. A second check-in while one is open is the same
+ * arrival scanned twice and is ignored; a check-out closes the open check-in;
+ * a check-out with nothing open closes nothing and never starts a day. A
+ * check-out further than the window from the check-in is not the end of that
+ * stretch — the check-in stays open, a missed check-out, and the out is stray.
+ */
+export function splitByDeclaredDirection(
+  punches: readonly DeclaredPunch[],
+  windowHours = 12,
+): DeclaredSplit {
+  const ordered = punches.slice().sort((a, b) => a.punchedAt.getTime() - b.punchedAt.getTime());
+  const windowMs = windowHours * HOUR_MS;
+
+  const sessions: PunchSession[] = [];
+  const directions: ("in" | "out")[] = [];
+  let open: Date | null = null;
+  let blockStart: Date | null = null;
+  let previousOut: Date | null = null;
+  let workedMs = 0;
+  let breakMs = 0;
+  let strayOuts = 0;
+
+  for (const punch of ordered) {
+    const at = punch.punchedAt;
+    directions.push(punch.direction);
+
+    if (open && at.getTime() - open.getTime() > windowMs) {
+      // Whatever this is, it is not the end of a stretch that began that long ago.
+      sessions.push({ in: open, out: null });
+      open = null;
+      previousOut = null;
+    }
+
+    if (punch.direction === "in") {
+      if (open) continue;
+      if (!blockStart || at.getTime() - blockStart.getTime() > windowMs) {
+        blockStart = at;
+        previousOut = null;
+      }
+      if (previousOut) breakMs += at.getTime() - previousOut.getTime();
+      open = at;
+    } else if (open) {
+      sessions.push({ in: open, out: at });
+      workedMs += at.getTime() - open.getTime();
+      previousOut = at;
+      open = null;
+    } else {
+      strayOuts += 1;
+    }
+  }
+  if (open) sessions.push({ in: open, out: null });
+
+  return {
+    sessions,
+    directions,
+    breakMinutes: Math.round(breakMs / 60_000),
+    workedHours: round2(workedMs / HOUR_MS),
+    hasOpenSession: sessions.some((s) => s.out === null),
+    strayOuts,
+  };
+}
+
 export function splitIntoSessions(punches: readonly TimedPunch[], windowHours = 12): SessionSplit {
   if (punches.length === 0) return { ...EMPTY, sessions: [], directions: [] };
 

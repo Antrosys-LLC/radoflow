@@ -1,4 +1,6 @@
 import { belongsToPreviousNight, detectShift } from "@/lib/attendance/shift-detect";
+import { CHECK_OUT_WINDOW_HOURS, placeCheckOuts } from "@/lib/attendance/check-out-dates";
+import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { workDateFromWallClock, zonedWallClockToUtc } from "@/lib/devices/timezone";
 import type { IclockPunch } from "@/lib/devices/zkteco/iclock";
 import type { createServiceClient } from "@/lib/supabase/service";
@@ -27,6 +29,95 @@ function previousDate(date: string): string {
 function wallParts(localTimestamp: string): { date: string; hour: number } | null {
   const match = localTimestamp.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):/);
   return match ? { date: match[1]!, hour: Number(match[2]) } : null;
+}
+
+/**
+ * Moves each check-out in a batch onto the day of the check-in it closes.
+ *
+ * Only for a terminal that declares itself the check-out gate: its scans are
+ * known to be departures, so the arrival they end is whatever that person has
+ * open, whichever shift the roster says and whatever the clock reads. The
+ * calendar rules in `creditWorkDates` stay as the fallback for everything else.
+ * Fails soft — a punch is never refused because history could not be read.
+ */
+export async function creditCheckOuts(
+  supabase: Service,
+  gate: "in" | "out",
+  punches: readonly IclockPunch[],
+  profileByDeviceUser: ReadonlyMap<string, string>,
+  timeZone: string,
+  dates: Map<IclockPunch, string>,
+): Promise<void> {
+  try {
+    const mine: { punch: IclockPunch; profileId: string; at: number }[] = [];
+    for (const punch of punches) {
+      const profileId = profileByDeviceUser.get(punch.deviceUserId);
+      const at = zonedWallClockToUtc(punch.localTimestamp, timeZone)?.getTime();
+      const workDate = dates.get(punch);
+      if (profileId && at !== undefined && Number.isFinite(at) && workDate) {
+        mine.push({ punch, profileId, at });
+      }
+    }
+    if (gate !== "out" || mine.length === 0) return;
+
+    const earliest = Math.min(...mine.map((m) => m.at)) - CHECK_OUT_WINDOW_HOURS * 3_600_000;
+    const latest = Math.max(...mine.map((m) => m.at));
+    const profileIds = [...new Set(mine.map((m) => m.profileId))];
+
+    const rows = await selectAllInBatches<{
+      profile_id: string | null;
+      punched_at: string;
+      direction: "in" | "out" | "unknown";
+      work_date: string;
+    }>(
+      profileIds,
+      (ids, from, to) =>
+        supabase
+          .from("punches")
+          .select("profile_id, punched_at, direction, work_date")
+          .in("profile_id", ids)
+          .gte("punched_at", new Date(earliest).toISOString())
+          .lte("punched_at", new Date(latest).toISOString())
+          .in("direction", ["in", "out"])
+          .order("punched_at")
+          .range(from, to),
+      "Could not read earlier punches",
+    );
+
+    const stored = rows.flatMap((row) =>
+      row.profile_id && row.direction !== "unknown"
+        ? [
+            {
+              profileId: row.profile_id,
+              at: Date.parse(row.punched_at),
+              direction: row.direction,
+              workDate: row.work_date,
+            },
+          ]
+        : [],
+    );
+
+    // The upload's own scans, each with the date it has been given so far.
+    // Check-ins on the check-out gate cannot happen; anything else is an out.
+    const batch = mine.map((m) => ({
+      profileId: m.profileId,
+      at: m.at,
+      direction: "out" as const,
+      workDate: dates.get(m.punch)!,
+    }));
+
+    const placed = placeCheckOuts(
+      mine.map((m, index) => ({ key: String(index), profileId: m.profileId, at: m.at })),
+      stored,
+      batch,
+    );
+
+    for (const [key, date] of placed) {
+      dates.set(mine[Number(key)]!.punch, date);
+    }
+  } catch {
+    // The calendar rules stand for this batch.
+  }
 }
 
 /**

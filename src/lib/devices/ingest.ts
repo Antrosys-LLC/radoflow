@@ -3,7 +3,7 @@ import {
   minutesLateAgainstShift,
   type RawPunch,
 } from "@/lib/attendance/compute";
-import { creditWorkDates, followShifts } from "@/lib/attendance/follow-shift";
+import { creditCheckOuts, creditWorkDates, followShifts } from "@/lib/attendance/follow-shift";
 import {
   pakistanMinutesOfDay,
   presenceWindowHours,
@@ -171,6 +171,10 @@ export async function ingestPunches(
    */
   const workDates = await creditWorkDates(supabase, punches, profileByDeviceUser, timeZone);
 
+  if (device.direction !== "auto") {
+    await creditCheckOuts(supabase, device.direction, punches, profileByDeviceUser, timeZone, workDates);
+  }
+
   const rows = punches.flatMap((punch) => {
     const punchedAt = zonedWallClockToUtc(punch.localTimestamp, timeZone);
     const workDate = workDates.get(punch) ?? workDateFromWallClock(punch.localTimestamp);
@@ -288,10 +292,30 @@ export async function recomputeAttendanceDay(
       .order("sort_order"),
   ]);
 
-  const punches: RawPunch[] = (punchRows ?? []).map((row) => ({
-    punchedAt: new Date(row.punched_at as string),
-    direction: (row.direction as RawPunch["direction"]) ?? "unknown",
-  }));
+  const gateDeviceIds = new Set<string>();
+  {
+    const deviceIds = [
+      ...new Set((punchRows ?? []).map((row) => row.device_id).filter(Boolean)),
+    ] as string[];
+    if (deviceIds.length > 0) {
+      const { data: gates } = await supabase
+        .from("devices")
+        .select("id, direction")
+        .in("id", deviceIds)
+        .neq("direction", "auto");
+      for (const gate of gates ?? []) gateDeviceIds.add(gate.id);
+    }
+  }
+
+  const punches: RawPunch[] = (punchRows ?? []).map((row) => {
+    const declared = Boolean(row.device_id && gateDeviceIds.has(row.device_id));
+    return {
+      punchedAt: new Date(row.punched_at as string),
+      direction: (row.direction as RawPunch["direction"]) ?? "unknown",
+      // A gate's direction is where it is bolted, not a guess from the order.
+      declared,
+    };
+  });
 
   /*
    * Someone with an enforced shift has a finish to round against; someone on
@@ -336,21 +360,6 @@ export async function recomputeAttendanceDay(
    * with an `auto` one keeps both — each row is corrected only if the device
    * it came from had nothing to say.
    */
-  const gateDeviceIds = new Set<string>();
-  {
-    const deviceIds = [
-      ...new Set((punchRows ?? []).map((row) => row.device_id).filter(Boolean)),
-    ] as string[];
-    if (deviceIds.length > 0) {
-      const { data: gates } = await supabase
-        .from("devices")
-        .select("id, direction")
-        .in("id", deviceIds)
-        .neq("direction", "auto");
-      for (const gate of gates ?? []) gateDeviceIds.add(gate.id);
-    }
-  }
-
   const ordered = (punchRows ?? [])
     .slice()
     .sort(

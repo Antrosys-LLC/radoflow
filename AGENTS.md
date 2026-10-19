@@ -214,7 +214,16 @@ shift still in overtime and the day shift that has just arrived, and a
 supervisor covering a night off his own roster is on the board the moment he
 scans. Past sixteen hours it is a missed check-out, not a man on the floor.
 Only when nothing is open does the roster decide, on the shift's own date —
-yesterday's, for a shift that crossed midnight. The rule is written twice, in
+yesterday's, for a shift that crossed midnight. **The gates, not the position, say who left.** A check-out gate scan closes the
+person's open check-in and is filed under *that* day (`check-out-dates.ts`,
+`creditCheckOuts`), whatever the roster says; a day whose punches all came from
+gates is paired by their declared direction (`splitByDeclaredDirection`), so a
+double tap on the way in cannot flip the pairing, and a day with only
+check-outs is not an arrival. Before this, a night worker the roster still had
+on days left at 07:53 and the scan became the first punch of a new day —
+"working" for sixteen hours. `scripts/repair-open-check-ins.ts` repairs stored
+days (dry by default). The view also refuses an open check-in whose person's
+latest scan is a check-out (20261018090000). The rule is written twice, in
 the `live_attendance` view (20260922090000) and in `liveWorkDate`
 (`src/lib/attendance/shift-now.ts`) for the dashboard's own card; change both
 together or the two screens will disagree about the same person.

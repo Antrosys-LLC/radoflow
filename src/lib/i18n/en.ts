@@ -713,6 +713,8 @@ const en = {
     afterGrace: "After the grace period",
     trackedStaff: "Tracked staff",
     requiringAttendance: "Requiring attendance",
+    totalStaff: "Total staff",
+    onFloorOfTotal: "{count} on the floor now",
     finishedToday: "Finished today",
     hoursThisMonthAll: "Hours worked this month",
     hoursThisMonthMine: "Your hours this month",

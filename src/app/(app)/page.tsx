@@ -121,7 +121,7 @@ export default async function DashboardPage() {
   monthPromise.catch(() => undefined);
   shiftsPromise.catch(() => undefined);
 
-  const [liveResult, meResult, payrollResult, devicesResult, deptResult] = await Promise.all([
+  const [liveResult, meResult, payrollResult, devicesResult, deptResult, headcountResult] = await Promise.all([
     seesFloor ? supabase.from("live_attendance").select("*") : Promise.resolve({ data: null }),
     // Yesterday too: after midnight a night worker's own day is still last night.
     supabase
@@ -142,6 +142,10 @@ export default async function DashboardPage() {
     seesDirectory
       ? supabase.from("departments").select("id, name")
       : Promise.resolve({ data: null }),
+    // Everyone on the books, not only those the floor board tracks.
+    seesFloor
+      ? supabase.from("profiles").select("id", { count: "exact", head: true }).eq("status", "active")
+      : Promise.resolve({ count: null }),
   ]);
 
   const live = liveResult.data ?? [];
@@ -474,9 +478,9 @@ export default async function DashboardPage() {
           />
           <StatPill
             icon={Users}
-            label={t.dashboard.trackedStaff}
-            value={<Latin>{live.length}</Latin>}
-            hint={t.dashboard.requiringAttendance}
+            label={t.dashboard.totalStaff}
+            value={<Latin>{headcountResult.count ?? live.length}</Latin>}
+            hint={t.dashboard.onFloorOfTotal.replace("{count}", String(working.length))}
             tone="primary"
           />
         </div>

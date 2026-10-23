@@ -657,6 +657,8 @@ const ur: Dictionary = {
     afterGrace: "رعایتی وقت کے بعد",
     trackedStaff: "حاضری والے ملازم",
     requiringAttendance: "جن کی حاضری لگنی ہے",
+    totalStaff: "کل عملہ",
+    onFloorOfTotal: "{count} اس وقت فلور پر ہیں",
     finishedToday: "آج کام ختم",
     hoursThisMonthAll: "اس مہینے کام کے گھنٹے",
     hoursThisMonthMine: "اس مہینے آپ کے گھنٹے",

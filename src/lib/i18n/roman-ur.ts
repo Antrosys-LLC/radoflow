@@ -668,6 +668,8 @@ const roman: Dictionary = {
     afterGrace: "Riayati waqt ke baad",
     trackedStaff: "Haazri wale mulazim",
     requiringAttendance: "Jin ki haazri lagni hai",
+    totalStaff: "Kul amla",
+    onFloorOfTotal: "{count} is waqt floor par hain",
     finishedToday: "Aaj kaam khatam",
     hoursThisMonthAll: "Is mahine kaam ke ghante",
     hoursThisMonthMine: "Is mahine aap ke ghante",

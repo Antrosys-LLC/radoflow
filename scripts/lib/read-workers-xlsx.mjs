@@ -198,6 +198,11 @@ function columnsOf(rows) {
     .filter((letter) => !(letter in header) && colIndex(letter) > after)
     .sort((a, b) => colIndex(a) - colIndex(b))[0];
 
+  // The newer sheet's next unheaded column holds a date for people who have one.
+  col.extra = [...populated]
+    .filter((letter) => !(letter in header) && colIndex(letter) > colIndex(col.rule))
+    .sort((a, b) => colIndex(a) - colIndex(b))[0];
+
   return col;
 }
 
@@ -256,6 +261,8 @@ export function readWorkers(path) {
       // Blank means "not filled in yet", which is not the same claim as zero.
       salary: salary > 0 ? salary : null,
       rule: text(cells, "rule"),
+      // dd.mm.yyyy as typed, or blank.
+      joinedText: col.extra ? String(cells[col.extra] ?? "").trim() : "",
       ...parseDutyRule(text(cells, "rule")),
     });
   }

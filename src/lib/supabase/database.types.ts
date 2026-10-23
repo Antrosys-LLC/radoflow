@@ -3337,6 +3337,7 @@ export type Database = {
           department_id: string | null
           employee_code: string | null
           first_in: string | null
+          flexible_hours: boolean | null
           full_name: string | null
           is_late: boolean | null
           last_out: string | null
@@ -3344,6 +3345,7 @@ export type Database = {
           minutes_late: number | null
           profile_id: string | null
           regular_hours: number | null
+          requires_attendance: boolean | null
           shift_ends_at: string | null
           shift_id: string | null
           shift_name: string | null

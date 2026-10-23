@@ -28,7 +28,7 @@ import {
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
 import { requireSession } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
-import { selectAllInBatches, selectInBatches } from "@/lib/supabase/in-batches";
+import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatHours, formatPKR, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -85,15 +85,20 @@ export default async function DashboardPage() {
       ? await staffQuery
       : await staffQuery.eq("id", session.userId);
 
-    const monthDays = await selectInBatches(
+    // Paged: a hundred people over three weeks is past the thousand rows a
+    // reply carries, and the chart would quietly lose the end of the month.
+    const monthDays = await selectAllInBatches(
       (chartPeople ?? []).map((p) => p.id),
-      (ids) =>
+      (ids, first, last) =>
         supabase
           .from("attendance_days")
           .select("profile_id, work_date, day_type, regular_hours, status, hours_are_final")
           .in("profile_id", ids)
           .gte("work_date", monthStart)
-          .lte("work_date", today),
+          .lte("work_date", today)
+          .order("profile_id")
+          .order("work_date")
+          .range(first, last),
       `Could not read attendance for ${monthStart} to ${today}`,
     );
 
@@ -256,6 +261,7 @@ export default async function DashboardPage() {
       .select("id, flexible_hours")
       .eq("status", "active")
       .eq("requires_attendance", true)
+      .eq("flexible_hours", false)
       .eq("shift_id", running.shift.id);
 
     const roster = rostered ?? [];

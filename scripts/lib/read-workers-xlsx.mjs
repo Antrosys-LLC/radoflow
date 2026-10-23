@@ -71,7 +71,7 @@ function sheetRows(files, index, shared) {
 
   for (const rowXml of xml.match(/<row[^>]*>[\s\S]*?<\/row>/g) ?? []) {
     const cells = {};
-    for (const c of rowXml.match(/<c[^>]*(?:\/>|>[\s\S]*?<\/c>)/g) ?? []) {
+    for (const c of rowXml.match(/<c\b[^>]*\/>|<c\b[^>]*>[\s\S]*?<\/c>/g) ?? []) {
       const ref = c.match(/r="([A-Z]+\d+)"/)?.[1];
       if (!ref) continue;
 
@@ -248,6 +248,8 @@ export function readWorkers(path) {
       department: current?.name ?? "Unassigned",
       departmentOrder: current?.order ?? 999,
       name,
+      // The newer sheet carries one number per person, the company roll.
+      roll: text(cells, "Company Roll."),
       employeeCode: text(cells, "EMPLOYEE ID"),
       terminalId: text(cells, "TERMINAL ID"),
       designation: text(cells, "DESIGNATION"),

@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 // Live status; a cached page would show a stale floor.
 export const dynamic = "force-dynamic";
 
-type LiveStatus = "working" | "finished" | "missing" | "not_started" | "no_shift";
+type LiveStatus = "working" | "finished" | "missing" | "not_started" | "no_shift" | "no_fixed_time";
 
 /**
  * The badge for each live status.
@@ -57,6 +57,11 @@ const STATUS_META: Record<
     labelKey: "noShiftAssigned",
     tone: "bg-warning-soft text-warning",
     dot: "bg-warning",
+  },
+  no_fixed_time: {
+    labelKey: "noFixedHours",
+    tone: "bg-secondary text-muted-foreground",
+    dot: "bg-muted-foreground",
   },
 };
 
@@ -87,6 +92,8 @@ export default async function AttendancePage() {
   const missing = by("missing");
   const finished = by("finished");
   const pending = [...by("not_started"), ...by("no_shift")];
+  // No in or out time, or a fixed salary: not on a shift, so never chased.
+  const noFixedHours = by("no_fixed_time");
   const lateToday = people.filter((p) => p.is_late);
 
   return (
@@ -157,6 +164,17 @@ export default async function AttendancePage() {
         />
       ) : null}
 
+      {noFixedHours.length > 0 ? (
+        <PeopleCard
+          t={t}
+          icon={Users}
+          title={t.attendance.noFixedHours}
+          subtitle={t.attendance.noFixedHoursHint}
+          people={noFixedHours}
+          canCorrect={canCorrect}
+        />
+      ) : null}
+
       {finished.length > 0 ? (
         <PeopleCard
           t={t}
@@ -188,6 +206,8 @@ interface LiveRow {
   /** Null when the terminal never saw them: the correction makes the row. */
   day_id: string | null;
   day_status: string | null;
+  flexible_hours: boolean | null;
+  requires_attendance: boolean | null;
 }
 
 function PeopleCard({
@@ -272,8 +292,12 @@ function PeopleCard({
                         stored; the code beside it is not, and must not be able
                         to reorder. */}
                         <Latin>{person.employee_code}</Latin> ·{" "}
-                        {person.shift_name ?? t.attendance.noShift}
-                        {person.shift_starts_at ? (
+                        {person.flexible_hours
+                          ? t.attendance.flexibleHoursLabel
+                          : person.requires_attendance === false
+                            ? t.attendance.fixedSalaryLabel
+                            : (person.shift_name ?? t.attendance.noShift)}
+                        {person.shift_starts_at && !person.flexible_hours && person.requires_attendance !== false ? (
                           <>
                             {" "}
                             <Fill

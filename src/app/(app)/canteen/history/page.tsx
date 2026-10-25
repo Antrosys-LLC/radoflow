@@ -17,6 +17,7 @@ import { formatDate, formatPKR, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 import { DayMenuCard, type DayMenuView } from "./day-menu-card";
+import { CanteenDownloadPanel } from "./download-panel";
 
 export const metadata: Metadata = {
   title: { absolute: "Canteen History | Rado Dyeing and Textile" },
@@ -252,6 +253,12 @@ export default async function CanteenHistoryPage({
           </div>
         </form>
       </Card>
+
+      <CanteenDownloadPanel
+        from={from}
+        to={to}
+        departments={[...(departments ?? [])].sort((a, b) => a.name.localeCompare(b.name))}
+      />
 
       {needChoice.length > 0 ? (
         <p className="rounded-2xl bg-warning-soft px-4 py-3 text-sm font-semibold text-warning">

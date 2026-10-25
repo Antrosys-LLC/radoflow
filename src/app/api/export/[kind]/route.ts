@@ -241,11 +241,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
      * from a run.
      */
     if (kind === "canteen") {
-      return documentResponse(await canteenDocument(supabase, { from, to, format }));
+      return documentResponse(await canteenDocument(supabase, { from, to, format, deptIds }));
     }
 
     if (kind === "canteen-invoice") {
-      return documentResponse(await canteenInvoiceDocument(supabase, { from, to, format }));
+      return documentResponse(await canteenInvoiceDocument(supabase, { from, to, format, deptIds }));
     }
 
     if (kind === "register") {

@@ -142,9 +142,14 @@ async function mealClaims(
 
 export async function canteenDocument(
   supabase: Client,
-  { from, to, format }: { from: string; to: string; format: "pdf" | "xlsx" },
+  {
+    from,
+    to,
+    format,
+    deptIds = [],
+  }: { from: string; to: string; format: "pdf" | "xlsx"; deptIds?: readonly string[] },
 ): Promise<Document> {
-  const [{ data: priceSetting }, { data: windows }, claims, deptName, menu] = await Promise.all([
+  const [{ data: priceSetting }, { data: windows }, allClaims, deptName, menu] = await Promise.all([
     supabase.from("app_settings").select("value").eq("key", "canteen.meal_price_pkr").maybeSingle(),
     supabase.from("meal_windows").select("id, name"),
     mealClaims(supabase, from, to),
@@ -153,11 +158,24 @@ export async function canteenDocument(
   ]);
 
   const price = readMealPrice(priceSetting?.value);
-  const summary = summariseMeals(claims, price, dayPrices(menu.menus));
-  const people = await directory(
-    supabase,
-    summary.byPerson.map((row) => row.profileId),
-  );
+  const prices = dayPrices(menu.menus);
+  const people = await directory(supabase, [...new Set(allClaims.map((c) => c.profile_id))]);
+
+  // The whole factory, or only the departments asked for.
+  const scoped = deptIds.length > 0;
+  const claims = scoped
+    ? allClaims.filter((claim) => {
+        const id = people.get(claim.profile_id)?.department_id;
+        return id ? deptIds.includes(id) : false;
+      })
+    : allClaims;
+  const summary = summariseMeals(claims, price, prices);
+  const scope = scoped
+    ? deptIds
+        .map((id) => deptName.get(id))
+        .filter(Boolean)
+        .join(", ") || "Selected departments"
+    : "All departments";
   const windowName = new Map((windows ?? []).map((row) => [row.id, row.name]));
 
   const departmentOf = (profileId: string) => {
@@ -173,7 +191,34 @@ export async function canteenDocument(
   }
   const departments = [...byDepartment].sort(([a], [b]) => a.localeCompare(b));
 
-  const subtitle = `${formatDate(from)} to ${formatDate(to)}`;
+  const subtitle = `${rangeLabel(from, to)}  ·  ${scope}`;
+
+  // The working behind every figure: what was cooked each day, the price of one
+  // meal, how many were served — and meals × price = amount.
+  const menuOf = new Map(menu.menus.map((m) => [m.date, m]));
+  const named = (items: readonly { name: string; price: number }[]) =>
+    items.map((item) => `${item.name} ${Math.round(item.price)}`);
+  const dayWorking = summary.byDay.map((day) => {
+    const m = menuOf.get(day.date);
+    const dishes =
+      m && m.items.length > 0
+        ? m.source === "choose"
+          ? `${[...named(m.fixed), named(m.options).join(" or ")].join(" + ")} (not chosen: dearer option)`
+          : named(m.items).join(" + ")
+        : "No menu: price stamped on each meal";
+    return {
+      date: day.date,
+      dishes,
+      rate: day.meals > 0 ? day.amount / day.meals : 0,
+      meals: day.meals,
+      amount: day.amount,
+    };
+  });
+  const rateOf = (row: { meals: number; amount: number }) =>
+    row.meals > 0 ? row.amount / row.meals : 0;
+  const method =
+    "Amount = meals x price of one meal. One meal costs the dishes on that day's menu added together; " +
+    "a day with no menu uses the price stamped when the meal was served.";
   const note =
     summary.total.unpriced > 0
       ? price === null
@@ -197,19 +242,48 @@ export async function canteenDocument(
           who?.full_name ?? "—",
           who?.employee_code ?? "",
           row.meals,
+          Math.round(rateOf(row)),
           Math.round(row.amount),
         ]);
       });
+      const deptMeals = list.reduce((t, r) => t + r.meals, 0);
+      const deptAmount = list.reduce((t, r) => t + r.amount, 0);
       rows.push({
         subtotal: [
           "",
           `Total · ${department}`,
           "",
-          list.reduce((t, r) => t + r.meals, 0),
-          Math.round(list.reduce((t, r) => t + r.amount, 0)),
+          deptMeals,
+          Math.round(rateOf({ meals: deptMeals, amount: deptAmount })),
+          Math.round(deptAmount),
         ],
       });
     }
+
+    rows.push({ group: "Working, day by day  (meals x price of one meal = amount)" });
+    dayWorking.forEach((day) =>
+      rows.push([
+        "",
+        `${formatDate(day.date)}: ${day.dishes}`,
+        "",
+        day.meals,
+        Math.round(day.rate),
+        Math.round(day.amount),
+      ]),
+    );
+    rows.push({ group: "By department" });
+    departments.forEach(([department, list]) => {
+      const m = list.reduce((t, r) => t + r.meals, 0);
+      const a = list.reduce((t, r) => t + r.amount, 0);
+      rows.push([
+        "",
+        `${department}  ·  ${list.length} people`,
+        "",
+        m,
+        Math.round(rateOf({ meals: m, amount: a })),
+        Math.round(a),
+      ]);
+    });
 
     return {
       ok: true,
@@ -218,10 +292,11 @@ export async function canteenDocument(
         subtitle,
         columns: [
           { header: "SR", width: 26, align: "center" },
-          { header: "NAME", width: 200 },
-          { header: "UNIQUE ID", width: 80 },
-          { header: "MEALS", width: 60, align: "right" },
-          { header: "AMOUNT (Rs)", width: 90, align: "right" },
+          { header: "NAME", width: 190 },
+          { header: "UNIQUE ID", width: 70 },
+          { header: "MEALS", width: 50, align: "right" },
+          { header: "AVG RATE (Rs)", width: 70, align: "right" },
+          { header: "AMOUNT (Rs)", width: 80, align: "right" },
         ],
         rows,
         totals: [
@@ -229,16 +304,17 @@ export async function canteenDocument(
           `GRAND TOTAL · ${summary.byPerson.length} people`,
           "",
           summary.total.meals,
+          Math.round(rateOf(summary.total)),
           Math.round(summary.total.amount),
         ],
         highlights: [
           { label: "Meals served", value: summary.total.meals.toLocaleString("en-PK") },
           { label: "Total cost", value: rs(summary.total.amount) },
-          { label: "Price per meal", value: price === null ? "Not set" : rs(price) },
+          { label: "Average per meal", value: rs(rateOf(summary.total)) },
           { label: "People fed", value: summary.byPerson.length.toLocaleString("en-PK") },
         ],
       }),
-      name: `canteen-${from}-to-${to}.pdf`,
+      name: `canteen-${from === to ? from : `${from}-to-${to}`}${scoped ? "-dept" : ""}.pdf`,
       type: PDF,
     };
   }
@@ -253,16 +329,20 @@ export async function canteenDocument(
         who?.full_name ?? "",
         who?.employee_code ?? "",
         row.meals,
+        rateOf(row),
         row.amount,
       ]);
     });
+    const deptMeals = list.reduce((t, r) => t + r.meals, 0);
+    const deptAmount = list.reduce((t, r) => t + r.amount, 0);
     personRows.push({
       subtotal: [
         "",
         `Total · ${department}`,
         "",
-        list.reduce((t, r) => t + r.meals, 0),
-        list.reduce((t, r) => t + r.amount, 0),
+        deptMeals,
+        rateOf({ meals: deptMeals, amount: deptAmount }),
+        deptAmount,
       ],
     });
   }
@@ -280,6 +360,7 @@ export async function canteenDocument(
           { header: "NAME", width: 30, format: "text" },
           { header: "UNIQUE ID", width: 14, format: "text" },
           { header: "MEALS", width: 10, format: "number" },
+          { header: "AVG RATE (Rs)", width: 14, format: "money" },
           { header: "AMOUNT (Rs)", width: 15, format: "money" },
         ],
         rows: personRows,
@@ -288,21 +369,48 @@ export async function canteenDocument(
           `GRAND TOTAL · ${summary.byPerson.length} people`,
           "",
           summary.total.meals,
+          rateOf(summary.total),
           summary.total.amount,
         ],
       },
       {
-        name: "By day",
-        title: "CANTEEN — BY DAY",
-        subtitle,
-        orientation: "portrait",
+        name: "By day (working)",
+        title: "CANTEEN — BY DAY, WITH THE WORKING",
+        subtitle: `${subtitle} · ${method}`,
         columns: [
-          { header: "DATE", width: 14, format: "text" },
+          { header: "DATE", width: 13, format: "text" },
+          { header: "MENU (Rs per dish)", width: 54, format: "text" },
+          { header: "PRICE OF ONE MEAL (Rs)", width: 20, format: "money" },
           { header: "MEALS", width: 10, format: "number" },
           { header: "AMOUNT (Rs)", width: 15, format: "money" },
         ],
-        rows: summary.byDay.map((day) => [day.date, day.meals, day.amount]),
-        totals: ["TOTAL", summary.total.meals, summary.total.amount],
+        rows: dayWorking.map((d) => [d.date, d.dishes, d.rate, d.meals, d.amount]),
+        totals: ["TOTAL", "", rateOf(summary.total), summary.total.meals, summary.total.amount],
+      },
+      {
+        name: "By department",
+        title: "CANTEEN — BY DEPARTMENT",
+        subtitle,
+        orientation: "portrait",
+        columns: [
+          { header: "DEPARTMENT", width: 26, format: "text" },
+          { header: "PEOPLE", width: 10, format: "number" },
+          { header: "MEALS", width: 10, format: "number" },
+          { header: "AVG RATE (Rs)", width: 14, format: "money" },
+          { header: "AMOUNT (Rs)", width: 15, format: "money" },
+        ],
+        rows: departments.map(([department, list]) => {
+          const m = list.reduce((t, r) => t + r.meals, 0);
+          const a = list.reduce((t, r) => t + r.amount, 0);
+          return [department, list.length, m, rateOf({ meals: m, amount: a }), a];
+        }),
+        totals: [
+          "TOTAL",
+          summary.byPerson.length,
+          summary.total.meals,
+          rateOf(summary.total),
+          summary.total.amount,
+        ],
       },
       {
         name: "Every meal",
@@ -334,7 +442,7 @@ export async function canteenDocument(
         totals: ["", `${claims.length} meals`, "", "", "", summary.total.amount],
       },
     ]),
-    name: `canteen-${from}-to-${to}.xlsx`,
+    name: `canteen-${from === to ? from : `${from}-to-${to}`}${scoped ? "-dept" : ""}.xlsx`,
     type: XLSX,
   };
 }
@@ -346,9 +454,14 @@ export async function canteenDocument(
  */
 export async function canteenInvoiceDocument(
   supabase: Client,
-  { from, to, format }: { from: string; to: string; format: "pdf" | "xlsx" },
+  {
+    from,
+    to,
+    format,
+    deptIds = [],
+  }: { from: string; to: string; format: "pdf" | "xlsx"; deptIds?: readonly string[] },
 ): Promise<Document> {
-  const [{ data: priceSetting }, claims, deptName, menu] = await Promise.all([
+  const [{ data: priceSetting }, allClaims, deptName, menu] = await Promise.all([
     supabase.from("app_settings").select("value").eq("key", "canteen.meal_price_pkr").maybeSingle(),
     mealClaims(supabase, from, to),
     departmentNames(supabase),
@@ -357,13 +470,23 @@ export async function canteenInvoiceDocument(
 
   const price = readMealPrice(priceSetting?.value);
   const prices = dayPrices(menu.menus);
+  const people = await directory(supabase, [...new Set(allClaims.map((c) => c.profile_id))]);
+  const claims =
+    deptIds.length > 0
+      ? allClaims.filter((claim) => {
+          const id = people.get(claim.profile_id)?.department_id;
+          return id ? deptIds.includes(id) : false;
+        })
+      : allClaims;
   const summary = summariseMeals(claims, price, prices);
-  const people = await directory(
-    supabase,
-    summary.byPerson.map((row) => row.profileId),
-  );
 
-  const period = rangeLabel(from, to);
+  const period =
+    deptIds.length > 0
+      ? `${rangeLabel(from, to)}  ·  ${deptIds
+          .map((id) => deptName.get(id))
+          .filter(Boolean)
+          .join(", ")}`
+      : rangeLabel(from, to);
   const daily = from === to;
   const title = daily ? "CANTEEN INVOICE — DAILY" : "CANTEEN INVOICE";
   const reference = `CI-${from.replace(/-/g, "")}${daily ? "" : `-${to.replace(/-/g, "")}`}`;

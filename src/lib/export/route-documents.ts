@@ -216,6 +216,13 @@ export async function canteenDocument(
   });
   const rateOf = (row: { meals: number; amount: number }) =>
     row.meals > 0 ? row.amount / row.meals : 0;
+  // The food of each day, by name, for the meal list and a one-date heading.
+  const foodOf = (date: string) => {
+    const m = menuOf.get(date);
+    return m && m.items.length > 0 ? m.items.map((item) => item.name).join(" + ") : "";
+  };
+  const dayFood = from === to ? foodOf(from) : "";
+  const heading = dayFood ? `${subtitle}  ·  Food: ${dayFood}` : subtitle;
   const method =
     "Amount = meals x price of one meal. One meal costs the dishes on that day's menu added together; " +
     "a day with no menu uses the price stamped when the meal was served.";
@@ -289,7 +296,7 @@ export async function canteenDocument(
       ok: true,
       body: buildTablePdf({
         title: "CANTEEN REGISTER",
-        subtitle,
+        subtitle: heading,
         columns: [
           { header: "SR", width: 26, align: "center" },
           { header: "NAME", width: 190 },
@@ -353,7 +360,7 @@ export async function canteenDocument(
       {
         name: "By person",
         title: "CANTEEN REGISTER",
-        subtitle: `${subtitle} · ${note}`,
+        subtitle: `${heading} · ${note}`,
         orientation: "portrait",
         columns: [
           { header: "SR", width: 6, format: "number" },
@@ -419,6 +426,7 @@ export async function canteenDocument(
         columns: [
           { header: "DATE", width: 12, format: "text" },
           { header: "MEAL", width: 16, format: "text" },
+          { header: "FOOD", width: 30, format: "text" },
           { header: "NAME", width: 28, format: "text" },
           { header: "UNIQUE ID", width: 13, format: "text" },
           { header: "DEPARTMENT", width: 20, format: "text" },
@@ -433,13 +441,14 @@ export async function canteenDocument(
           return [
             claim.served_on,
             (claim.meal_window_id && windowName.get(claim.meal_window_id)) || "",
+            foodOf(claim.served_on),
             who?.full_name ?? "",
             who?.employee_code ?? "",
             departmentOf(claim.profile_id),
             stamped ?? price ?? null,
           ];
         }),
-        totals: ["", `${claims.length} meals`, "", "", "", summary.total.amount],
+        totals: ["", `${claims.length} meals`, "", "", "", "", summary.total.amount],
       },
     ]),
     name: `canteen-${from === to ? from : `${from}-to-${to}`}${scoped ? "-dept" : ""}.xlsx`,

@@ -252,6 +252,29 @@ the stamped flat price. Everybody eats once in any 24 hours;
 `profiles.meals_per_day`, else `departments.meals_per_day`, raises that for a
 contract firm's people, and `app.enforce_meal_interval` counts against it.
 
+## A number that two people have held
+
+The workers list sometimes gives one roll to two people. The row with a joining
+date is the new joiner; the row without one resigned on that date. Everything
+the number recorded before the date is the old person's and everything from the
+date on is the new one's. `scripts/apply-workers-list.mjs` applies this: it ends
+the old person (`terminated`, `left_on` = the date, no terminal number, code
+`OLD-<LETTERS>`), gives the number and code to the new person, moves punches,
+meals and `device_enrollments` dated from the date, and drops the old person's
+attendance days from then on, which `scripts/recompute-days.ts` rebuilds for the
+new one. The terminals follow through the identity triggers (delete the number,
+enrol it again under the new name); a new joiner's fingers are enrolled afresh.
+
+- **`employee_code` must carry no digits for anyone without a terminal number**
+  (`NA-ASIF`, `OLD-MADNANASGHAR`). `app.assign_device_pin` derives a number from
+  the digits of a code, so `OLD-54` would hand the number straight back.
+- **Nobody above 493 is on the machines, except Umar (10000).** People the sheet
+  gives no number stay in RadoFlow for pay and are deleted from the terminals.
+  The script ends by queueing a delete for every user above 493 that a terminal
+  reports holding.
+- A second row with no roll and "HOUSE RENT" as its designation is the same
+  person's house rent, added to their salary, not another person.
+
 ## Downloads
 
 Every PDF and workbook closes on one sentence and nothing else — `This document

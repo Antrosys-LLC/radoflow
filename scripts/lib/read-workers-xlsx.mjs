@@ -148,7 +148,7 @@ export function parseDutyRule(rule) {
   const contractor = /contractor/.test(text) || /^fixed amount$/.test(text.trim());
   const noAttendance = /no attend/.test(text) || /fixed salary/.test(text);
   const flexible = /no\s*time\s*limit/.test(text) || /no in out/.test(text);
-  const twelve = /12\s*hour/.test(text);
+  const twelve = /12\s*h(?:ours?)?/.test(text);
 
   /*
    * Overtime is refused only where the sheet says so. "8 Hours Duty" on its

@@ -36,6 +36,7 @@ import { addUserComponent, removeUserComponent, updateUserPay } from "@/lib/pay/
 import { deriveRates } from "@/lib/pay/derived";
 import { trackingValueOf, type TrackingChoice } from "@/lib/people/tracking";
 import {
+  codeHolder,
   createUser,
   setUserOverride,
   setUserPassword,
@@ -716,6 +717,8 @@ function AddUserDialog({
   const [state, formAction] = useActionState(createUser, INITIAL);
   const [payClass, setPayClass] = useState("hourly");
   const router = useRouter();
+  // Who already holds the code being typed, if anybody.
+  const [holder, setHolder] = useState<{ name: string; code: string } | null>(null);
 
   /*
    * Worker type follows the department by default — adding someone to Folding
@@ -768,13 +771,28 @@ function AddUserDialog({
               />
             </Field>
             <Field label={t.users.employeeCode}>
-              <input name="employee_code" required className={INPUT} placeholder="RD-1043" />
+              <input
+                name="employee_code"
+                required
+                className={INPUT}
+                placeholder="RD-1043"
+                onChange={() => setHolder(null)}
+                onBlur={async (event) => {
+                  const found = await codeHolder(event.currentTarget.value).catch(() => null);
+                  setHolder(found);
+                }}
+              />
             </Field>
-            {/* Needed only when the code is a resigned person's: from this date
-                the code's records are the new joiner's. */}
             <Field label={t.profile.joinedOn}>
-              <input type="date" name="joined_on" dir="ltr" className={INPUT} />
+              <input type="date" name="joined_on" dir="ltr" required={holder !== null} className={INPUT} />
             </Field>
+            {holder ? (
+              <p className="rounded-2xl bg-warning-soft px-4 py-3 text-sm font-semibold text-warning sm:col-span-2">
+                This roll number already belongs to {holder.name} ({holder.code}). Adding this person
+                resigns {holder.name} on the joining date: everything up to that date stays with{" "}
+                {holder.name}, and from that date on this roll number records this new person.
+              </p>
+            ) : null}
             <Field label={t.users.cnic}>
               <CnicInput required className={INPUT} />
             </Field>

@@ -22,6 +22,18 @@ function text(form: FormData, key: string): string {
 }
 
 /**
+ * Who holds a code today, so the add form can say so before it is submitted:
+ * a code that belongs to somebody is given to a new joiner by resigning them.
+ */
+export async function codeHolder(code: string): Promise<{ name: string; code: string } | null> {
+  await requirePermission("people.manage");
+  const trimmed = code.trim();
+  if (!trimmed) return null;
+  const holder = await findHolder(createServiceClient(), trimmed);
+  return holder ? { name: holder.full_name, code: holder.employee_code } : null;
+}
+
+/**
  * Creates a login and its employee record together.
  *
  * Uses the admin API rather than public sign-up so the account is confirmed

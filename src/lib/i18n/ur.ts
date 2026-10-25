@@ -186,6 +186,7 @@ const ur: Dictionary = {
     site: "فیکٹری",
     show: "دکھائیں",
     close: "بند کریں",
+    more: "مزید",
     nobodyMatches: "اِس تلاش میں کوئی نہیں ملا۔",
     status: "حالت",
     download: "ڈاؤن لوڈ",

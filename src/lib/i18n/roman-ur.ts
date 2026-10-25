@@ -191,6 +191,7 @@ const roman: Dictionary = {
     site: "Factory",
     show: "Dikhayein",
     close: "Band karein",
+    more: "Mazeed",
     nobodyMatches: "Is talash mein koi nahi mila.",
     status: "Halat",
     download: "Download",

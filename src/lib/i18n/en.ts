@@ -97,6 +97,7 @@ const en = {
     site: "Factory",
     show: "Show",
     close: "Close",
+    more: "More",
     nobodyMatches: "Nobody matches these filters.",
     // Moved here from `profile` by the check in/out register, the second
     // screen to need it. This is the *word* — a field label and a column

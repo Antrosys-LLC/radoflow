@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { verifyOwnPassword } from "@/lib/auth/reauth";
 import { requirePermission, type Session } from "@/lib/auth/session";
 import { cnicLoginEmail, formatCnic, isValidCnic } from "@/lib/cnic";
+import { endHolder, findHolder, moveRecords } from "@/lib/people/hand-over";
 import { trackingFlags } from "@/lib/people/tracking";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
@@ -80,6 +81,25 @@ export async function createUser(_prev: UserResult, form: FormData): Promise<Use
 
   const admin = createServiceClient();
 
+  /*
+   * A code somebody already holds can be given to a new joiner, with the date
+   * they joined: the holder resigned that day. Everything the number recorded
+   * before the date stays with them. Without a date it is refused, because
+   * "who has it from when" is the one thing nobody can guess.
+   */
+  const joinedOn = /^\d{4}-\d{2}-\d{2}$/.test(text(form, "joined_on")) ? text(form, "joined_on") : "";
+  const holder = await findHolder(admin, employeeCode);
+  if (holder && !joinedOn) {
+    return {
+      ok: false,
+      message: `${employeeCode} belongs to ${holder.full_name}. To give it to a new joiner, enter the date they joined: everything up to that date stays with ${holder.full_name}.`,
+    };
+  }
+  if (holder) {
+    const failure = await endHolder(admin, holder, joinedOn);
+    if (failure) return { ok: false, message: failure };
+  }
+
   const { data: created, error: authError } = await admin.auth.admin.createUser({
     email,
     password,
@@ -96,6 +116,7 @@ export async function createUser(_prev: UserResult, form: FormData): Promise<Use
   const { error: profileError } = await admin.from("profiles").insert({
     id: created.user.id,
     employee_code: employeeCode,
+    ...(joinedOn ? { joined_on: joinedOn } : {}),
     full_name: fullName,
     cnic,
     email: contactEmail || null,
@@ -130,6 +151,16 @@ export async function createUser(_prev: UserResult, form: FormData): Promise<Use
       return { ok: false, message: `${field} is already in use.` };
     }
     return { ok: false, message: profileError.message };
+  }
+
+  if (holder) {
+    await moveRecords(admin, {
+      number: holder.device_pin ?? employeeCode.replace(/\D/g, ""),
+      oldId: holder.id,
+      newId: created.user.id,
+      date: joinedOn,
+      siteId: siteId || null,
+    });
   }
 
   if (roleId) {

@@ -2428,6 +2428,7 @@ export type Database = {
           designation: string | null
           device_card: string | null
           device_pin: string | null
+          former_device_pin: string | null
           device_privilege: number
           duty_hours: number
           email: string | null
@@ -2468,6 +2469,7 @@ export type Database = {
           designation?: string | null
           device_card?: string | null
           device_pin?: string | null
+          former_device_pin?: string | null
           device_privilege?: number
           duty_hours?: number
           email?: string | null
@@ -2508,6 +2510,7 @@ export type Database = {
           designation?: string | null
           device_card?: string | null
           device_pin?: string | null
+          former_device_pin?: string | null
           device_privilege?: number
           duty_hours?: number
           email?: string | null

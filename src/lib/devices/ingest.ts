@@ -16,7 +16,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 import type { Json } from "@/lib/supabase/database.types";
 import type { DayType } from "@/lib/payroll/types";
 
-import { resolvePeopleByDeviceUserId } from "./resolve-people";
+import { holderOn, resolveFormerHolders, resolvePeopleByDeviceUserId } from "./resolve-people";
 import { toWallClockString, workDateFromWallClock, zonedWallClockToUtc } from "./timezone";
 import type { IclockPunch } from "./zkteco/iclock";
 import { directionFromState, type DeviceAttendanceRecord } from "./zkteco/protocol";
@@ -157,6 +157,9 @@ export async function ingestPunches(
   const deviceUserIds = [...new Set(punches.map((p) => p.deviceUserId))];
   const profileByDeviceUser = await resolvePeopleByDeviceUserId(device.id, deviceUserIds);
 
+  // A number that passed to a new joiner still belongs, before that day, to who held it.
+  const formerHolders = await resolveFormerHolders(deviceUserIds);
+
   const unmapped = deviceUserIds.filter((id) => !profileByDeviceUser.has(id));
 
   // The terminal's reading is wall-clock time at the factory, with no zone.
@@ -184,7 +187,7 @@ export async function ingestPunches(
       {
         device_id: device.id,
         device_user_id: punch.deviceUserId,
-        profile_id: profileByDeviceUser.get(punch.deviceUserId) ?? null,
+        profile_id: holderOn(formerHolders, profileByDeviceUser, punch.deviceUserId, workDate),
         punched_at: punchedAt.toISOString(),
         work_date: workDate,
         /*

@@ -770,6 +770,11 @@ function AddUserDialog({
             <Field label={t.users.employeeCode}>
               <input name="employee_code" required className={INPUT} placeholder="RD-1043" />
             </Field>
+            {/* Needed only when the code is a resigned person's: from this date
+                the code's records are the new joiner's. */}
+            <Field label={t.profile.joinedOn}>
+              <input type="date" name="joined_on" dir="ltr" className={INPUT} />
+            </Field>
             <Field label={t.users.cnic}>
               <CnicInput required className={INPUT} />
             </Field>

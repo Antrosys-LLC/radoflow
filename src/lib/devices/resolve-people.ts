@@ -55,3 +55,50 @@ export async function resolvePeopleByDeviceUserId(
 
   return byDeviceUserId;
 }
+
+/**
+ * People who held a number until they resigned and a new joiner took it over.
+ *
+ * A terminal that was offline sends its punches late, after the number already
+ * belongs to somebody else, so a punch dated before the handover is credited to
+ * the person who held the number that day. Oldest handover first; the holder on
+ * a given date is the first whose `leftOn` is after it. Fails soft: on a
+ * database without `former_device_pin` nobody has a former number and every
+ * punch goes to the current holder, as before.
+ */
+export async function resolveFormerHolders(
+  deviceUserIds: readonly string[],
+): Promise<Map<string, { profileId: string; leftOn: string }[]>> {
+  const former = new Map<string, { profileId: string; leftOn: string }[]>();
+  const ids = [...new Set(deviceUserIds)];
+  if (ids.length === 0) return former;
+
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, former_device_pin, left_on")
+    .in("former_device_pin", ids)
+    .not("left_on", "is", null);
+  if (error) return former;
+
+  for (const row of data ?? []) {
+    if (!row.former_device_pin || !row.left_on) continue;
+    former.set(row.former_device_pin, [
+      ...(former.get(row.former_device_pin) ?? []),
+      { profileId: row.id, leftOn: row.left_on },
+    ]);
+  }
+  for (const list of former.values()) list.sort((a, b) => a.leftOn.localeCompare(b.leftOn));
+  return former;
+}
+
+/** Who held `deviceUserId` on `workDate`: a former holder, or the current one. */
+export function holderOn(
+  former: ReadonlyMap<string, { profileId: string; leftOn: string }[]>,
+  current: ReadonlyMap<string, string>,
+  deviceUserId: string,
+  workDate: string,
+): string | null {
+  const earlier = former.get(deviceUserId)?.find((holder) => workDate < holder.leftOn);
+  return earlier?.profileId ?? current.get(deviceUserId) ?? null;
+}

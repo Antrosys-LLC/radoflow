@@ -48,6 +48,13 @@ export interface PayrollInput {
    * Omitted, the whole month is assumed — what a monthly run always was.
    */
   periodDays?: number;
+  /**
+   * How many days of the month this person was on the books — a joiner's days
+   * from joining, a resigner's up to the day they left. Only a fixed salary
+   * reads it: an attendance-based person is already paid for the days worked.
+   * Omitted, they were there the whole month.
+   */
+  employedDays?: number;
 }
 
 /**
@@ -217,10 +224,25 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
       /*
        * Not tracked by the terminal: the whole contracted salary, whatever part
        * of the month the run covers. The office pays these people their stated
-       * figure every run; it is not earned by the day.
+       * figure every run; it is not earned by the day. The one cut is for a
+       * month they did not stay: a joiner or resigner is paid their days.
        */
-      basePay = roundMoney(employee.monthlySalary);
-      lines.push({ code: "BASIC", label: "Monthly salary", kind: "base", amount: basePay });
+      const employed =
+        input.employedDays === undefined ? daysInMonth : Math.min(input.employedDays, daysInMonth);
+      if (employed >= daysInMonth) {
+        basePay = roundMoney(employee.monthlySalary);
+        lines.push({ code: "BASIC", label: "Monthly salary", kind: "base", amount: basePay });
+      } else {
+        // Joined or left partway through the month: the days they were here.
+        basePay = roundMoney(perDay * employed);
+        lines.push({
+          code: "BASIC",
+          label: `Fixed salary for ${employed} of ${daysInMonth} days`,
+          kind: "base",
+          rate: perDay,
+          amount: basePay,
+        });
+      }
     } else if (employee.flexibleHours) {
       /*
        * No fixed in or out time: paid for the duty hours completed, whenever

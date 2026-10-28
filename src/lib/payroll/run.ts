@@ -1,3 +1,4 @@
+import { employedDaysInMonth } from "./employment";
 import { calculatePayroll, summarisePayroll } from "./engine";
 import {
   collectedLoanDeductions,
@@ -97,7 +98,7 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     supabase
       .from("profiles")
       .select(
-        "id, status, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, payroll_exempt, duty_hours, sunday_policy, overtime_eligible, flexible_hours",
+        "id, status, left_on, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, payroll_exempt, duty_hours, sunday_policy, overtime_eligible, flexible_hours",
       )
       .eq("site_id", period.site_id)
       /*
@@ -269,6 +270,23 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
   const daysInMonth = daysInMonthOf(period.period_start);
   const periodDays = daysBetween(period.period_start, period.period_end);
 
+  /*
+   * When each fixed-salary joiner's pay starts. Read on its own and fail-soft:
+   * a database that has not had the migration yet has no such column, and a run
+   * that cannot read it should still run, paying everybody the whole month.
+   */
+  const salaryFrom = new Map<string, string>();
+  {
+    const { data: from } = await supabase
+      .from("profiles")
+      .select("id, salary_from")
+      .not("salary_from", "is", null);
+    for (const row of (from ?? []) as unknown as { id: string; salary_from: string }[]) {
+      salaryFrom.set(row.id, row.salary_from);
+    }
+  }
+  const monthStart = `${period.period_start.slice(0, 7)}-01`;
+
   for (const person of staff) {
     /*
      * A contract firm is billed once, below. An exempt person draws nothing
@@ -314,6 +332,12 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
       latePenaltyTiers: tiers,
       daysInMonth,
       periodDays,
+      employedDays: employedDaysInMonth(
+        monthStart,
+        daysInMonth,
+        salaryFrom.get(person.id),
+        (person as unknown as { left_on?: string | null }).left_on,
+      ),
     });
 
     results.push(result);

@@ -278,6 +278,15 @@ attendance days from then on, which `scripts/recompute-days.ts` rebuilds for the
 new one. The terminals follow through the identity triggers (delete the number,
 enrol it again under the new name); a new joiner's fingers are enrolled afresh.
 
+- **Both people are paid their own days.** A pay run includes anyone who resigned
+  inside the period (`status = terminated`, `left_on` on or after the period
+  start). Attendance-based staff are paid for the days they worked, so each of
+  the two gets exactly theirs. A fixed salary is cut for a month somebody did not
+  stay (`employedDaysInMonth`): from `profiles.salary_from` (set by the add-user
+  form from the joining date typed; null = whole month) up to the day before
+  `left_on`, so the pair together are paid one month, never a day twice. Do not
+  use `joined_on` for this — for most of the factory it is just the day the
+  record was imported.
 - **`employee_code` must carry no digits for anyone without a terminal number**
   (`NA-ASIF`, `OLD-MADNANASGHAR`). `app.assign_device_pin` derives a number from
   the digits of a code, so `OLD-54` would hand the number straight back.

@@ -165,6 +165,13 @@ export async function createUser(_prev: UserResult, form: FormData): Promise<Use
     return { ok: false, message: profileError.message };
   }
 
+  // A fixed salary starts on the day the office typed. Separate and fail-soft:
+  // on a database without the column the person is still created, and is paid
+  // the whole month until the migration is run.
+  if (joinedOn) {
+    await admin.from("profiles").update({ salary_from: joinedOn } as never).eq("id", created.user.id);
+  }
+
   if (holder) {
     await moveRecords(admin, {
       number: holder.device_pin ?? employeeCode.replace(/\D/g, ""),

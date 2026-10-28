@@ -1072,3 +1072,30 @@ describe("the three ways Rado pays a monthly salary", () => {
     expect(result.basePay).toBe(1_000);
   });
 });
+
+describe("a fixed salary for somebody who joined or left partway through the month", () => {
+  const fixed: Employee = { ...monthlyStaff, monthlySalary: 31_000, requiresAttendance: false };
+  const run = (employedDays?: number) =>
+    calculatePayroll({
+      employee: fixed,
+      rule,
+      days: [],
+      daysInMonth: 31,
+      periodDays: 26,
+      ...(employedDays === undefined ? {} : { employedDays }),
+    });
+
+  it("pays the whole salary when they were there all month", () => {
+    expect(run().basePay).toBe(31_000);
+    expect(run(31).basePay).toBe(31_000);
+  });
+
+  it("pays a joiner or resigner their days", () => {
+    expect(run(16).basePay).toBe(16_000);
+    expect(run(15).basePay).toBe(15_000);
+  });
+
+  it("pays the two people of a handed-over number exactly one salary between them", () => {
+    expect(run(15).basePay + run(16).basePay).toBe(31_000);
+  });
+});

@@ -97,10 +97,16 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     supabase
       .from("profiles")
       .select(
-        "id, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, payroll_exempt, duty_hours, sunday_policy, overtime_eligible, flexible_hours",
+        "id, status, employee_code, full_name, pay_class, requires_attendance, monthly_salary, hourly_rate, ot_hourly_rate, weekend_hourly_rate, holiday_hourly_rate, department_id, site_id, shift_id, worker_type, payroll_exempt, duty_hours, sunday_policy, overtime_eligible, flexible_hours",
       )
       .eq("site_id", period.site_id)
-      .eq("status", "active"),
+      /*
+       * Somebody who resigned inside this period is still owed the days they
+       * worked before leaving. Active people only would drop them from the run
+       * the moment they were marked terminated, and a man who left on the 16th
+       * would be paid nothing for the 1st to the 15th.
+       */
+      .or(`status.eq.active,and(status.eq.terminated,left_on.gte.${period.period_start})`),
     supabase
       .from("pay_rules")
       .select("*")
@@ -281,7 +287,10 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
     // An hourly worker with no punches earns nothing — flag it rather than
     // silently writing a zero line that looks like a completed calculation.
     if (employee.requiresAttendance && days.length === 0) {
-      skipped.push({ name: employee.fullName, reason: "No attendance recorded in this period" });
+      // A leaver who never came in this period has nothing to flag.
+      if (person.status === "active") {
+        skipped.push({ name: employee.fullName, reason: "No attendance recorded in this period" });
+      }
       continue;
     }
 

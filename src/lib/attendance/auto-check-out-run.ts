@@ -292,12 +292,28 @@ export async function autoCheckOutOpenDays(options: {
       .slice()
       .sort((a, b) => Date.parse(a.punched_at) - Date.parse(b.punched_at));
 
-    // The check-in still open at the end of this day's own punches.
+    /*
+     * The check-in still open at the end of this day's own punches — paired the
+     * way the day itself is: a check-out further from its check-in than one
+     * stretch can last is not the end of that stretch. Somebody who stayed
+     * fourteen hours has a check-out, but the day stores it as a check-in left
+     * open and pays nothing, so it is closed at the due time here and the late
+     * scan after it is simply ignored.
+     */
+    const windowMs =
+      ((shiftsBySite.get(person.site_id) ?? []).find((shift) => shift.id === person.shift_id)
+        ? presenceWindowHours(
+            (shiftsBySite.get(person.site_id) ?? []).find((shift) => shift.id === person.shift_id)!,
+          )
+        : null) ?? 12;
     let open: PunchRow | null = null;
     for (const punch of own) {
       if (punch.work_date !== day.work_date) continue;
       if (punch.direction === "in" && !open) open = punch;
-      else if (punch.direction === "out") open = null;
+      else if (punch.direction === "out" && open) {
+        const stretch = Date.parse(punch.punched_at) - Date.parse(open.punched_at);
+        if (stretch <= windowMs * 3_600_000) open = null;
+      }
     }
     if (!open) continue;
     considered += 1;

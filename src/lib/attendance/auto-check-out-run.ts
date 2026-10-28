@@ -314,9 +314,8 @@ export async function autoCheckOutOpenDays(options: {
         shift: against,
         flexibleHours: person.flexible_hours ?? false,
         dutyHours: Number(person.duty_hours ?? 8) || 8,
-        // End of duty only: nobody can say how long a forgotten day really ran,
-        // so no overtime is assumed. The office adds it where it was worked.
-        overtimeEligible: false,
+        // Duty, plus the overtime ceiling for anyone the sheet gives overtime.
+        overtimeEligible: person.overtime_eligible ?? true,
         overtimeCapHours: capBySite.get(person.site_id) ?? DEFAULT_PAY_RULE.otDailyCapHours,
         windowHours: (rostered ? presenceWindowHours(rostered) : null) ?? 12,
       },

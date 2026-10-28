@@ -4,6 +4,7 @@ import {
   arrivalShift,
   belongsToPreviousNight,
   detectShift,
+  nearestShiftStart,
   pakistanMinutesOfDay,
   presenceWindowHours,
   shiftForArrival,
@@ -180,5 +181,29 @@ describe("presenceWindowHours", () => {
 
   it("gives nothing for a shift whose times cannot be read", () => {
     expect(presenceWindowHours(shift("not a time", "16:00:00", null))).toBeNull();
+  });
+});
+
+describe("nearestShiftStart", () => {
+  const at = (iso: string) => new Date(`${iso}+05:00`);
+
+  it("measures a morning arrival filed under the previous date from that morning's start", () => {
+    const start = nearestShiftStart(at("2026-10-02T07:48:00"), "2026-10-01", "08:00:00");
+    expect(start).toEqual(at("2026-10-02T08:00:00"));
+  });
+
+  it("leaves a late arrival late", () => {
+    expect(nearestShiftStart(at("2026-10-01T09:30:00"), "2026-10-01", "08:00:00")).toEqual(
+      at("2026-10-01T08:00:00"),
+    );
+  });
+
+  it("keeps a night that crosses midnight on the 20:00 it opened with", () => {
+    expect(nearestShiftStart(at("2026-10-01T19:50:00"), "2026-10-01", "20:00:00")).toEqual(
+      at("2026-10-01T20:00:00"),
+    );
+    expect(nearestShiftStart(at("2026-10-01T21:10:00"), "2026-10-01", "20:00:00")).toEqual(
+      at("2026-10-01T20:00:00"),
+    );
   });
 });

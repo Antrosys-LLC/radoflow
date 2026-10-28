@@ -198,3 +198,34 @@ export function presenceWindowHours(shift: ShiftClock): number | null {
   const span = (until - start + 1440) % 1440 || 1440;
   return Math.max(12, (span + EARLY_MARGIN_MINUTES) / 60);
 }
+
+/**
+ * The shift start an arrival is measured against: the one nearest to it in
+ * time, among the work date and the days either side.
+ *
+ * Anchoring to the work date alone is wrong whenever a punch is credited to a
+ * date other than the one it was made on — a morning check-in filed under the
+ * previous night. Measured from yesterday's 08:00, a man who walked in at 07:48
+ * today was recorded twenty-four hours late, and the per-minute penalty took his
+ * whole pay. A night that crosses midnight still lands on its own 20:00, because
+ * that is the nearest start to a 19:50 arrival, and a genuinely late arrival is
+ * still late: 09:30 is ninety minutes from 08:00 and a day from the next one.
+ */
+export function nearestShiftStart(firstIn: Date, workDate: string, startsAt: string): Date | null {
+  const time = startsAt.trim().slice(0, 8);
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(time)) return null;
+  const clock = time.length === 5 ? `${time}:00` : time;
+
+  const base = Date.parse(`${workDate}T00:00:00Z`);
+  if (Number.isNaN(base)) return null;
+
+  let best: Date | null = null;
+  for (const offset of [-1, 0, 1]) {
+    const day = new Date(base + offset * 86_400_000).toISOString().slice(0, 10);
+    const candidate = new Date(`${day}T${clock}+05:00`);
+    if (!best || Math.abs(candidate.getTime() - firstIn.getTime()) < Math.abs(best.getTime() - firstIn.getTime())) {
+      best = candidate;
+    }
+  }
+  return best;
+}

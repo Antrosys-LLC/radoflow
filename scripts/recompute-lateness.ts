@@ -56,7 +56,7 @@ if (!url || !serviceKey) {
   process.exit(1);
 }
 
-const { pakistanMinutesOfDay, shiftForArrival } = await import("@/lib/attendance/shift-detect");
+const { nearestShiftStart, pakistanMinutesOfDay, shiftForArrival } = await import("@/lib/attendance/shift-detect");
 const { minutesLateAgainstShift } = await import("@/lib/attendance/compute");
 const { zonedWallClockToUtc } = await import("@/lib/devices/timezone");
 const { PAKISTAN_TIMEZONE } = await import("@/lib/time");
@@ -234,10 +234,7 @@ async function main(): Promise<void> {
     const against = arrival === null ? rostered : shiftForArrival(shifts, rostered, arrival);
     if (!against) continue;
 
-    const start = zonedWallClockToUtc(
-      `${row.work_date} ${against.startsAt.slice(0, 8)}`,
-      PAKISTAN_TIMEZONE,
-    );
+    const start = nearestShiftStart(new Date(row.first_in), row.work_date, against.startsAt);
     if (!start) continue;
 
     const predicted = minutesLateAgainstShift(new Date(row.first_in), start, against.graceMinutes);

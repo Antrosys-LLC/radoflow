@@ -5,6 +5,7 @@ import {
 } from "@/lib/attendance/compute";
 import { creditCheckOuts, creditWorkDates, followShifts } from "@/lib/attendance/follow-shift";
 import {
+  nearestShiftStart,
   pakistanMinutesOfDay,
   presenceWindowHours,
   shiftForArrival,
@@ -422,14 +423,11 @@ export async function recomputeAttendanceDay(
 
     if (against) {
       /*
-       * Anchored to the work date, which is the date the punch was credited
-       * to — so a night that carries past midnight is measured from the 20:00
-       * its own date opened with, not from the next one.
+       * The shift start nearest the arrival, around the work date: a night that
+       * carries past midnight is measured from its own 20:00, and a morning
+       * check-in filed under the previous date is measured from that morning.
        */
-      const shiftStart = zonedWallClockToUtc(
-        `${workDate} ${against.startsAt.slice(0, 8)}`,
-        PAKISTAN_TIMEZONE,
-      );
+      const shiftStart = nearestShiftStart(computed.firstIn, workDate, against.startsAt);
       if (shiftStart) {
         minutesLate = minutesLateAgainstShift(computed.firstIn, shiftStart, against.graceMinutes);
       }

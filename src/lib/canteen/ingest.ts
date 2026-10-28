@@ -4,7 +4,7 @@ import { resolvePeopleByDeviceUserId } from "@/lib/devices/resolve-people";
 import { parseWallClock, zonedWallClockToUtc } from "@/lib/devices/timezone";
 import type { IclockPunch } from "@/lib/devices/zkteco/iclock";
 
-import { decideMealScan, type MealScanOutcome, type MealWindow } from "./meals";
+import { decideMealScan, scanKey, type MealScanOutcome, type MealWindow } from "./meals";
 
 /**
  * Turning canteen terminal scans into servings.
@@ -45,6 +45,55 @@ interface CanteenDevice {
   id: string;
   site_id: string;
   timezone: string;
+}
+
+/**
+ * The scans in this batch that `meal_scan_log` already holds, as `scanKey`s.
+ *
+ * Paged, because a reply stops at a thousand rows without saying so and a
+ * replayed log is longer than that. A failed read returns nothing rather than
+ * throwing: the per-scan path below is still idempotent through
+ * `meal_scan_log_dedupe`, so the worst a failure costs is the old slow replay.
+ */
+async function loggedScanKeys(
+  supabase: ReturnType<typeof createServiceClient>,
+  deviceId: string,
+  punches: readonly IclockPunch[],
+  timeZone: string,
+): Promise<Set<string>> {
+  const known = new Set<string>();
+
+  const instants = punches
+    .map((punch) => zonedWallClockToUtc(punch.localTimestamp, timeZone)?.getTime())
+    .filter((value): value is number => value !== undefined && Number.isFinite(value));
+  if (instants.length === 0) return known;
+
+  const first = new Date(Math.min(...instants)).toISOString();
+  const last = new Date(Math.max(...instants)).toISOString();
+  const PAGE = 1000;
+
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from("meal_scan_log")
+      .select("device_user_id, scanned_at")
+      .eq("device_id", deviceId)
+      .gte("scanned_at", first)
+      .lte("scanned_at", last)
+      .order("scanned_at")
+      .order("id")
+      .range(from, from + PAGE - 1);
+
+    if (error) return new Set();
+
+    for (const row of data ?? []) {
+      known.add(
+        scanKey(String(row.device_user_id), new Date(row.scanned_at as string).toISOString()),
+      );
+    }
+    if (!data || data.length < PAGE) break;
+  }
+
+  return known;
 }
 
 export async function ingestMealScans(
@@ -89,6 +138,25 @@ export async function ingestMealScans(
    */
   const ordered = [...punches].sort((a, b) => a.localTimestamp.localeCompare(b.localTimestamp));
 
+  /*
+   * What is already on record, read once.
+   *
+   * The handshake tells the terminal `ATTLOGStamp=None`, so after every restart
+   * or dropped connection it sends its whole log again — thousands of scans
+   * of which a handful are new. Each one below costs a claim insert and a log
+   * upsert, so replaying the lot took longer than the relay waits (30s). The
+   * relay then answers the terminal with an error, the terminal sends the log
+   * again, and the newest scans — processed last, oldest first — are the ones
+   * that never get reached. Skipping what is already logged here makes a
+   * replay cost one read and leaves the slow path for scans that are new.
+   */
+  const alreadyLogged = await loggedScanKeys(
+    supabase,
+    device.id,
+    ordered,
+    device.timezone || "UTC",
+  );
+
   for (const punch of ordered) {
     // The terminal reports the clock on the factory wall with no zone. Meal
     // windows are written in that same local time, so they are compared
@@ -111,6 +179,8 @@ export async function ingestMealScans(
     const scannedAt = zonedWallClockToUtc(punch.localTimestamp, device.timezone || "UTC");
     if (!scannedAt) continue;
     const scannedAtIso = scannedAt.toISOString();
+
+    if (alreadyLogged.has(scanKey(punch.deviceUserId, scannedAtIso))) continue;
 
     const profileId = profileByDeviceUser.get(punch.deviceUserId) ?? null;
 

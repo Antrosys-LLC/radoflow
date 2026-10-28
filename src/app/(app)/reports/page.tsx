@@ -31,7 +31,7 @@ import {
   splitDayHours,
 } from "@/lib/payroll/hours";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
-import { selectInBatches } from "@/lib/supabase/in-batches";
+import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
 import { formatHours, todayInPakistan } from "@/lib/time";
 
@@ -95,26 +95,35 @@ export default async function ReportsPage({
   const profileIds = people.map((person) => person.id);
 
   const [days, punches] = await Promise.all([
-    selectInBatches(
+    // Paged: a hundred people over a month is two or three thousand rows, and
+    // a reply stops at a thousand without saying so.
+    selectAllInBatches(
       profileIds,
-      (batch) =>
+      (batch, first, last) =>
         supabase
           .from("attendance_days")
           .select("profile_id, work_date, regular_hours, day_type, status, hours_are_final")
           .in("profile_id", batch)
           .gte("work_date", from)
-          .lte("work_date", to),
+          .lte("work_date", to)
+          .order("profile_id")
+          .order("work_date")
+          .range(first, last),
       `Could not read attendance for ${from} to ${to}`,
     ),
-    selectInBatches(
+    selectAllInBatches(
       profileIds,
-      (batch) =>
+      (batch, first, last) =>
         supabase
           .from("punches")
           .select("work_date, direction, profile_id")
           .in("profile_id", batch)
           .gte("work_date", from)
-          .lte("work_date", to),
+          .lte("work_date", to)
+          .order("profile_id")
+          .order("punched_at")
+          .order("id")
+          .range(first, last),
       `Could not read punches for ${from} to ${to}`,
     ),
   ]);

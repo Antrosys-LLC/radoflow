@@ -248,9 +248,15 @@ that serves nothing. Nothing moves on its own — Sunday is off in the working
 calendar yet has a meal, so a calendar-driven swap would be wrong every week.
 Moving a meal ("Monday none, Thursday chicken") is a no-meal row on one date and
 that date's dishes on the other (`moveMeal`). A day with no menu falls back to
-the stamped flat price. Everybody eats once in any 24 hours;
-`profiles.meals_per_day`, else `departments.meals_per_day`, raises that for a
-contract firm's people, and `app.enforce_meal_interval` counts against it.
+the stamped flat price. Everybody eats once per serving day
+(`meal_claims.served_on`), with a one-meal person also refused inside eight
+hours either side; `profiles.meals_per_day`, else `departments.meals_per_day`,
+raises the day's limit for a contract firm's people, and
+`app.enforce_meal_interval` counts against it (migration `20261023090000`). It
+was once per rolling 24 hours, which refused a next-day lunch eaten twenty
+minutes earlier than the day before: fed, and not counted. A canteen replay is
+cheap because `ingestMealScans` skips scans `meal_scan_log` already holds
+before the per-scan path.
 
 ## A number that two people have held
 

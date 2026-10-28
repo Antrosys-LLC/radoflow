@@ -7,6 +7,10 @@
  * to tell. A fingerprint cannot be handed to a friend, which is the whole
  * point of moving the same terminal hardware to the canteen.
  *
+ * The limit is one meal per serving day (see migration 20261023090000), not
+ * per rolling 24 hours: lunch is eaten at a different minute each day, and a
+ * rolling window refused anyone who came earlier than the day before.
+ *
  * Everything here is pure: given the meal windows, a wall-clock reading and
  * whether this person has already been served, it returns the outcome. No
  * database, no clock of its own. The actual "you may not eat twice" guarantee
@@ -47,6 +51,17 @@ export interface MealScanDecision {
    * eat twice across the boundary.
    */
   servedOn: string | null;
+}
+
+/**
+ * One terminal reading, as a string two sources can agree on: the enrolment
+ * number and the instant, normalised to ISO so `...+00:00` from the database
+ * and `...Z` from a parsed timestamp compare equal.
+ */
+export function scanKey(deviceUserId: string, scannedAtIso: string): string {
+  const instant = new Date(scannedAtIso);
+  const normalised = Number.isNaN(instant.getTime()) ? scannedAtIso : instant.toISOString();
+  return `${deviceUserId}|${normalised}`;
 }
 
 /** Minutes since midnight for "HH:MM" / "HH:MM:SS". Null if unparseable. */

@@ -5,6 +5,7 @@ import {
   decideMealScan,
   minutesOfDay,
   resolveMealWindow,
+  scanKey,
   shiftDate,
   type MealWindow,
 } from "./meals";
@@ -187,5 +188,18 @@ describe("deciding a scan", () => {
     // back "served" here because the caller passed alreadyClaimed: false for
     // each, not because the rule permits both.
     expect(atLunch.window?.id).not.toBe(atDinner.window?.id);
+  });
+});
+
+describe("recognising a scan already on record", () => {
+  it("treats the database's +00:00 form and a parsed Z form as one instant", () => {
+    expect(scanKey("41", "2026-10-21T07:30:00+00:00")).toBe(
+      scanKey("41", "2026-10-21T07:30:00.000Z"),
+    );
+  });
+
+  it("keeps different people and different instants apart", () => {
+    expect(scanKey("41", "2026-10-21T07:30:00Z")).not.toBe(scanKey("42", "2026-10-21T07:30:00Z"));
+    expect(scanKey("41", "2026-10-21T07:30:00Z")).not.toBe(scanKey("41", "2026-10-21T07:30:01Z"));
   });
 });

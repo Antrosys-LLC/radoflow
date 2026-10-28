@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { loadAnomalyCandidates } from "@/lib/assistant/payroll-review";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
@@ -124,6 +125,19 @@ export default async function PayrollPage({
         };
       })
       .sort((a, b) => b.net - a.net);
+
+    /*
+     * Every line worth a look carries its reason in plain words. The note an
+     * assistant may have written is kept; where there is none, the reason is
+     * read straight from the saved run, so nobody is told to "look" without
+     * being told at what.
+     */
+    const reasons = await loadAnomalyCandidates(selectedId)
+      .then((result) => new Map(result.candidates.map((c) => [c.profileId, c.note])))
+      .catch(() => new Map<string, string>());
+    items = items.map((item) =>
+      item.reviewNote ? item : { ...item, reviewNote: reasons.get(item.profile_id) || null },
+    );
 
     /*
      * A contract firm is billed once, from its department, and has no pay line

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectPayrollAnomalies, type AnomalyInput } from "./anomalies";
+import { describeAnomaly, detectPayrollAnomalies, type AnomalyInput } from "./anomalies";
 
 function person(partial: Partial<AnomalyInput> & { profileId: string }): AnomalyInput {
   return {
@@ -109,5 +109,25 @@ describe("detectPayrollAnomalies", () => {
       }),
     ]);
     expect(result.map((r) => r.profileId)).toEqual(["flagged"]);
+  });
+});
+
+describe("describeAnomaly", () => {
+  it("says what happened, on which dates, for every reason", () => {
+    const [candidate] = detectPayrollAnomalies([
+      {
+        profileId: "p1",
+        fullName: "Test Person",
+        netThisPeriod: 30_000,
+        flaggedHours: 3,
+        flaggedDays: [{ workDate: "2026-10-05", hours: 3 }],
+        attendanceNotes: [{ workDate: "2026-10-07", note: "Missing clock-out" }],
+        trailingNet: [20_000],
+      },
+    ]);
+    const text = describeAnomaly(candidate!);
+    expect(text).toContain("2026-10-05 (3h)");
+    expect(text).toContain("2026-10-07: Missing clock-out");
+    expect(text).toContain("50% more");
   });
 });

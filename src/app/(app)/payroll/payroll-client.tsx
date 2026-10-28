@@ -330,12 +330,28 @@ export function PayrollClient({
                       bold fragment glued to a tail — Urdu puts the count in a
                       different place, and a sentence split in JSX cannot move
                       it. */}
-                  <p className="text-sm text-foreground">
-                    <Fill
-                      template={t.payroll.reviewBanner}
-                      values={{ count: needsReview.length }}
-                    />
-                  </p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-foreground">
+                      <Fill
+                        template={t.payroll.reviewBanner}
+                        values={{ count: needsReview.length }}
+                      />
+                    </p>
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs font-semibold text-warning">
+                        Show who and why
+                      </summary>
+                      <ul className="mt-2 max-h-72 space-y-1.5 overflow-y-auto text-xs text-foreground">
+                        {needsReview.map((item) => (
+                          <li key={item.id}>
+                            <span className="font-semibold">{item.full_name}</span>
+                            {" — "}
+                            {item.reviewNote ?? "Overtime hours above the ceiling were not paid."}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  </div>
                 </div>
               );
             })()}

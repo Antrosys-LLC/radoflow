@@ -3,6 +3,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import * as z from "zod/v4";
 
 import {
+  describeAnomaly,
   detectPayrollAnomalies,
   type AnomalyCandidate,
   type AnomalyInput,
@@ -141,7 +142,13 @@ async function fetchTrailingNet(
   return byProfile;
 }
 
-export async function reviewPayrollAnomalies(periodId: string): Promise<ReviewSummary> {
+/**
+ * Who is worth a look in a saved run, with the reason in plain words. No
+ * assistant involved: this is the part that always works.
+ */
+export async function loadAnomalyCandidates(
+  periodId: string,
+): Promise<{ reviewed: number; candidates: (AnomalyCandidate & { note: string })[] }> {
   const supabase = createServiceClient();
 
   const { data: period } = await supabase
@@ -155,7 +162,7 @@ export async function reviewPayrollAnomalies(periodId: string): Promise<ReviewSu
     .from("payroll_items")
     .select("profile_id, net, flagged_hours, flagged_days")
     .eq("period_id", periodId);
-  if (!items || items.length === 0) return { reviewed: 0, flagged: [] };
+  if (!items || items.length === 0) return { reviewed: 0, candidates: [] };
 
   const profileIds = items.map((i) => i.profile_id);
 
@@ -180,8 +187,28 @@ export async function reviewPayrollAnomalies(periodId: string): Promise<ReviewSu
     trailingNet: trailingByProfile.get(item.profile_id) ?? [],
   }));
 
-  const candidates = detectPayrollAnomalies(inputs);
-  if (candidates.length === 0) return { reviewed: items.length, flagged: [] };
+  const candidates = detectPayrollAnomalies(inputs).map((candidate) => ({
+    ...candidate,
+    note: describeAnomaly(candidate),
+  }));
+  return { reviewed: items.length, candidates };
+}
+
+export async function reviewPayrollAnomalies(periodId: string): Promise<ReviewSummary> {
+  const supabase = createServiceClient();
+  const { reviewed, candidates } = await loadAnomalyCandidates(periodId);
+  if (candidates.length === 0) return { reviewed, flagged: [] };
+
+  // The plain reason is written first, so every flagged line has one even if
+  // the assistant below is not configured or fails.
+  const stamp = new Date().toISOString();
+  for (const candidate of candidates) {
+    await supabase
+      .from("payroll_items")
+      .update({ review_note: candidate.note, review_generated_at: stamp })
+      .eq("period_id", periodId)
+      .eq("profile_id", candidate.profileId);
+  }
 
   const apiKey = requireAnthropicEnv();
   const client = new Anthropic({ apiKey });
@@ -217,5 +244,5 @@ export async function reviewPayrollAnomalies(periodId: string): Promise<ReviewSu
     flagged.push({ profileId: candidate.profileId, fullName: candidate.fullName, note });
   }
 
-  return { reviewed: items.length, flagged };
+  return { reviewed, flagged };
 }

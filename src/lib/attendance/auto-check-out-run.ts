@@ -196,3 +196,168 @@ export async function autoCheckOutOverdue(
 
   return { considered, closed, heldByOffice };
 }
+
+/**
+ * Closes the stretches left open on days that are already over.
+ *
+ * `autoCheckOutOverdue` only looks at each person's latest punch, which is the
+ * right test for "still checked in right now". A forgotten check-out in the
+ * middle of a month is not that: the person came back the next day, so their
+ * latest punch is an ordinary scan, and the earlier day sits at zero hours — a
+ * whole day's pay lost to a missed tap. This reads the stored days instead,
+ * finds each one whose last check-in was never closed, and stamps the check-out
+ * at the same due time the live pass would have used (held before the person's
+ * next punch, so it can never overlap their next arrival).
+ */
+export async function autoCheckOutOpenDays(options: {
+  from: string;
+  to: string;
+  now?: Date;
+  dryRun?: boolean;
+}): Promise<AutoCheckOutResult> {
+  const now = options.now ?? new Date();
+  const dryRun = options.dryRun ?? false;
+  const supabase = createServiceClient();
+
+  const { data: openDays, error } = await supabase
+    .from("attendance_days")
+    .select("profile_id, work_date, site_id, is_manual, locked")
+    .not("first_in", "is", null)
+    .is("last_out", null)
+    .gte("work_date", options.from)
+    .lte("work_date", options.to);
+  if (error) throw new Error(`Reading open days failed: ${error.message}`);
+  if (!openDays || openDays.length === 0) return { considered: 0, closed: [], heldByOffice: 0 };
+
+  const sinceIso = new Date(Date.parse(`${options.from}T00:00:00+05:00`) - 86_400_000).toISOString();
+  const punches = await recentPunches(sinceIso);
+  const byPerson = new Map<string, PunchRow[]>();
+  for (const punch of punches) {
+    const list = byPerson.get(punch.profile_id!) ?? [];
+    list.push(punch);
+    byPerson.set(punch.profile_id!, list);
+  }
+
+  const [{ data: people }, { data: shiftRows }, { data: ruleRows }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, full_name, site_id, shift_id, flexible_hours, duty_hours, overtime_eligible, requires_attendance")
+      .eq("requires_attendance", true),
+    supabase
+      .from("shifts")
+      .select("id, code, name, starts_at, ends_at, overtime_until, grace_minutes, site_id")
+      .eq("is_active", true)
+      .order("sort_order"),
+    supabase
+      .from("pay_rules")
+      .select("site_id, ot_daily_cap_hours, effective_from")
+      .order("effective_from", { ascending: false }),
+  ]);
+  const personById = new Map((people ?? []).map((person) => [person.id, person]));
+
+  const shiftsBySite = new Map<string, ShiftClock[]>();
+  for (const row of shiftRows ?? []) {
+    const list = shiftsBySite.get(row.site_id) ?? [];
+    list.push({
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      startsAt: String(row.starts_at),
+      endsAt: String(row.ends_at),
+      overtimeUntil: row.overtime_until ? String(row.overtime_until) : null,
+      graceMinutes: row.grace_minutes ?? 0,
+    });
+    shiftsBySite.set(row.site_id, list);
+  }
+  const today = now.toISOString().slice(0, 10);
+  const capBySite = new Map<string, number>();
+  for (const rule of ruleRows ?? []) {
+    if (rule.effective_from > today || capBySite.has(rule.site_id)) continue;
+    capBySite.set(rule.site_id, Number(rule.ot_daily_cap_hours));
+  }
+
+  const closed: AutoCheckOut[] = [];
+  let heldByOffice = 0;
+  let considered = 0;
+
+  for (const day of openDays) {
+    if (day.is_manual || day.locked) {
+      heldByOffice += 1;
+      continue;
+    }
+    const person = personById.get(day.profile_id);
+    if (!person?.site_id) continue;
+
+    const own = (byPerson.get(day.profile_id) ?? [])
+      .slice()
+      .sort((a, b) => Date.parse(a.punched_at) - Date.parse(b.punched_at));
+
+    // The check-in still open at the end of this day's own punches.
+    let open: PunchRow | null = null;
+    for (const punch of own) {
+      if (punch.work_date !== day.work_date) continue;
+      if (punch.direction === "in" && !open) open = punch;
+      else if (punch.direction === "out") open = null;
+    }
+    if (!open) continue;
+    considered += 1;
+    const openIn: PunchRow = open;
+
+    const shifts = shiftsBySite.get(person.site_id) ?? [];
+    const rostered = shifts.find((shift) => shift.id === person.shift_id) ?? null;
+    const arrival = pakistanMinutesOfDay(openIn.punched_at);
+    const against = arrival === null ? rostered : shiftForArrival(shifts, rostered, arrival);
+
+    let due = autoCheckOutAt(
+      { at: new Date(openIn.punched_at), workDate: openIn.work_date },
+      {
+        shift: against,
+        flexibleHours: person.flexible_hours ?? false,
+        dutyHours: Number(person.duty_hours ?? 8) || 8,
+        // End of duty only: nobody can say how long a forgotten day really ran,
+        // so no overtime is assumed. The office adds it where it was worked.
+        overtimeEligible: false,
+        overtimeCapHours: capBySite.get(person.site_id) ?? DEFAULT_PAY_RULE.otDailyCapHours,
+        windowHours: (rostered ? presenceWindowHours(rostered) : null) ?? 12,
+      },
+    );
+
+    // Never past the person's next scan: that is their next arrival, not a
+    // continuation of this one.
+    // A later scan on the same work date is a double tap, not an arrival.
+    const next = own.find(
+      (punch) =>
+        Date.parse(punch.punched_at) > Date.parse(openIn.punched_at) &&
+        punch.work_date !== openIn.work_date,
+    );
+    if (next && Date.parse(next.punched_at) <= due.getTime()) {
+      due = new Date(Date.parse(next.punched_at) - 60_000);
+    }
+    if (due.getTime() <= Date.parse(openIn.punched_at) || due.getTime() > now.getTime()) continue;
+
+    if (!dryRun) {
+      const { error: insertError } = await supabase.from("punches").insert({
+        profile_id: person.id,
+        device_id: null,
+        device_user_id: openIn.device_user_id,
+        punched_at: due.toISOString(),
+        work_date: openIn.work_date,
+        direction: "out",
+        source: "auto",
+        raw: { auto: true, reason: "no check-out by end of duty (backfill)", ranAt: now.toISOString() },
+      });
+      if (insertError) throw new Error(`Auto check-out for ${person.full_name} failed: ${insertError.message}`);
+      await recomputeAttendanceDay(person.id, openIn.work_date, person.site_id);
+    }
+
+    closed.push({
+      profileId: person.id,
+      name: person.full_name,
+      workDate: openIn.work_date,
+      checkedInAt: openIn.punched_at,
+      checkedOutAt: due.toISOString(),
+    });
+  }
+
+  return { considered, closed, heldByOffice };
+}

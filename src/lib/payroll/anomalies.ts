@@ -120,3 +120,47 @@ export function detectPayrollAnomalies(
 
   return candidates;
 }
+
+const rupees = (value: number) => "Rs " + Math.round(value).toLocaleString("en-PK");
+
+/**
+ * Says in plain words why somebody is worth a look — one sentence per reason,
+ * with the dates and figures behind it. Deterministic, so every flagged line
+ * carries its reason whether or not an assistant is configured to phrase it.
+ */
+export function describeAnomaly(candidate: AnomalyCandidate): string {
+  const parts: string[] = [];
+
+  if (candidate.reasons.includes("dropped_hours")) {
+    const dates = candidate.flaggedDays.map((d) => d.workDate + " (" + d.hours + "h)").join(", ");
+    parts.push(
+      "Worked more than the overtime ceiling allows, so " +
+        candidate.flaggedHours +
+        " hour(s) were recorded but not paid: " +
+        dates +
+        ". Check whether it was a double shift.",
+    );
+  }
+
+  if (candidate.reasons.includes("attendance_note")) {
+    const notes = candidate.attendanceNotes.map((n) => n.workDate + ": " + n.note).join("; ");
+    parts.push("Attendance problem on " + candidate.attendanceNotes.length + " day(s) — " + notes + ".");
+  }
+
+  if (candidate.reasons.includes("pay_outlier") && candidate.averageTrailingNet !== null) {
+    const direction = (candidate.percentDeviation ?? 0) >= 0 ? "more" : "less";
+    parts.push(
+      "Net pay " +
+        rupees(candidate.netThisPeriod) +
+        " is " +
+        Math.abs(candidate.percentDeviation ?? 0) +
+        "% " +
+        direction +
+        " than their recent average of " +
+        rupees(candidate.averageTrailingNet) +
+        ".",
+    );
+  }
+
+  return parts.join(" ");
+}

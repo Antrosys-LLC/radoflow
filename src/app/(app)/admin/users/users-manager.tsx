@@ -143,7 +143,10 @@ export function UsersManager({
    */
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  // Active people by default: the hundred and fifty suspended records with
+  // the old four-digit codes, and anyone who has resigned, are one click away
+  // under the other statuses, not in the way of the everyday list.
+  const [statusFilter, setStatusFilter] = useState("active");
   // Cards drawn so far. 560 of them is ~30,000 page elements, and until React
   // has hydrated every one the buttons do nothing — typing and clicks stall.
   const [limit, setLimit] = useState(PAGE_SIZE);
@@ -170,7 +173,8 @@ export function UsersManager({
   const shown = users.filter((user) => {
     if (roleFilter && user.roleId !== roleFilter) return false;
     if (statusFilter === "active" && user.status !== "active") return false;
-    if (statusFilter === "suspended" && user.status === "active") return false;
+    if (statusFilter === "suspended" && user.status !== "suspended") return false;
+    if (statusFilter === "terminated" && user.status !== "terminated") return false;
     if (statusFilter === "no-cnic" && user.cnic) return false;
     return matchesPerson(user, deferredQuery);
   });
@@ -235,6 +239,7 @@ export function UsersManager({
             <option value="">{t.users.anyStatus}</option>
             <option value="active">{t.status.employment.active}</option>
             <option value="suspended">{t.status.employment.suspended}</option>
+            <option value="terminated">{t.status.employment.terminated}</option>
             <option value="no-cnic">{t.users.cannotSignIn}</option>
           </select>
 

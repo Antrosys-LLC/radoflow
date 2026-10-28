@@ -145,8 +145,8 @@ export function parseHeading(heading) {
 export function parseDutyRule(rule) {
   const text = (rule ?? "").toLowerCase();
 
-  const contractor = /contractor/.test(text) || /^fixed amount$/.test(text.trim());
-  const noAttendance = /no attend/.test(text) || /fixed salary/.test(text);
+  const contractor = /contractor/.test(text) || /^fixed( amount)?.?$/.test(text.trim());
+  const noAttendance = /no attend|no attd/.test(text) || /fixed salary/.test(text);
   const flexible = /no\s*time\s*limit/.test(text) || /no in out/.test(text);
   const twelve = /12\s*h(?:ours?)?/.test(text);
 
@@ -167,7 +167,8 @@ export function parseDutyRule(rule) {
     dutyHours: twelve ? 12 : 8,
     overtimeEligible: contractor ? false : saysOvertime || (!saysNoOvertime && !bareDuty),
     flexibleHours: flexible,
-    requiresAttendance: !(contractor || noAttendance),
+    // No time limit is a fixed salary with no check-in or check-out to keep.
+    requiresAttendance: !(contractor || noAttendance || flexible),
     sundayPolicy: sundayAdjust ? "adjust_in_leave" : sundayOvertime ? "optional" : "off",
     recognised: text.trim().length > 0,
   };

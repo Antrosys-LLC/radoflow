@@ -54,6 +54,13 @@ Rules worth knowing before editing:
   (`PayrollInput.periodDays`), never the whole salary for a nine-day run.
   `flexible_hours` is paid for completing the duty hours whenever they are
   worked: a day earns `min(1, hours ÷ duty)` (`creditedDays`), and is never late.
+  **The workers list's NO TIME LIMIT and No Attd. are the second kind** — a
+  fixed salary, `requires_attendance = false` and `flexible_hours = true`, no
+  shift. Marking them flexible alone prorates the salary by punches (a purchaser
+  on 102,850 was paid 12,707 for seven check-ins) and leaves them out of the run
+  entirely if they never punched. `scripts/apply-duty-rules.mjs` sets each
+  person from the sheet; `scripts/make-department-flexible.mjs` is a blunt
+  department-wide tool and ignores the sheet's per-person rule.
 - **A pay run is priced at the salary a profile held when it ran.** Changing a
   salary does not move an existing run; recalculate it.
 - **Every read over the whole factory is batched** (`selectInBatches` /

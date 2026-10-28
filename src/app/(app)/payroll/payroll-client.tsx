@@ -44,6 +44,15 @@ export interface PeriodRow {
   siteName: string;
 }
 
+/** A contract firm's single line in a run: billed once, not per person. */
+export interface ContractRow {
+  id: string;
+  department: string;
+  amount: number;
+  headcount: number;
+  note: string | null;
+}
+
 export interface ItemRow {
   id: string;
   profile_id: string;
@@ -107,12 +116,14 @@ const ROW_PAGE = 60;
 export function PayrollClient({
   periods,
   items,
+  contracts,
   selectedId,
   sites,
   can,
 }: {
   periods: PeriodRow[];
   items: ItemRow[];
+  contracts: ContractRow[];
   selectedId: string | null;
   sites: { id: string; name: string }[];
   can: { run: boolean; approve: boolean; pay: boolean };
@@ -331,6 +342,27 @@ export function PayrollClient({
 
             {items.length > 0 && (selected.status === "approved" || selected.status === "paid") ? (
               <CashPaymentTally items={items} />
+            ) : null}
+
+            {contracts.length > 0 ? (
+              <div className="rounded-2xl bg-secondary p-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Contract firms · billed once
+                </p>
+                <ul className="mt-2 divide-y divide-border text-sm">
+                  {contracts.map((firm) => (
+                    <li key={firm.id} className="flex items-center justify-between gap-4 py-2">
+                      <span className="font-semibold text-foreground">{firm.department}</span>
+                      <span className="text-muted-foreground">
+                        {firm.headcount} {firm.headcount === 1 ? "person" : "people"}
+                      </span>
+                      <span className="font-bold tabular-nums text-foreground">
+                        <Latin>{formatPKR(firm.amount)}</Latin>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
 
             {items.length === 0 ? (

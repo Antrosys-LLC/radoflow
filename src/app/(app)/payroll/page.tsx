@@ -4,7 +4,7 @@ import { requireAnyPermission } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
 import { createClient } from "@/lib/supabase/server";
 
-import { PayrollClient, type ItemRow, type PeriodRow } from "./payroll-client";
+import { PayrollClient, type ContractRow, type ItemRow, type PeriodRow } from "./payroll-client";
 
 export const metadata: Metadata = {
   title: { absolute: "Payroll | Rado Dyeing and Textile" },
@@ -48,6 +48,7 @@ export default async function PayrollPage({
   const selectedId = requestedPeriod ?? periodRows[0]?.id ?? null;
 
   let items: ItemRow[] = [];
+  let contracts: ContractRow[] = [];
   if (selectedId) {
     /*
      * Three independent reads, so three round trips run at once rather than
@@ -123,12 +124,32 @@ export default async function PayrollPage({
         };
       })
       .sort((a, b) => b.net - a.net);
+
+    /*
+     * A contract firm is billed once, from its department, and has no pay line
+     * of its own — so it is read separately, or the screen shows a run that
+     * is smaller than the total above it.
+     */
+    const { data: contractRows } = await supabase
+      .from("payroll_contract_items")
+      .select("id, department_id, amount, headcount, note")
+      .eq("period_id", selectedId);
+    contracts = (contractRows ?? [])
+      .map((row) => ({
+        id: row.id,
+        department: deptById.get(row.department_id) ?? "—",
+        amount: Number(row.amount),
+        headcount: row.headcount,
+        note: row.note,
+      }))
+      .sort((a, b) => b.amount - a.amount);
   }
 
   return (
     <PayrollClient
       periods={periodRows}
       items={items}
+      contracts={contracts}
       selectedId={selectedId}
       sites={sites ?? []}
       can={{

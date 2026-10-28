@@ -721,15 +721,43 @@ export async function registerDocument(
     for (const row of rows) salaries.set(row.id, Number(row.monthly_salary));
   }
 
-  const groups = groupRegister(
-    items.map((item) => {
+  // A contract firm has no pay line of its own: it is billed once, from its
+  // department, so it is added here or the register falls short of the run.
+  const { data: contractRows } = await supabase
+    .from("payroll_contract_items")
+    .select("department_id, amount")
+    .eq("period_id", period.id);
+  const contractItems: RegisterItem[] = (contractRows ?? []).map((row) => {
+    const department = deptName.get(row.department_id) ?? "Unassigned";
+    const amount = Number(row.amount);
+    return {
+      profileId: `contract:${row.department_id}`,
+      name: department,
+      code: "",
+      designation: "Contract firm",
+      department,
+      monthlySalary: amount,
+      workingDays: 0,
+      basePay: amount,
+      overtimeHours: 0,
+      overtimePay: 0,
+      gross: amount,
+      withheld: 0,
+      net: amount,
+      lines: [],
+    };
+  });
+
+  const groups = groupRegister([
+    ...items.map((item) => {
       const who = people.get(item.profile_id);
       const department = (who?.department_id && deptName.get(who.department_id)) || "Unassigned";
       return toRegisterRow(
         registerItemFromPayroll(item, who, department, salaries.get(item.profile_id) ?? 0),
       );
     }),
-  );
+    ...contractItems.map(toRegisterRow),
+  ]);
 
   const meta = {
     title: "SALARY REGISTER",

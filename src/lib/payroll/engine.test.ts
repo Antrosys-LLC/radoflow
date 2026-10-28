@@ -987,26 +987,19 @@ function roundTo2(v: number): number {
 describe("the three ways Rado pays a monthly salary", () => {
   const september = (d: number) => `2026-09-${String(d).padStart(2, "0")}`;
 
-  it("pays fixed-salary staff for the part of the month a period covers, not the whole salary", () => {
+  it("pays fixed-salary staff the whole salary, whatever part of the month the run covers", () => {
     const fixed: Employee = { ...monthlyStaff, monthlySalary: 30_000, requiresAttendance: false };
 
-    const nineDays = calculatePayroll({
-      employee: fixed,
-      rule,
-      days: [],
-      daysInMonth: 30,
-      periodDays: 9,
-    });
-    expect(nineDays.basePay).toBe(9_000);
-
-    const wholeMonth = calculatePayroll({
-      employee: fixed,
-      rule,
-      days: [],
-      daysInMonth: 30,
-      periodDays: 30,
-    });
-    expect(wholeMonth.basePay).toBe(30_000);
+    for (const periodDays of [9, 26, 30]) {
+      const result = calculatePayroll({
+        employee: fixed,
+        rule,
+        days: [],
+        daysInMonth: 30,
+        periodDays,
+      });
+      expect(result.basePay).toBe(30_000);
+    }
   });
 
   it("pays someone with no fixed time for the hours they completed", () => {

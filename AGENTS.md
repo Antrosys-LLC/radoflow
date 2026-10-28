@@ -49,9 +49,9 @@ Rules worth knowing before editing:
 - **Net pay can never be negative.** Withholding is capped at gross earnings.
 - **There are three ways to be paid a monthly salary**, and the WORKERS LIST's
   last column says which. On a shift (the default), a day attended is a day
-  earned however short. `requires_attendance = false` is a fixed salary: the
-  month's salary for the part of the month the period covers
-  (`PayrollInput.periodDays`), never the whole salary for a nine-day run.
+  earned however short. `requires_attendance = false` is a fixed salary: the whole monthly salary in every
+  run, whatever part of the month it covers (the office's decision, 2026-10-28;
+  it used to be prorated by `PayrollInput.periodDays`).
   `flexible_hours` is paid for completing the duty hours whenever they are
   worked: a day earns `min(1, hours ÷ duty)` (`creditedDays`), and is never late.
   **The workers list's NO TIME LIMIT and No Attd. are the second kind** — a

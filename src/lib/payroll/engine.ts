@@ -213,29 +213,14 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   let basePay: number;
 
   if (isMonthly) {
-    const periodDays =
-      input.periodDays && input.periodDays > 0 ? Math.min(input.periodDays, daysInMonth) : null;
-
     if (!employee.requiresAttendance) {
       /*
-       * Not tracked by the terminal: the contracted salary, for the part of the
-       * month the period covers. A whole month pays it in full; the first nine
-       * days of one pay nine days of it — never the full salary twice over
-       * because the office ran payroll mid-month.
+       * Not tracked by the terminal: the whole contracted salary, whatever part
+       * of the month the run covers. The office pays these people their stated
+       * figure every run; it is not earned by the day.
        */
-      if (periodDays === null || periodDays >= daysInMonth) {
-        basePay = roundMoney(employee.monthlySalary);
-        lines.push({ code: "BASIC", label: "Monthly salary", kind: "base", amount: basePay });
-      } else {
-        basePay = roundMoney(perDay * periodDays);
-        lines.push({
-          code: "BASIC",
-          label: `Fixed salary for ${periodDays} of ${daysInMonth} days`,
-          kind: "base",
-          rate: perDay,
-          amount: basePay,
-        });
-      }
+      basePay = roundMoney(employee.monthlySalary);
+      lines.push({ code: "BASIC", label: "Monthly salary", kind: "base", amount: basePay });
     } else if (employee.flexibleHours) {
       /*
        * No fixed in or out time: paid for the duty hours completed, whenever

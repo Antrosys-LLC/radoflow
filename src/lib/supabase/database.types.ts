@@ -3522,7 +3522,7 @@ export type Database = {
       penalty_basis: "day" | "month" | "minute"
       permission_effect: "grant" | "deny"
       punch_direction: "in" | "out" | "unknown"
-      punch_source: "device" | "manual" | "import"
+      punch_source: "device" | "manual" | "import" | "auto"
       request_status: "pending" | "approved" | "rejected" | "cancelled"
       salary_adjustment_kind:
         | "advance"
@@ -3714,7 +3714,7 @@ export const Constants = {
       penalty_basis: ["day", "month", "minute"],
       permission_effect: ["grant", "deny"],
       punch_direction: ["in", "out", "unknown"],
-      punch_source: ["device", "manual", "import"],
+      punch_source: ["device", "manual", "import", "auto"],
       request_status: ["pending", "approved", "rejected", "cancelled"],
       salary_adjustment_kind: ["advance", "advance_2", "suit", "allowance", "deduction"],
       sunday_policy: ["off", "optional", "compulsory", "adjust_in_leave"],

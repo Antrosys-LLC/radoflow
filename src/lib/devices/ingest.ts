@@ -175,7 +175,14 @@ export async function ingestPunches(
   const workDates = await creditWorkDates(supabase, punches, profileByDeviceUser, timeZone);
 
   if (device.direction !== "auto") {
-    await creditCheckOuts(supabase, device.direction, punches, profileByDeviceUser, timeZone, workDates);
+    await creditCheckOuts(
+      supabase,
+      device.direction,
+      punches,
+      profileByDeviceUser,
+      timeZone,
+      workDates,
+    );
   }
 
   const rows = punches.flatMap((punch) => {
@@ -233,9 +240,22 @@ export async function ingestPunches(
     affected.set(key, { profileId: row.profile_id as string, workDate: row.work_date as string });
   }
 
-  for (const { profileId, workDate } of affected.values()) {
-    await recomputeAttendanceDay(profileId, workDate, device.site_id);
-  }
+  /*
+   * Eight at a time. One after another, a backlog of five hundred people —
+   * which is what arrives when a terminal has been cut off for a day — spent
+   * minutes here, long past the relay's 30 seconds. The relay then reported a
+   * failure while the punches were already stored, and nothing else ever
+   * recomputes a day whose punches are all duplicates on the retry. Each day is
+   * independent, so there is nothing to order.
+   */
+  const queue = [...affected.values()];
+  await Promise.all(
+    Array.from({ length: Math.min(8, queue.length) }, async () => {
+      for (let next = queue.shift(); next; next = queue.shift()) {
+        await recomputeAttendanceDay(next.profileId, next.workDate, device.site_id);
+      }
+    }),
+  );
 
   // After the days are rebuilt, so the check-in just recorded counts toward
   // the run of days that decides somebody's shift.
@@ -275,7 +295,7 @@ export async function recomputeAttendanceDay(
   const [{ data: punchRows }, { data: profile }, dayType, { data: shiftRows }] = await Promise.all([
     supabase
       .from("punches")
-      .select("id, punched_at, direction, device_id")
+      .select("id, punched_at, direction, device_id, source")
       .eq("profile_id", profileId)
       .eq("work_date", workDate)
       .order("punched_at", { ascending: true }),
@@ -311,7 +331,9 @@ export async function recomputeAttendanceDay(
   }
 
   const punches: RawPunch[] = (punchRows ?? []).map((row) => {
-    const declared = Boolean(row.device_id && gateDeviceIds.has(row.device_id));
+    // An automatic check-out is stamped by the rule, not guessed from the order.
+    const declared =
+      row.source === "auto" || Boolean(row.device_id && gateDeviceIds.has(row.device_id));
     return {
       punchedAt: new Date(row.punched_at as string),
       direction: (row.direction as RawPunch["direction"]) ?? "unknown",
@@ -374,6 +396,7 @@ export async function recomputeAttendanceDay(
     ordered.flatMap((row, index) => {
       const derived = computed.directions[index];
       if (!derived || derived === row.direction) return [];
+      if (row.source === "auto") return [];
       if (row.device_id && gateDeviceIds.has(row.device_id)) return [];
       return [supabase.from("punches").update({ direction: derived }).eq("id", row.id)];
     }),

@@ -20,6 +20,7 @@ import { BulkBar } from "./bulk-bar";
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
+import { suggestSalary, type SalarySuggestion } from "@/lib/people/designation-salary";
 import { matchesPerson } from "@/lib/people/match";
 import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
@@ -316,6 +317,7 @@ export function UsersManager({
           sites={sites}
           departments={departments}
           shifts={shifts}
+          people={users}
           onClose={() => setShowAdd(false)}
         />
       ) : null}
@@ -703,6 +705,7 @@ function AddUserDialog({
   sites,
   departments,
   shifts,
+  people,
   onClose,
 }: {
   roles: Option[];
@@ -711,11 +714,22 @@ function AddUserDialog({
   sites: Option[];
   departments: DepartmentOption[];
   shifts: Option[];
+  /** Everyone on the books, to read the usual salary of a designation from. */
+  people: UserRow[];
   onClose: () => void;
 }) {
   const t = useDictionary();
   const [state, formAction] = useActionState(createUser, INITIAL);
   const [payClass, setPayClass] = useState("hourly");
+  /*
+   * The usual salary for the designation typed, offered as a starting point.
+   * It fills the field only until the office has typed a figure of their own or
+   * chosen the pay type themselves; after that the form never overwrites them.
+   */
+  const [salary, setSalary] = useState("0");
+  const [suggestion, setSuggestion] = useState<SalarySuggestion | null>(null);
+  const [salaryEdited, setSalaryEdited] = useState(false);
+  const [payClassEdited, setPayClassEdited] = useState(false);
   const router = useRouter();
   // Who already holds the code being typed, if anybody.
   const [holder, setHolder] = useState<{ name: string; code: string } | null>(null);
@@ -816,6 +830,14 @@ function AddUserDialog({
                 name="designation"
                 className={INPUT}
                 placeholder={t.users.designationPlaceholder}
+                onChange={(event) => {
+                  const found = suggestSalary(event.target.value, people);
+                  setSuggestion(found);
+                  if (found && !salaryEdited) {
+                    setSalary(String(found.salary));
+                    if (!payClassEdited) setPayClass("monthly");
+                  }
+                }}
               />
             </Field>
           </div>
@@ -927,7 +949,10 @@ function AddUserDialog({
               <select
                 name="pay_class"
                 value={payClass}
-                onChange={(e) => setPayClass(e.target.value)}
+                onChange={(e) => {
+                  setPayClass(e.target.value);
+                  setPayClassEdited(true);
+                }}
                 className={INPUT}
               >
                 <option value="hourly">{t.users.hourlyWage}</option>
@@ -940,9 +965,19 @@ function AddUserDialog({
                   name="monthly_salary"
                   type="number"
                   min="0"
-                  defaultValue={0}
+                  value={salary}
+                  onChange={(e) => {
+                    setSalary(e.target.value);
+                    setSalaryEdited(true);
+                  }}
                   className={INPUT}
                 />
+                {suggestion ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Usual salary for this designation: Rs {suggestion.salary.toLocaleString("en-PK")} (
+                    {suggestion.people} of {suggestion.of} people). You can change it.
+                  </p>
+                ) : null}
               </Field>
             ) : (
               <Field label={t.users.hourlyRateField}>

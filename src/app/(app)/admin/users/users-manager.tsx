@@ -42,6 +42,7 @@ import {
   setUserOverride,
   setUserPassword,
   setUserRole,
+  resignUser,
   setUserStatus,
   updateUserProfile,
   type UserResult,
@@ -375,6 +376,8 @@ function UserCard({
   const roleChanged = roleId !== (user.roleId ?? "");
 
   const [confirmingStatus, setConfirmingStatus] = useState(false);
+  const [resigning, setResigning] = useState(false);
+  const [resignDate, setResignDate] = useState("");
   /*
    * Typed at the moment of the change, never held. Suspending somebody takes
    * them off the floor and off the payroll, and a session cookie on an
@@ -541,7 +544,66 @@ function UserCard({
             {suspended ? t.users.reactivate : t.users.suspend}
           </button>
         ) : null}
+
+        {canAdminister && user.status === "active" ? (
+          <button
+            type="button"
+            disabled={pending || resigning}
+            onClick={() => setResigning(true)}
+            className="rounded-xl px-3 py-2 text-xs font-semibold text-muted-foreground transition-all hover:text-danger disabled:opacity-50"
+          >
+            Resigned
+          </button>
+        ) : null}
       </div>
+
+      {resigning ? (
+        <div className="mt-3 space-y-2">
+          <label className="block text-xs font-semibold text-foreground">
+            Date they resigned (their last day is the day before)
+            <input
+              type="date"
+              dir="ltr"
+              value={resignDate}
+              onChange={(event) => setResignDate(event.target.value)}
+              className="mt-1 w-full rounded-xl border border-input bg-card px-3 py-2 text-xs outline-none focus:border-primary"
+            />
+          </label>
+          <PasswordInput
+            value={statusPassword}
+            onChange={setStatusPassword}
+            autoComplete="current-password"
+            placeholder={t.users.confirmWithPassword}
+            className="w-full rounded-xl border border-input bg-card px-3 py-2 text-xs outline-none focus:border-primary"
+          />
+          <SwipeToConfirm
+            tone="danger"
+            label={`Swipe to record ${user.full_name.split(" ")[0] ?? ""}'s resignation`}
+            confirmedLabel="Recording…"
+            pending={pending || statusPassword.length === 0 || resignDate === ""}
+            onConfirm={() =>
+              startTransition(async () => {
+                const result = await resignUser(user.id, resignDate, statusPassword);
+                if (result.ok) {
+                  toast.success(result.message);
+                  setResigning(false);
+                  setStatusPassword("");
+                } else {
+                  toast.error(result.message);
+                }
+                router.refresh();
+              })
+            }
+          />
+          <button
+            type="button"
+            onClick={() => setResigning(false)}
+            className="mt-1.5 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+          >
+            {t.common.cancel}
+          </button>
+        </div>
+      ) : null}
 
       {/* Both commitments live below the row so the swipe has full width to
           travel — a short track is easy to complete by accident, which is the

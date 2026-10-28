@@ -549,6 +549,50 @@ export async function setUserStatus(
 }
 
 /**
+ * Records that somebody resigned, from a given date.
+ *
+ * The date is the first day they are no longer here: what the terminal recorded
+ * before it stays theirs and is paid to them, and from it a new joiner may take
+ * the same number. Marks them terminated, which withdraws them from the
+ * terminals, and keeps their record so the days they worked are still paid in
+ * the run that covers them. Needs the acting person's own password, like any
+ * change that takes somebody off the floor.
+ */
+export async function resignUser(
+  userId: string,
+  leftOn: string,
+  confirmPassword = "",
+): Promise<UserResult> {
+  const session = await requirePermission("people.manage");
+
+  if (!userId) return { ok: false, message: "No user selected." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(leftOn)) {
+    return { ok: false, message: "Enter the date they resigned." };
+  }
+
+  const confirmed = await verifyOwnPassword(session.userId, confirmPassword);
+  if (!confirmed.ok) return { ok: false, message: confirmed.message };
+
+  const allowed = await mayAdministerAccount(session, userId, "record a resignation for it");
+  if (!allowed.ok) return { ok: false, message: allowed.message };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .update({ status: "terminated", left_on: leftOn })
+    .eq("id", userId)
+    .select("id");
+
+  if (error) return { ok: false, message: error.message };
+  if (!data || data.length === 0) {
+    return { ok: false, message: "Nothing changed — that account is not yours to administer." };
+  }
+
+  revalidatePath("/admin/users");
+  return { ok: true, message: `Resignation recorded from ${leftOn}.` };
+}
+
+/**
  * The same change, to several people at once.
  *
  * The office does this by hand constantly — a whole department moved to a new

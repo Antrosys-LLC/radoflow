@@ -122,9 +122,33 @@ export async function recordDeviceContact(serialNumber: string): Promise<DeviceR
   return { ...device, sync_role: syncRole };
 }
 
+/** The department whose people are kitchen cards and nothing else. */
+export const CANTEEN_CARDS_DEPARTMENT = "CANTEEN";
+
+async function canteenCardProfiles(profileIds: readonly string[]): Promise<Set<string>> {
+  const cards = new Set<string>();
+  if (profileIds.length === 0) return cards;
+  const supabase = createServiceClient();
+  const { data: department } = await supabase
+    .from("departments")
+    .select("id")
+    .eq("code", CANTEEN_CARDS_DEPARTMENT);
+  const ids = (department ?? []).map((d) => d.id);
+  if (ids.length === 0) return cards;
+  for (let i = 0; i < profileIds.length; i += 100) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id")
+      .in("id", profileIds.slice(i, i + 100))
+      .in("department_id", ids);
+    for (const row of data ?? []) cards.add(row.id);
+  }
+  return cards;
+}
+
 export async function ingestPunches(
   serialNumber: string,
-  punches: readonly IclockPunch[],
+  received: readonly IclockPunch[],
 ): Promise<IngestResult> {
   const supabase = createServiceClient();
 
@@ -141,7 +165,7 @@ export async function ingestPunches(
    * turn a lunch queue into a shift's worth of paid hours.
    */
   if (device.purpose === "canteen") {
-    const meals = await ingestMealScans(device, punches);
+    const meals = await ingestMealScans(device, received);
     return {
       accepted: meals.served,
       duplicates: meals.duplicates,
@@ -150,13 +174,27 @@ export async function ingestPunches(
     };
   }
 
-  if (punches.length === 0) {
+  if (received.length === 0) {
     return { accepted: 0, duplicates: 0, unmapped: [], recomputedDays: 0 };
   }
 
   // Resolve the terminal's enrolment numbers to people.
+  const receivedIds = [...new Set(received.map((p) => p.deviceUserId))];
+  const resolved = await resolvePeopleByDeviceUserId(device.id, receivedIds);
+
+  /*
+   * Canteen cards (the Canteen Cards department) are enrolled on every terminal
+   * but exist only to be counted at the kitchen. Their scan at a gate is not
+   * attendance and must not become a day, so it is dropped here, before it can
+   * be stored — the kitchen terminal reads its own scans as meals above.
+   */
+  const canteenCards = await canteenCardProfiles([...resolved.values()]);
+  const punches = received.filter((p) => !canteenCards.has(resolved.get(p.deviceUserId) ?? ""));
+  if (punches.length === 0) {
+    return { accepted: 0, duplicates: 0, unmapped: [], recomputedDays: 0 };
+  }
   const deviceUserIds = [...new Set(punches.map((p) => p.deviceUserId))];
-  const profileByDeviceUser = await resolvePeopleByDeviceUserId(device.id, deviceUserIds);
+  const profileByDeviceUser = resolved;
 
   // A number that passed to a new joiner still belongs, before that day, to who held it.
   const formerHolders = await resolveFormerHolders(deviceUserIds);

@@ -25,11 +25,12 @@ const PUBLIC_PATHS = ["/login", "/auth", "/home"];
 const PUBLIC_HOME = "/home";
 
 /**
- * Machine-authenticated endpoints: the terminal itself, and the on-site agent.
+ * Machine-authenticated endpoints: the terminal itself, the on-site agent, and
+ * the scheduler (/api/cron, which presents CRON_SECRET).
  * Both present DEVICE_INGEST_SECRET and have no user session to check, so
  * redirecting them to /login would silently swallow attendance data.
  */
-const DEVICE_PATHS = ["/iclock", "/api/devices/ingest"];
+const DEVICE_PATHS = ["/iclock", "/api/devices/ingest", "/api/cron"];
 
 /** Always reachable, so a misconfigured deployment can still be diagnosed. */
 const DIAGNOSTIC_PATHS = ["/api/health"];

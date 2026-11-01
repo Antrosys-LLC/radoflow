@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, Clock, ScrollText, TriangleAlert, Users } from "lucide-react";
+import { ArrowLeft, CalendarDays, Clock, NotebookPen, ScrollText, TriangleAlert, Users } from "lucide-react";
 
 import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refresh";
 import { ExportButtons } from "@/components/export-buttons";
@@ -108,6 +108,7 @@ interface DayRow {
   minutes_late: number;
   is_late: boolean;
   is_manual: boolean;
+  note: string | null;
   locked: boolean;
   approved_by: string | null;
   approved_at: string | null;
@@ -122,7 +123,7 @@ interface DayRow {
  * below.
  */
 const COLUMNS_BEFORE_APPROVALS =
-  "id, profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual, locked, hours_are_final";
+  "id, profile_id, work_date, first_in, last_out, regular_hours, day_type, status, minutes_late, is_late, is_manual, locked, hours_are_final, note";
 
 const FULL_COLUMNS = `${COLUMNS_BEFORE_APPROVALS}, approved_by, approved_at`;
 
@@ -636,7 +637,15 @@ function DaysView({
                   <tr key={row.id} className="border-b border-border/60 last:border-0">
                     <td className="px-4 py-3 font-semibold">
                       <Latin>{row.work_date}</Latin>
-                      {row.is_manual ? (
+                      {row.is_manual && row.note === "Manual sheet" ? (
+                        <span
+                          title={t.logs.manualSheet}
+                          aria-label={t.logs.manualSheet}
+                          className="ms-2 inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-muted-foreground"
+                        >
+                          <NotebookPen className="h-3 w-3" aria-hidden />
+                        </span>
+                      ) : row.is_manual ? (
                         <span className="ms-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
                           {t.logs.edited}
                         </span>
@@ -1119,7 +1128,15 @@ function PersonLog({
                           {t.logs.sunday}
                         </span>
                       ) : null}
-                      {row.is_manual ? (
+                      {row.is_manual && row.note === "Manual sheet" ? (
+                        <span
+                          title={t.logs.manualSheet}
+                          aria-label={t.logs.manualSheet}
+                          className="ms-2 inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-muted-foreground"
+                        >
+                          <NotebookPen className="h-3 w-3" aria-hidden />
+                        </span>
+                      ) : row.is_manual ? (
                         <span className="ms-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
                           {t.logs.edited}
                         </span>

@@ -780,6 +780,7 @@ const ur: Dictionary = {
     counts: "شمار",
     sunday: "اتوار",
     edited: "تبدیل شدہ",
+    manualSheet: "دستی شیٹ سے",
     correctDay: "اس دن کو درست کریں",
     correctDayHint:
       "رہ گئے پنچ یا غلط مشین پر لگی چھٹی کے لیے۔ اس کے بعد دن بند ہو جاتا ہے تاکہ اگلا سنک اسے بدل نہ سکے۔",

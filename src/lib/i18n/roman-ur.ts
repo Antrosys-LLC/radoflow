@@ -792,6 +792,7 @@ const roman: Dictionary = {
     counts: "Shumar",
     sunday: "Itwar",
     edited: "Tabdeel shuda",
+    manualSheet: "Haath ki sheet se",
     correctDay: "Is din ko durust karein",
     correctDayHint:
       "Reh gaye punch ya ghalat machine par lagi chutti ke liye. Is ke baad din band ho jata hai taake agla sync ise badal na sake.",

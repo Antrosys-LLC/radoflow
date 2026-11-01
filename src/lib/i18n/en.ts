@@ -886,6 +886,7 @@ const en = {
     counts: "Counts",
     sunday: "Sunday",
     edited: "Edited",
+    manualSheet: "From the manual sheet",
     // Putting one day right. Hours are not a field: they follow from the two
     // clock readings, because a day whose hours disagree with its own in and
     // out times is a day nobody can check.

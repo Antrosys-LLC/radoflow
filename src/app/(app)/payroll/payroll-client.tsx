@@ -319,6 +319,10 @@ export function PayrollClient({
                 </button>
               ) : null}
 
+              {items.length > 0 ? (
+                <ExportButtons kind="register" params={{ period: selected.id }} />
+              ) : null}
+
               {selected.locked ? (
                 <p className="self-center text-xs font-semibold text-muted-foreground">
                   {t.payroll.locked}

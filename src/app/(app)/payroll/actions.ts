@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 
 import { reviewPayrollAnomalies } from "@/lib/assistant/payroll-review";
+import { verifyOwnPassword } from "@/lib/auth/reauth";
 import { requirePermission } from "@/lib/auth/session";
+import { createServiceClient } from "@/lib/supabase/service";
 import { approvalRowFor, needsApproval } from "@/lib/payroll/approval";
 import { runPayrollForPeriod } from "@/lib/payroll/run";
 import { createClient } from "@/lib/supabase/server";
@@ -425,4 +427,66 @@ async function requirePayableItem(
   }
 
   return null;
+}
+
+/**
+ * Deletes a pay period that has not been approved.
+ *
+ * Needs the person's own sign-in password, every time: a payroll run is a month
+ * of people's money, and a session left open on an office machine must not be
+ * enough to throw it away. An approved, paid or locked period is refused here
+ * and again by a database trigger, so it cannot be removed by any route.
+ *
+ * The loan installments the run took are removed with it. They are written per
+ * run and replaced on a re-run; leaving them behind would show the loan as
+ * recovered for a month nobody was paid.
+ */
+export async function deletePeriod(
+  periodId: string,
+  password: string,
+): Promise<PayrollResultMessage> {
+  const session = await requirePermission("payroll.run");
+
+  const confirmed = await verifyOwnPassword(session.userId, password);
+  if (!confirmed.ok) return { ok: false, message: confirmed.message };
+
+  const supabase = await createClient();
+  const { data: period } = await supabase
+    .from("payroll_periods")
+    .select("id, label, status, locked, approved_at")
+    .eq("id", periodId)
+    .maybeSingle();
+  if (!period) return { ok: false, message: "That payroll no longer exists. Reload the page." };
+
+  if (
+    period.status === "approved" ||
+    period.status === "paid" ||
+    period.locked ||
+    period.approved_at
+  ) {
+    return { ok: false, message: "An approved payroll can never be deleted." };
+  }
+
+  const admin = createServiceClient();
+  const { error: recoveryError } = await admin
+    .from("loan_recoveries")
+    .delete()
+    .eq("period_id", periodId)
+    .eq("source", "payroll");
+  if (recoveryError) return { ok: false, message: recoveryError.message };
+
+  const { data, error } = await supabase
+    .from("payroll_periods")
+    .delete()
+    .eq("id", periodId)
+    .neq("status", "approved")
+    .neq("status", "paid")
+    .eq("locked", false)
+    .is("approved_at", null)
+    .select("id");
+  if (error) return { ok: false, message: error.message };
+  if (!data || data.length === 0) return { ok: false, message: NOT_WRITTEN };
+
+  revalidatePath("/payroll");
+  return { ok: true, message: `Payroll "${period.label}" deleted.` };
 }

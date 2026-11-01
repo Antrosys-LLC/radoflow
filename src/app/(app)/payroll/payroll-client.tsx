@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
-import { AlertTriangle, BadgeCheck, Banknote, Check, FileText, Play, Plus, X } from "lucide-react";
+import { AlertTriangle, BadgeCheck, Banknote, Check, FileText, Play, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { AskAbout } from "@/components/assistant/ask-about";
@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import {
   approvePeriod,
   createPeriod,
+  deletePeriod,
   markItemPaid,
   markItemUnpaid,
   markPeriodPaid,
@@ -132,6 +133,7 @@ export function PayrollClient({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [showNew, setShowNew] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [slip, setSlip] = useState<ItemRow | null>(null);
   // Rows drawn so far; every row is a dozen controls to hydrate.
   const [rowLimit, setRowLimit] = useState(ROW_PAGE);
@@ -302,6 +304,18 @@ export function PayrollClient({
                 >
                   <Banknote className="size-4" />
                   {t.payroll.markPaidAndLock}
+                </button>
+              ) : null}
+
+              {can.run && !selected.locked && selected.status !== "approved" && selected.status !== "paid" ? (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => setConfirmDelete(true)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-danger-soft px-4 py-2.5 text-sm font-bold text-danger transition-all hover:-translate-y-0.5 disabled:opacity-50"
+                >
+                  <Trash2 className="size-4" />
+                  {t.payroll.deletePayroll}
                 </button>
               ) : null}
 
@@ -510,6 +524,9 @@ export function PayrollClient({
       ) : null}
 
       {showNew ? <NewPeriodDialog sites={sites} onClose={() => setShowNew(false)} /> : null}
+      {confirmDelete && selected ? (
+        <DeletePeriodDialog period={selected} onClose={() => setConfirmDelete(false)} />
+      ) : null}
       {selected && items.length > 0 ? (
         <RegisterTable items={items.map((item) => item.register)} periodId={selected.id} />
       ) : null}
@@ -789,6 +806,86 @@ function PayOutButton({
         >
           {t.common.cancel}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function DeletePeriodDialog({
+  period,
+  onClose,
+}: {
+  period: PeriodRow;
+  onClose: () => void;
+}) {
+  const t = useDictionary();
+  const router = useRouter();
+  const [password, setPassword] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  function submit() {
+    startTransition(async () => {
+      const result = await deletePeriod(period.id, password);
+      if (result.ok) {
+        toast.success(result.message);
+        onClose();
+        router.replace("/payroll");
+        router.refresh();
+      } else {
+        toast.error(result.message, { duration: 9000 });
+      }
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-charcoal/40 p-3 sm:items-center">
+      <div className="w-full max-w-md rounded-3xl bg-card p-6 shadow-[0_18px_40px_rgb(0_0_0/0.18)]">
+        <div className="flex items-start justify-between">
+          <h2 className="text-lg font-bold tracking-tight text-foreground">
+            {t.payroll.deletePayrollTitle}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t.common.close}
+            className="flex size-10 items-center justify-center rounded-xl bg-secondary text-muted-foreground hover:text-foreground"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+        <p className="mt-3 text-sm text-muted-foreground">
+          <Fill template={t.payroll.deletePayrollHint} values={{ label: period.label }} />
+        </p>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            submit();
+          }}
+          className="mt-4 space-y-4"
+        >
+          <div>
+            <label className="text-sm font-semibold text-foreground">
+              {t.payroll.deletePasswordLabel}
+            </label>
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              autoFocus
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="mt-1 w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={pending || !password.trim()}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-danger px-4 py-3.5 text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:opacity-60"
+          >
+            <Trash2 className="size-4" />
+            {pending ? t.payroll.deleting : t.payroll.deletePayrollConfirm}
+          </button>
+        </form>
       </div>
     </div>
   );

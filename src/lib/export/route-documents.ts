@@ -3,6 +3,7 @@ import type { Database } from "@/lib/supabase/database.types";
 import { readMealPrice, summariseMeals, type MealClaimRow } from "@/lib/canteen/history";
 import { dayPrices } from "@/lib/canteen/menu";
 import { loadMenus } from "@/lib/canteen/menu-data";
+import { loadUnmatchedMeals, withUnmatched } from "@/lib/canteen/unmatched";
 import { dailyRate, daysInMonthOf, overtimeRate } from "@/lib/payroll/hours";
 import { loanBalance, monthOf, type LoanRow, type RecoveryRow } from "@/lib/payroll/ledger";
 import { groupRegister, toRegisterRow, type RegisterItem } from "@/lib/payroll/register";
@@ -169,7 +170,11 @@ export async function canteenDocument(
         return id ? deptIds.includes(id) : false;
       })
     : allClaims;
-  const summary = summariseMeals(claims, price, prices);
+  // Meals taken by numbers RadoFlow does not know: counted, and shown highlighted.
+  // They have no department, so a department-scoped report leaves them out.
+  const stray = scoped ? [] : await loadUnmatchedMeals(supabase, from, to);
+  const summary = withUnmatched(summariseMeals(claims, price, prices), stray, price, prices);
+  const strayPrice = (date: string) => prices.get(date) ?? price ?? 0;
   const scope = scoped
     ? deptIds
         .map((id) => deptName.get(id))
@@ -267,6 +272,20 @@ export async function canteenDocument(
       });
     }
 
+    if (stray.length > 0) {
+      rows.push({ group: `NOT IN RADOFLOW  ·  ${stray.length} meals counted, add them as people` });
+      stray.forEach((meal, index) =>
+        rows.push([
+          index + 1,
+          `ID ${meal.deviceUserId}: ${formatDate(meal.date)}`,
+          `ID ${meal.deviceUserId}`,
+          1,
+          Math.round(strayPrice(meal.date)),
+          Math.round(strayPrice(meal.date)),
+        ]),
+      );
+    }
+
     rows.push({ group: "Working, day by day  (meals x price of one meal = amount)" });
     dayWorking.forEach((day) =>
       rows.push([
@@ -291,6 +310,10 @@ export async function canteenDocument(
         Math.round(a),
       ]);
     });
+    if (stray.length > 0) {
+      const a = stray.reduce((t, meal) => t + strayPrice(meal.date), 0);
+      rows.push(["", `NOT IN RADOFLOW  ·  ${stray.length} IDs`, "", stray.length, Math.round(a / stray.length), Math.round(a)]);
+    }
 
     return {
       ok: true,
@@ -318,7 +341,7 @@ export async function canteenDocument(
           { label: "Meals served", value: summary.total.meals.toLocaleString("en-PK") },
           { label: "Total cost", value: rs(summary.total.amount) },
           { label: "Average per meal", value: rs(rateOf(summary.total)) },
-          { label: "People fed", value: summary.byPerson.length.toLocaleString("en-PK") },
+          { label: "People fed", value: (summary.byPerson.length + stray.length).toLocaleString("en-PK") },
         ],
       }),
       name: `canteen-${from === to ? from : `${from}-to-${to}`}${scoped ? "-dept" : ""}.pdf`,
@@ -352,6 +375,13 @@ export async function canteenDocument(
         deptAmount,
       ],
     });
+  }
+
+  if (stray.length > 0) {
+    personRows.push({ group: `NOT IN RADOFLOW  ·  ${stray.length} meals counted, add them as people` });
+    stray.forEach((meal, index) =>
+      personRows.push([index + 1, `ID ${meal.deviceUserId} (${meal.date})`, `ID ${meal.deviceUserId}`, 1, strayPrice(meal.date), strayPrice(meal.date)]),
+    );
   }
 
   return {
@@ -410,10 +440,22 @@ export async function canteenDocument(
           const m = list.reduce((t, r) => t + r.meals, 0);
           const a = list.reduce((t, r) => t + r.amount, 0);
           return [department, list.length, m, rateOf({ meals: m, amount: a }), a];
-        }),
+        }).concat(
+          stray.length > 0
+            ? [
+                [
+                  "NOT IN RADOFLOW",
+                  stray.length,
+                  stray.length,
+                  stray.reduce((t, meal) => t + strayPrice(meal.date), 0) / stray.length,
+                  stray.reduce((t, meal) => t + strayPrice(meal.date), 0),
+                ],
+              ]
+            : [],
+        ),
         totals: [
           "TOTAL",
-          summary.byPerson.length,
+          summary.byPerson.length + stray.length,
           summary.total.meals,
           rateOf(summary.total),
           summary.total.amount,
@@ -432,7 +474,8 @@ export async function canteenDocument(
           { header: "DEPARTMENT", width: 20, format: "text" },
           { header: "PRICE (Rs)", width: 12, format: "money" },
         ],
-        rows: claims.map((claim) => {
+        rows: [
+          ...claims.map((claim) => {
           const who = people.get(claim.profile_id);
           const stamped =
             claim.price_pkr === null || claim.price_pkr === undefined
@@ -448,7 +491,22 @@ export async function canteenDocument(
             stamped ?? price ?? null,
           ];
         }),
-        totals: ["", `${claims.length} meals`, "", "", "", "", summary.total.amount],
+          ...(stray.length > 0
+            ? [
+                { group: "NOT IN RADOFLOW  ·  counted, add them as people" },
+                ...stray.map((meal) => [
+                  meal.date,
+                  "",
+                  foodOf(meal.date),
+                  `ID ${meal.deviceUserId}`,
+                  `ID ${meal.deviceUserId}`,
+                  "NOT IN RADOFLOW",
+                  strayPrice(meal.date),
+                ]),
+              ]
+            : []),
+        ],
+        totals: ["", `${claims.length + stray.length} meals`, "", "", "", "", summary.total.amount],
       },
     ]),
     name: `canteen-${from === to ? from : `${from}-to-${to}`}${scoped ? "-dept" : ""}.xlsx`,
@@ -480,6 +538,7 @@ export async function canteenInvoiceDocument(
   const price = readMealPrice(priceSetting?.value);
   const prices = dayPrices(menu.menus);
   const people = await directory(supabase, [...new Set(allClaims.map((c) => c.profile_id))]);
+  const stray = deptIds.length > 0 ? [] : await loadUnmatchedMeals(supabase, from, to);
   const claims =
     deptIds.length > 0
       ? allClaims.filter((claim) => {
@@ -487,7 +546,8 @@ export async function canteenInvoiceDocument(
           return id ? deptIds.includes(id) : false;
         })
       : allClaims;
-  const summary = summariseMeals(claims, price, prices);
+  const summary = withUnmatched(summariseMeals(claims, price, prices), stray, price, prices);
+  const strayAmount = stray.reduce((t, meal) => t + (prices.get(meal.date) ?? price ?? 0), 0);
 
   const period =
     deptIds.length > 0
@@ -549,6 +609,9 @@ export async function canteenInvoiceDocument(
     entry.people += 1;
     byDepartment.set(key, entry);
   }
+  if (stray.length > 0) {
+    byDepartment.set("NOT IN RADOFLOW", { meals: stray.length, amount: strayAmount, people: stray.length });
+  }
   const departments = [...byDepartment].sort(([a], [b]) => a.localeCompare(b));
 
   const highlights = [
@@ -573,6 +636,18 @@ export async function canteenInvoiceDocument(
     departments.forEach(([name, entry]) =>
       rows.push([name, `${entry.people} people`, "", entry.meals, Math.round(entry.amount)]),
     );
+    if (stray.length > 0) {
+      rows.push({ group: `NOT IN RADOFLOW  ·  ${stray.length} meals counted, add them as people` });
+      stray.forEach((meal) =>
+        rows.push([
+          formatDate(meal.date),
+          `ID ${meal.deviceUserId}`,
+          Math.round(prices.get(meal.date) ?? price ?? 0),
+          1,
+          Math.round(prices.get(meal.date) ?? price ?? 0),
+        ]),
+      );
+    }
 
     return {
       ok: true,
@@ -630,7 +705,7 @@ export async function canteenInvoiceDocument(
           { header: "AMOUNT (Rs)", width: 15, format: "money" },
         ],
         rows: departments.map(([name, entry]) => [name, entry.people, entry.meals, entry.amount]),
-        totals: ["TOTAL", summary.byPerson.length, summary.total.meals, summary.total.amount],
+        totals: ["TOTAL", summary.byPerson.length + stray.length, summary.total.meals, summary.total.amount],
       },
     ]),
     name: `canteen-invoice-${daily ? from : `${from}-to-${to}`}.xlsx`,

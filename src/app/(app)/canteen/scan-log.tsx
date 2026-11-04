@@ -201,7 +201,11 @@ export function ScanLog({ rows }: { rows: ScanLogRow[] }) {
                   <Latin>{formatTime(row.scannedAt)}</Latin>
                 </span>
 
-                {row.outcome === "unknown_person" && row.deviceUserId ? null : (
+                {row.outcome === "unknown_person" && row.deviceUserId ? (
+                  <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-1 text-[11px] font-bold text-warning">
+                    Not in RadoFlow
+                  </span>
+                ) : (
                   <span
                     className={cn(
                       "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold",

@@ -9,6 +9,7 @@ import { Card, SectionTitle } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { readMealPrice, summariseMeals, type MealClaimRow } from "@/lib/canteen/history";
 import { dayPrices } from "@/lib/canteen/menu";
+import { loadUnmatchedMeals, withUnmatched } from "@/lib/canteen/unmatched";
 import { loadMenus } from "@/lib/canteen/menu-data";
 import { dictionaryFor } from "@/lib/i18n";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
@@ -124,7 +125,9 @@ export default async function CanteenHistoryPage({
     pickedDay > to ? pickedDay : to,
   );
   const prices = dayPrices(menu.menus);
-  const summary = summariseMeals(claims, currentPrice, prices);
+  // Meals taken by numbers RadoFlow does not know are counted too, and listed below.
+  const unmatched = await loadUnmatchedMeals(supabase, from, to);
+  const summary = withUnmatched(summariseMeals(claims, currentPrice, prices), unmatched, currentPrice, prices);
 
   let pickedMeals = summary.byDay.find((day) => day.date === pickedDay) ?? null;
   if (!pickedMeals && (pickedDay < from || pickedDay > to)) {
@@ -350,6 +353,28 @@ export default async function CanteenHistoryPage({
           value={<Latin>{summary.byPerson.length.toLocaleString("en-PK")}</Latin>}
         />
       </div>
+
+      {unmatched.length > 0 ? (
+        <Card className="border-warning bg-warning-soft p-4 sm:p-6">
+          <p className="text-sm font-bold text-warning">
+            Not in RadoFlow · {unmatched.length} {unmatched.length === 1 ? "meal" : "meals"} counted
+          </p>
+          <p className="mt-1 text-xs text-warning">
+            These numbers are on the terminal but are nobody in RadoFlow. Their meals are in the
+            totals above; add them as people to see their names.
+          </p>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {unmatched.map((meal) => (
+              <li
+                key={`${meal.date}:${meal.deviceUserId}`}
+                className="rounded-xl bg-card px-3 py-1.5 text-xs font-bold text-foreground"
+              >
+                <Latin>{`ID ${meal.deviceUserId} · ${formatDate(meal.date)}`}</Latin>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
 
       {summary.total.unpriced > 0 ? (
         <p className="rounded-2xl bg-warning-soft px-4 py-3 text-sm font-semibold text-warning">

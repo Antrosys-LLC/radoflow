@@ -1,3 +1,4 @@
+import { unmatchedMeals } from "@/lib/canteen/unmatched";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { History } from "lucide-react";
@@ -117,7 +118,7 @@ export default async function CanteenPage() {
    * session's UTC one — the night shift eats either side of midnight, and
    * those refusals are the ones worth counting.
    */
-  const [{ count: servedToday }, { count: refusedToday }] = await Promise.all([
+  const [{ count: servedClaims }, { count: refusedToday }, { data: strayScans }] = await Promise.all([
     supabase
       .from("meal_claims")
       .select("id", { count: "exact", head: true })
@@ -128,7 +129,15 @@ export default async function CanteenPage() {
       .eq("outcome", "duplicate")
       .gte("scanned_at", pakistanDayStartUtc(today))
       .lt("scanned_at", pakistanDayStartUtc(shiftDate(today, 1))),
+    // A plate handed to somebody RadoFlow does not know is still a plate.
+    supabase
+      .from("meal_scan_log")
+      .select("device_user_id, scanned_at")
+      .eq("outcome", "unknown_person")
+      .gte("scanned_at", pakistanDayStartUtc(today))
+      .lt("scanned_at", pakistanDayStartUtc(shiftDate(today, 1))),
   ]);
+  const servedToday = (servedClaims ?? 0) + unmatchedMeals(strayScans ?? []).length;
 
   /*
    * The day's register, for whoever can read canteen records.
@@ -243,7 +252,7 @@ export default async function CanteenPage() {
       ) : null}
       <CounterScreen
         scan={scan}
-        servedToday={servedToday ?? 0}
+        servedToday={servedToday}
         refusedToday={refusedToday ?? 0}
         canSeeCounts={canSeeCounts}
       />

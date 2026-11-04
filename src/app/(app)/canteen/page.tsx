@@ -152,7 +152,21 @@ export default async function CanteenPage() {
       .order("scanned_at", { ascending: false })
       .limit(500);
 
-    const rows = todaysScans ?? [];
+    /*
+     * One line per person: a second attempt is not a second entry, and the same
+     * unmatched number scanned twice is one number. Oldest scan wins.
+     */
+    const seen = new Set<string>();
+    const rows = (todaysScans ?? [])
+      .filter((row) => row.outcome !== "duplicate")
+      .reverse()
+      .filter((row) => {
+        const key = row.profile_id ?? `id:${row.device_user_id ?? row.id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .reverse();
     const profileIds = [...new Set(rows.map((row) => row.profile_id).filter(Boolean))] as string[];
     const windowIds = [
       ...new Set(rows.map((row) => row.meal_window_id).filter(Boolean)),

@@ -94,8 +94,6 @@ export function ScanLog({ rows }: { rows: ScanLogRow[] }) {
   const FILTERS: { key: Filter; label: string }[] = [
     { key: "all", label: t.canteenLog.everyScan },
     { key: "served", label: t.canteenLog.served },
-    { key: "duplicate", label: t.canteenLog.refused },
-    { key: "unknown_person", label: t.canteenLog.notRecognised },
   ];
 
   return (
@@ -174,8 +172,14 @@ export function ScanLog({ rows }: { rows: ScanLogRow[] }) {
                       a code reordered to `1042-RD` on the one screen that says
                       which man ate would be worse than an untranslated label. */}
                   <p className="truncate text-sm font-bold text-foreground">
-                    {row.fullName ? <Latin>{row.fullName}</Latin> : t.canteenLog.unknownWorker}
-                    {row.outcome === "unknown_person" && row.deviceUserId ? (
+                    {row.fullName ? (
+                      <Latin>{row.fullName}</Latin>
+                    ) : row.deviceUserId ? (
+                      <Latin>{`ID ${row.deviceUserId}`}</Latin>
+                    ) : (
+                      t.canteenLog.unknownWorker
+                    )}
+                    {row.fullName && row.outcome === "unknown_person" && row.deviceUserId ? (
                       <>
                         {" "}
                         <Latin>{`· ID ${row.deviceUserId}`}</Latin>
@@ -197,15 +201,17 @@ export function ScanLog({ rows }: { rows: ScanLogRow[] }) {
                   <Latin>{formatTime(row.scannedAt)}</Latin>
                 </span>
 
-                <span
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold",
-                    style.tone,
-                  )}
-                >
-                  <Icon className="size-3.5" aria-hidden />
-                  <span className="hidden sm:inline">{style.label(t)}</span>
-                </span>
+                {row.outcome === "unknown_person" && row.deviceUserId ? null : (
+                  <span
+                    className={cn(
+                      "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold",
+                      style.tone,
+                    )}
+                  >
+                    <Icon className="size-3.5" aria-hidden />
+                    <span className="hidden sm:inline">{style.label(t)}</span>
+                  </span>
+                )}
               </li>
             );
           })}

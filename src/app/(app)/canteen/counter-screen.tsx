@@ -197,18 +197,21 @@ function ScanPanel({ scan }: { scan: ScanView }) {
 
       {/* Generous leading: Nastaliq descends far below the baseline and gets
           clipped at the tighter line-heights the Latin type here uses. */}
-      <p className="mt-4 text-4xl font-bold leading-[1.7] sm:text-5xl" lang="ur" dir="rtl">
-        {style.label(URDU)}
-      </p>
-      {label ? (
-        <p className="text-lg font-semibold uppercase tracking-wide opacity-80">{label}</p>
-      ) : null}
-
-      {scan.outcome === "unknown_person" && scan.deviceUserId && !scan.fullName ? (
-        <p className="mt-6 text-3xl font-bold tabular-nums">
+      {scan.outcome === "unknown_person" && scan.deviceUserId ? (
+        // Just the number the terminal sent, not a verdict on it.
+        <p className="mt-4 text-5xl font-bold tabular-nums">
           <Latin>{`ID ${scan.deviceUserId}`}</Latin>
         </p>
-      ) : null}
+      ) : (
+        <>
+          <p className="mt-4 text-4xl font-bold leading-[1.7] sm:text-5xl" lang="ur" dir="rtl">
+            {style.label(URDU)}
+          </p>
+          {label ? (
+            <p className="text-lg font-semibold uppercase tracking-wide opacity-80">{label}</p>
+          ) : null}
+        </>
+      )}
 
       {scan.photoUrl || scan.fullName ? (
         <div className="mt-6 flex flex-col items-center gap-3">
@@ -234,11 +237,7 @@ function ScanPanel({ scan }: { scan: ScanView }) {
                   <Latin>{scan.employeeCode}</Latin>
                 </p>
               ) : null}
-              {scan.outcome === "unknown_person" && scan.deviceUserId ? (
-                <p className="text-base font-semibold opacity-80">
-                  <Latin>{`ID ${scan.deviceUserId}`}</Latin>
-                </p>
-              ) : null}
+
             </div>
           ) : null}
         </div>

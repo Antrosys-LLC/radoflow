@@ -32,9 +32,10 @@ const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABA
 });
 
 // Old numbers that now belong to somebody else, by the person's current number.
-const MOVED = { "605": "88", "608": "203" };
+// 605 and 608 stay their own IDs (the office wants them kept and counted), so nothing is moved.
+const MOVED = {};
 // People the terminals hold with no profile, named as the terminal names them.
-const NEW_PEOPLE = { "494": "AQIB", "674": "CARD 674", "679": "CARD 679", "680": "CARD 680", "681": "CARD 681" };
+const NEW_PEOPLE = { "605": "CARD 605", "608": "CARD 608", "494": "AQIB", "674": "CARD 674", "679": "CARD 679", "680": "CARD 680", "681": "CARD 681" };
 
 const { data: scans, error } = await db
   .from("meal_scan_log")

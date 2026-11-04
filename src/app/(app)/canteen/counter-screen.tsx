@@ -44,6 +44,8 @@ export interface ScanView {
   outcome: "served" | "duplicate" | "unknown_person" | "outside_window";
   fullName: string | null;
   employeeCode: string | null;
+  /** The number the terminal sent, shown when nobody was matched to it. */
+  deviceUserId: string | null;
   photoUrl: string | null;
   mealName: string | null;
   scannedAt: string;
@@ -202,6 +204,12 @@ function ScanPanel({ scan }: { scan: ScanView }) {
         <p className="text-lg font-semibold uppercase tracking-wide opacity-80">{label}</p>
       ) : null}
 
+      {scan.outcome === "unknown_person" && scan.deviceUserId && !scan.fullName ? (
+        <p className="mt-6 text-3xl font-bold tabular-nums">
+          <Latin>{`ID ${scan.deviceUserId}`}</Latin>
+        </p>
+      ) : null}
+
       {scan.photoUrl || scan.fullName ? (
         <div className="mt-6 flex flex-col items-center gap-3">
           {scan.photoUrl ? (
@@ -224,6 +232,11 @@ function ScanPanel({ scan }: { scan: ScanView }) {
               {scan.employeeCode ? (
                 <p className="text-base font-semibold opacity-80">
                   <Latin>{scan.employeeCode}</Latin>
+                </p>
+              ) : null}
+              {scan.outcome === "unknown_person" && scan.deviceUserId ? (
+                <p className="text-base font-semibold opacity-80">
+                  <Latin>{`ID ${scan.deviceUserId}`}</Latin>
                 </p>
               ) : null}
             </div>

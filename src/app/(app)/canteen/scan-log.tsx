@@ -34,6 +34,8 @@ export interface ScanLogRow {
   outcome: "served" | "duplicate" | "unknown_person" | "outside_window";
   fullName: string | null;
   employeeCode: string | null;
+  /** The number the terminal sent, shown when nobody was matched to it. */
+  deviceUserId: string | null;
   photoUrl: string | null;
   mealName: string | null;
   deviceName: string | null;
@@ -173,6 +175,12 @@ export function ScanLog({ rows }: { rows: ScanLogRow[] }) {
                       which man ate would be worse than an untranslated label. */}
                   <p className="truncate text-sm font-bold text-foreground">
                     {row.fullName ? <Latin>{row.fullName}</Latin> : t.canteenLog.unknownWorker}
+                    {row.outcome === "unknown_person" && row.deviceUserId ? (
+                      <>
+                        {" "}
+                        <Latin>{`· ID ${row.deviceUserId}`}</Latin>
+                      </>
+                    ) : null}
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
                     {row.employeeCode ? <Latin>{row.employeeCode}</Latin> : null}

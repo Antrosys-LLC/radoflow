@@ -40,7 +40,7 @@ export default async function CanteenPage() {
 
   const { data: recent } = await supabase
     .from("meal_scan_log")
-    .select("id, outcome, profile_id, meal_window_id, scanned_at, served_on")
+    .select("id, outcome, profile_id, device_user_id, meal_window_id, scanned_at, served_on")
     .order("scanned_at", { ascending: false })
     .limit(1);
 
@@ -56,7 +56,15 @@ export default async function CanteenPage() {
             .select("full_name, employee_code, photo_url")
             .eq("id", fresh.profile_id)
             .maybeSingle()
-        : Promise.resolve({ data: null }),
+        : fresh.device_user_id
+          ? // Nobody was matched at scan time. The number the terminal sent is
+            // still shown, with the person it belongs to now if there is one.
+            supabase
+              .from("employee_directory")
+              .select("full_name, employee_code, photo_url")
+              .eq("employee_code", fresh.device_user_id)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
       fresh.meal_window_id
         ? supabase.from("meal_windows").select("name").eq("id", fresh.meal_window_id).maybeSingle()
         : Promise.resolve({ data: null }),
@@ -90,6 +98,7 @@ export default async function CanteenPage() {
       outcome: fresh.outcome,
       fullName: person?.full_name ?? null,
       employeeCode: person?.employee_code ?? null,
+      deviceUserId: fresh.device_user_id ?? null,
       photoUrl: person?.photo_url ?? null,
       mealName: window?.name ?? null,
       scannedAt: fresh.scanned_at,
@@ -137,7 +146,7 @@ export default async function CanteenPage() {
   if (canSeeCounts) {
     const { data: todaysScans } = await supabase
       .from("meal_scan_log")
-      .select("id, outcome, profile_id, meal_window_id, device_id, scanned_at")
+      .select("id, outcome, profile_id, device_user_id, meal_window_id, device_id, scanned_at")
       .gte("scanned_at", pakistanDayStartUtc(today))
       .lt("scanned_at", pakistanDayStartUtc(shiftDate(today, 1)))
       .order("scanned_at", { ascending: false })
@@ -150,7 +159,16 @@ export default async function CanteenPage() {
     ] as string[];
     const deviceIds = [...new Set(rows.map((row) => row.device_id).filter(Boolean))] as string[];
 
-    const [{ data: people }, { data: windows }, { data: terminals }] = await Promise.all([
+    // Scans nobody was matched to: the number the terminal sent, and whoever
+    // holds that number as an employee code now.
+    const strayIds = [
+      ...new Set(
+        rows.filter((row) => !row.profile_id && row.device_user_id).map((row) => row.device_user_id),
+      ),
+    ] as string[];
+
+    const [{ data: people }, { data: windows }, { data: terminals }, { data: strays }] =
+      await Promise.all([
       profileIds.length
         ? supabase
             .from("employee_directory")
@@ -163,19 +181,31 @@ export default async function CanteenPage() {
       deviceIds.length
         ? supabase.from("devices").select("id, name").in("id", deviceIds)
         : Promise.resolve({ data: [] }),
+      strayIds.length
+        ? supabase
+            .from("employee_directory")
+            .select("employee_code, full_name, photo_url")
+            .in("employee_code", strayIds)
+        : Promise.resolve({ data: [] }),
     ]);
+    const byCode = new Map((strays ?? []).map((row) => [row.employee_code, row]));
 
     const person = new Map((people ?? []).map((row) => [row.id, row]));
     const mealName = new Map((windows ?? []).map((row) => [row.id, row.name]));
     const deviceName = new Map((terminals ?? []).map((row) => [row.id, row.name]));
 
     for (const row of rows) {
-      const who = row.profile_id ? person.get(row.profile_id) : null;
+      const who = row.profile_id
+        ? person.get(row.profile_id)
+        : row.device_user_id
+          ? byCode.get(row.device_user_id)
+          : null;
       scanLog.push({
         id: String(row.id),
         outcome: row.outcome,
         fullName: who?.full_name ?? null,
         employeeCode: who?.employee_code ?? null,
+        deviceUserId: row.device_user_id ?? null,
         photoUrl: who?.photo_url ?? null,
         mealName: row.meal_window_id ? (mealName.get(row.meal_window_id) ?? null) : null,
         deviceName: row.device_id ? (deviceName.get(row.device_id) ?? null) : null,

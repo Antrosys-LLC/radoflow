@@ -264,35 +264,62 @@ export function PayrollClient({
               }
             />
 
-            {contracts.length > 0 ? (
-              /*
-               * How the total is made: the people's payroll, plus each firm
-               * billed once. total_gross already holds both, so this only
-               * shows the sum rather than computing a new figure.
-               */
-              <div className="mb-3 rounded-2xl bg-secondary px-4 py-3 text-sm">
-                <p className="flex items-center justify-between gap-4">
-                  <span className="text-muted-foreground">Payroll of all people</span>
-                  <span className="font-bold tabular-nums text-foreground">
-                    <Latin>{formatPKR(selected.total_gross - contractSum)}</Latin>
-                  </span>
-                </p>
-                {contracts.map((firm) => (
-                  <p key={firm.id} className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground">+ {firm.department}</span>
+            {/*
+             * The whole calculation, top to bottom: what was calculated, what
+             * comes off it, and what is left to pay. total_gross already holds
+             * the contract firms, so the first lines only show the sum.
+             */}
+            <div className="mb-3 rounded-2xl bg-secondary px-4 py-3 text-sm">
+              {contracts.length > 0 ? (
+                <>
+                  <p className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">Payroll of all people</span>
                     <span className="font-bold tabular-nums text-foreground">
-                      <Latin>{formatPKR(firm.amount)}</Latin>
+                      <Latin>{formatPKR(selected.total_gross - contractSum)}</Latin>
                     </span>
                   </p>
-                ))}
-                <p className="mt-1 flex items-center justify-between gap-4 border-t border-border pt-1">
-                  <span className="font-bold text-foreground">= Total calculated</span>
-                  <span className="font-bold tabular-nums text-foreground">
-                    <Latin>{formatPKR(selected.total_gross)}</Latin>
+                  {contracts.map((firm) => (
+                    <p key={firm.id} className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground">+ {firm.department}</span>
+                      <span className="font-bold tabular-nums text-foreground">
+                        <Latin>{formatPKR(firm.amount)}</Latin>
+                      </span>
+                    </p>
+                  ))}
+                </>
+              ) : null}
+              <p
+                className={cn(
+                  "flex items-center justify-between gap-4",
+                  contracts.length > 0 && "mt-1 border-t border-border pt-1",
+                )}
+              >
+                <span className="font-bold text-foreground">= Total calculated</span>
+                <span className="font-bold tabular-nums text-foreground">
+                  <Latin>{formatPKR(selected.total_gross)}</Latin>
+                </span>
+              </p>
+              <p className="mt-1 flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">− Deductions</span>
+                <span className="font-bold tabular-nums text-danger">
+                  <Latin>{formatPKR(selected.total_deductions)}</Latin>
+                </span>
+              </p>
+              {selected.total_tax > 0 ? (
+                <p className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">− Tax</span>
+                  <span className="font-bold tabular-nums text-danger">
+                    <Latin>{formatPKR(selected.total_tax)}</Latin>
                   </span>
                 </p>
-              </div>
-            ) : null}
+              ) : null}
+              <p className="mt-1 flex items-center justify-between gap-4 border-t border-border pt-1">
+                <span className="font-bold text-foreground">= To pay (net payable)</span>
+                <span className="font-bold tabular-nums text-primary">
+                  <Latin>{formatPKR(selected.total_net)}</Latin>
+                </span>
+              </p>
+            </div>
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Total label={t.payroll.grossPay} value={selected.total_gross} />

@@ -132,7 +132,7 @@ export default async function DashboardPage() {
     seesPayroll
       ? supabase
           .from("payroll_periods")
-          .select("id, label, status, total_net, total_gross, headcount, period_end")
+          .select("id, label, status, total_net, total_gross, total_deductions, total_tax, headcount, period_end")
           .order("period_start", { ascending: false })
           .limit(1)
       : Promise.resolve({ data: null }),
@@ -614,6 +614,14 @@ export default async function DashboardPage() {
                   <Fact
                     label={contractFirms.length > 0 ? "= Total calculated" : t.dashboard.gross}
                     value={<Latin>{formatPKR(Number(period.total_gross))}</Latin>}
+                  />
+                  <Fact
+                    label="− Deductions"
+                    value={
+                      <Latin>
+                        {formatPKR(Number(period.total_deductions) + Number(period.total_tax))}
+                      </Latin>
+                    }
                   />
                   <div className="rounded-2xl bg-primary-soft p-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-primary">

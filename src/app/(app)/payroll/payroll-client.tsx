@@ -139,6 +139,12 @@ export function PayrollClient({
   const [rowLimit, setRowLimit] = useState(ROW_PAGE);
 
   const selected = periods.find((p) => p.id === selectedId) ?? null;
+  const fullSalaryTotal =
+    Math.round(
+      (items.reduce((sum, item) => sum + item.register.monthlySalary, 0) +
+        contracts.reduce((sum, firm) => sum + firm.amount, 0)) *
+        100,
+    ) / 100;
   const contractSum = Math.round(contracts.reduce((sum, firm) => sum + firm.amount, 0) * 100) / 100;
 
   function act(fn: () => Promise<PayrollResultMessage>, loading: string) {
@@ -270,6 +276,21 @@ export function PayrollClient({
              * the contract firms, so the first lines only show the sum.
              */}
             <div className="mb-3 rounded-2xl bg-secondary px-4 py-3 text-sm">
+              {items.length > 0 ? (
+                /*
+                 * Everyone's full monthly salary plus each firm's amount, as if
+                 * nobody had been absent — the figure the run is measured down
+                 * from once attendance is applied.
+                 */
+                <p className="mb-2 flex items-center justify-between gap-4 border-b border-border pb-2">
+                  <span className="font-bold text-foreground">
+                    = Total (without attendance calculation)
+                  </span>
+                  <span className="font-bold tabular-nums text-foreground">
+                    <Latin>{formatPKR(fullSalaryTotal)}</Latin>
+                  </span>
+                </p>
+              ) : null}
               {contracts.length > 0 ? (
                 <>
                   <p className="flex items-center justify-between gap-4">

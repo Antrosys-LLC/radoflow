@@ -598,7 +598,7 @@ export default async function DashboardPage() {
                   {contractFirms.length > 0 ? (
                     <>
                       <Fact
-                        label="Payroll of all people"
+                        label="Total amount"
                         value={
                           <Latin>
                             {formatPKR(Number(period.total_gross) - contractFirmsTotal)}

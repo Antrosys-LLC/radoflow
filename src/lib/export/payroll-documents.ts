@@ -79,7 +79,7 @@ function breakdownOf(
   if (firms.length === 0) return null;
   const firmsTotal = firms.reduce((sum, firm) => sum + firm.gross, 0);
   return [
-    { label: "Payroll of all people", amount: totals.gross - firmsTotal },
+    { label: "Total amount", amount: totals.gross - firmsTotal },
     ...firms.map((firm) => ({ label: `+ ${firm.name}`, amount: firm.gross })),
     { label: "= Total calculated", amount: totals.gross },
   ];

@@ -273,7 +273,7 @@ export function PayrollClient({
               {contracts.length > 0 ? (
                 <>
                   <p className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground">Payroll of all people</span>
+                    <span className="text-muted-foreground">Total amount</span>
                     <span className="font-bold tabular-nums text-foreground">
                       <Latin>{formatPKR(selected.total_gross - contractSum)}</Latin>
                     </span>
@@ -299,6 +299,7 @@ export function PayrollClient({
                   <Latin>{formatPKR(selected.total_gross)}</Latin>
                 </span>
               </p>
+              <p className="text-xs text-muted-foreground">based upon attendance</p>
               <p className="mt-1 flex items-center justify-between gap-4">
                 <span className="text-muted-foreground">− Deductions</span>
                 <span className="font-bold tabular-nums text-danger">
@@ -306,12 +307,22 @@ export function PayrollClient({
                 </span>
               </p>
               {selected.total_tax > 0 ? (
-                <p className="flex items-center justify-between gap-4">
-                  <span className="text-muted-foreground">− Tax</span>
-                  <span className="font-bold tabular-nums text-danger">
-                    <Latin>{formatPKR(selected.total_tax)}</Latin>
-                  </span>
-                </p>
+                <>
+                  <p className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">After deductions</span>
+                    <span className="font-bold tabular-nums text-foreground">
+                      <Latin>
+                        {formatPKR(selected.total_gross - selected.total_deductions)}
+                      </Latin>
+                    </span>
+                  </p>
+                  <p className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">− Tax</span>
+                    <span className="font-bold tabular-nums text-danger">
+                      <Latin>{formatPKR(selected.total_tax)}</Latin>
+                    </span>
+                  </p>
+                </>
               ) : null}
               <p className="mt-1 flex items-center justify-between gap-4 border-t border-border pt-1">
                 <span className="font-bold text-foreground">= To pay (net payable)</span>

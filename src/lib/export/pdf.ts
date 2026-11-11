@@ -15,6 +15,8 @@
  * that renders a placeholder glyph is worse than one that spells it out.
  */
 
+import type { BreakdownLine } from "@/lib/payroll/breakdown";
+
 import { deflateSync } from "node:zlib";
 
 import { COMPANY_NAME, generatedStamp } from "./brand";
@@ -50,6 +52,8 @@ export interface TableDoc {
   orientation?: "portrait" | "landscape" | undefined;
   /** Headline figures in boxes above the table, on the first page only. */
   highlights?: { label: string; value: string }[] | undefined;
+  /** A last page that walks the total down to what has to be paid. */
+  breakdown?: BreakdownLine[] | undefined;
 }
 
 interface Rgb {
@@ -395,6 +399,38 @@ function drawHighlights(page: Page, y: number, items: { label: string; value: st
   return y - h - 12;
 }
 
+/** The breakdown page: headings, lines and subtotals, amounts down the right. */
+function drawBreakdown(page: Page, top: number, lines: readonly BreakdownLine[]) {
+  const width = Math.min(page.width - MARGIN * 2, 520);
+  const left = (page.width - width) / 2;
+  const available = top - (MARGIN + 28);
+  const row = Math.min(17, available / Math.max(1, lines.length));
+  const font = Math.min(9, row - 5);
+  let y = top;
+
+  for (const line of lines) {
+    const amount = line.amount === undefined ? "" : fmt(Math.round(line.amount));
+    if (line.tone === "heading") {
+      page.rect(left, y - row, width, row, RED_TINT);
+      page.rect(left, y - row, 2.5, row, RED);
+      page.text(left + 8, y - row + (row - font) / 2 + 1, line.label, font, true, RED_DEEP);
+    } else if (line.tone === "total") {
+      page.rect(left, y - row - 2, width, row + 2, BAND);
+      page.text(left + 8, y - row + (row - font) / 2 - 1, line.label, font + 1, true, WHITE);
+      page.rightText(left + width - 8, y - row + (row - font) / 2 - 1, amount, font + 1, true, WHITE);
+    } else {
+      const bold = line.tone === "subtotal";
+      if (bold) {
+        page.rect(left, y - row, width, row, TINT);
+        page.line(left, y, left + width, y, 0.35, 0.6);
+      }
+      page.text(left + (bold ? 8 : 16), y - row + (row - font) / 2 + 1, line.label, font, bold, INK);
+      page.rightText(left + width - 8, y - row + (row - font) / 2 + 1, amount, font, bold, INK);
+    }
+    y -= row;
+  }
+}
+
 const isGroup = (row: TableRow): row is { group: string } => !Array.isArray(row) && "group" in row;
 const isSubtotal = (row: TableRow): row is { subtotal: (string | number)[] } =>
   !Array.isArray(row) && "subtotal" in row;
@@ -459,6 +495,8 @@ export function buildTablePdf(doc: TableDoc): Buffer {
     });
   };
 
+  const pageTotal = chunks.length + (doc.breakdown?.length ? 1 : 0);
+
   const pages = chunks.map((chunk, pageIndex) => {
     const page = new Page(size.width, size.height);
     page.watermark();
@@ -509,9 +547,18 @@ export function buildTablePdf(doc: TableDoc): Buffer {
       drawCells(page, y - 12, doc.totals, 8.5, true, WHITE);
     }
 
-    pageFooter(page, pageIndex + 1, chunks.length);
+    pageFooter(page, pageIndex + 1, pageTotal);
     return page;
   });
+
+  if (doc.breakdown?.length) {
+    const page = new Page(size.width, size.height);
+    page.watermark();
+    const y = letterhead(page, doc.title, doc.subtitle, true);
+    drawBreakdown(page, y - 4, doc.breakdown);
+    pageFooter(page, pageTotal, pageTotal);
+    pages.push(page);
+  }
 
   return assemble(pages, doc.title);
 }

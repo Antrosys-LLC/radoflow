@@ -64,6 +64,26 @@ export interface RegisterRow {
 /** What a contract firm's single row carries in the designation column. */
 export const CONTRACT_FIRM = "Contract firm";
 
+/** A contract firm's single row: billed once, nothing withheld. */
+export function contractFirmItem(name: string, amount: number, profileId: string): RegisterItem {
+  return {
+    profileId,
+    name,
+    code: "",
+    designation: CONTRACT_FIRM,
+    department: name,
+    monthlySalary: amount,
+    workingDays: 0,
+    basePay: amount,
+    overtimeHours: 0,
+    overtimePay: 0,
+    gross: amount,
+    withheld: 0,
+    net: amount,
+    lines: [],
+  };
+}
+
 export type RegisterTotals = Omit<
   RegisterRow,
   "profileId" | "name" | "code" | "designation" | "department"

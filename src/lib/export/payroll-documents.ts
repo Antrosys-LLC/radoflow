@@ -1,5 +1,5 @@
+import { payrollBreakdown, type BreakdownLine } from "@/lib/payroll/breakdown";
 import {
-  CONTRACT_FIRM,
   hasOtherDeductions,
   totalsOf,
   type RegisterGroup,
@@ -66,23 +66,37 @@ function headers(withOther: boolean): string[] {
   ];
 }
 
-/**
- * How the grand total is made: everybody's payroll, plus each contract firm
- * billed once, equals the total calculated. Null when no firm is in the run,
- * so a factory without one prints exactly what it always did.
- */
-function breakdownOf(
-  all: readonly RegisterRow[],
-  totals: RegisterTotals,
-): { label: string; amount: number }[] | null {
-  const firms = all.filter((row) => row.designation === CONTRACT_FIRM);
-  if (firms.length === 0) return null;
-  const firmsTotal = firms.reduce((sum, firm) => sum + firm.gross, 0);
-  return [
-    { label: "Total amount", amount: totals.gross - firmsTotal },
-    ...firms.map((firm) => ({ label: `+ ${firm.name}`, amount: firm.gross })),
-    { label: "= Total calculated", amount: totals.gross },
-  ];
+const lineAmount = (lines: readonly BreakdownLine[], label: string) =>
+  lines.find((line) => line.label === label)?.amount ?? 0;
+
+/** The breakdown as a sheet: headings as bands, subtotals bold, the last line the net. */
+function breakdownSheet(lines: readonly BreakdownLine[], meta: RegisterMeta): Sheet {
+  const rows: SheetRow[] = [];
+  let last: BreakdownLine | undefined;
+  lines.forEach((line, index) => {
+    if (index === lines.length - 1 && line.tone === "total") {
+      last = line;
+    } else if (line.tone === "heading") {
+      rows.push({ group: line.label });
+    } else if (line.tone === "subtotal") {
+      rows.push({ subtotal: [line.label, whole(line.amount ?? 0)] });
+    } else {
+      rows.push([line.label, whole(line.amount ?? 0)]);
+    }
+  });
+
+  return {
+    name: "Total",
+    title: `${meta.title} — how the total is made`,
+    subtitle: meta.subtitle,
+    orientation: "portrait",
+    columns: [
+      { header: "ITEM", width: 56, format: "text" },
+      { header: "AMOUNT (Rs)", width: 18, format: "money" },
+    ],
+    rows,
+    totals: last ? [last.label.toUpperCase(), whole(last.amount ?? 0)] : undefined,
+  };
 }
 
 function everyRow(groups: readonly RegisterGroup[]): RegisterRow[] {
@@ -111,8 +125,7 @@ export function registerPdf(groups: readonly RegisterGroup[], meta: RegisterMeta
     });
   }
 
-  const withheld = totals.advance + totals.advance2 + totals.loan + totals.suit + totals.other;
-  const breakdown = breakdownOf(all, totals);
+  const breakdown = payrollBreakdown(all);
 
   return buildTablePdf({
     title: meta.title,
@@ -121,18 +134,14 @@ export function registerPdf(groups: readonly RegisterGroup[], meta: RegisterMeta
     columns,
     rows,
     totals: ["", `GRAND TOTAL · ${all.length} people`, "", ...numbers(totals, withOther)],
-    highlights: breakdown
-      ? [
-          ...breakdown.map((line) => ({ label: line.label, value: rs(line.amount) })),
-          { label: "Deductions", value: rs(withheld) },
-          { label: "Net pay", value: rs(totals.net) },
-        ]
-      : [
-          { label: "People", value: all.length.toLocaleString("en-PK") },
-          { label: "G salary", value: rs(totals.gross) },
-          { label: "Deductions", value: rs(withheld) },
-          { label: "Net pay", value: rs(totals.net) },
-        ],
+    highlights: [
+      { label: "People", value: all.length.toLocaleString("en-PK") },
+      { label: "Total payroll", value: rs(lineAmount(breakdown, "= Total payroll")) },
+      { label: "Total calculated", value: rs(totals.gross) },
+      { label: "Deductions", value: rs(totals.gross - totals.net) },
+      { label: "To pay", value: rs(totals.net) },
+    ],
+    breakdown,
     footer:
       meta.footer ??
       "AMOUNT = S Rate / days in month x days.  Hours AMOUNT = S Rate / (days in month x 8) x hours.",
@@ -169,27 +178,7 @@ export function registerWorkbook(groups: readonly RegisterGroup[], meta: Registe
     ...columns.slice(3),
   ];
 
-  const breakdown = breakdownOf(all, totals);
-  const withheld = totals.advance + totals.advance2 + totals.loan + totals.suit + totals.other;
-  const totalSheet: Sheet[] = breakdown
-    ? [
-        {
-          name: "Total",
-          title: `${meta.title} — how the total is made`,
-          subtitle: meta.subtitle,
-          orientation: "portrait",
-          columns: [
-            { header: "ITEM", width: 34, format: "text" },
-            { header: "AMOUNT", width: 16, format: "money" },
-          ],
-          rows: [
-            ...breakdown.map((line): SheetRow => [line.label, whole(line.amount)]),
-            ["Less deductions", whole(withheld)],
-          ],
-          totals: ["NET PAY", whole(totals.net)],
-        },
-      ]
-    : [];
+  const totalSheet: Sheet = breakdownSheet(payrollBreakdown(all), meta);
 
   return buildWorkbook([
     {
@@ -213,6 +202,6 @@ export function registerWorkbook(groups: readonly RegisterGroup[], meta: Registe
       ]),
       totals: ["", "TOTAL", all.length, ...numbers(totals, withOther)],
     },
-    ...totalSheet,
+    totalSheet,
   ]);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState, useTransition } from "react";
+import { useActionState, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
 import { AlertTriangle, BadgeCheck, Banknote, Check, FileText, Play, Plus, Trash2, X } from "lucide-react";
@@ -13,7 +13,8 @@ import { useDictionary } from "@/components/language-provider";
 import { Latin } from "@/components/latin";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import type { Dictionary } from "@/lib/i18n";
-import type { RegisterItem } from "@/lib/payroll/register";
+import { payrollBreakdown } from "@/lib/payroll/breakdown";
+import { contractFirmItem, toRegisterRow, type RegisterItem } from "@/lib/payroll/register";
 import { formatDate, formatDateTime, formatHours, formatPKR } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import {
@@ -139,13 +140,16 @@ export function PayrollClient({
   const [rowLimit, setRowLimit] = useState(ROW_PAGE);
 
   const selected = periods.find((p) => p.id === selectedId) ?? null;
-  const fullSalaryTotal =
-    Math.round(
-      (items.reduce((sum, item) => sum + item.register.monthlySalary, 0) +
-        contracts.reduce((sum, firm) => sum + firm.amount, 0)) *
-        100,
-    ) / 100;
-  const contractSum = Math.round(contracts.reduce((sum, firm) => sum + firm.amount, 0) * 100) / 100;
+  const breakdown = useMemo(
+    () =>
+      payrollBreakdown([
+        ...items.map((item) => toRegisterRow(item.register)),
+        ...contracts.map((firm) =>
+          toRegisterRow(contractFirmItem(firm.department, firm.amount, `contract:${firm.id}`)),
+        ),
+      ]),
+    [items, contracts],
+  );
 
   function act(fn: () => Promise<PayrollResultMessage>, loading: string) {
     startTransition(async () => {
@@ -271,87 +275,52 @@ export function PayrollClient({
             />
 
             {/*
-             * The whole calculation, top to bottom: what was calculated, what
-             * comes off it, and what is left to pay. total_gross already holds
-             * the contract firms, so the first lines only show the sum.
+             * The whole calculation, top to bottom: the full salary bill, what
+             * attendance made of it, what comes off, and what is left to pay.
+             * Built by the same function as the PDF and the workbook.
              */}
-            <div className="mb-3 rounded-2xl bg-secondary px-4 py-3 text-sm">
-              {items.length > 0 ? (
-                /*
-                 * Everyone's full monthly salary plus each firm's amount, as if
-                 * nobody had been absent — the figure the run is measured down
-                 * from once attendance is applied.
-                 */
-                <p className="mb-2 flex items-center justify-between gap-4 border-b border-border pb-2">
-                  <span className="font-bold text-foreground">
-                    = Total (without attendance calculation)
-                  </span>
-                  <span className="font-bold tabular-nums text-foreground">
-                    <Latin>{formatPKR(fullSalaryTotal)}</Latin>
-                  </span>
-                </p>
-              ) : null}
-              {contracts.length > 0 ? (
-                <>
-                  <p className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground">Total amount</span>
-                    <span className="font-bold tabular-nums text-foreground">
-                      <Latin>{formatPKR(selected.total_gross - contractSum)}</Latin>
-                    </span>
-                  </p>
-                  {contracts.map((firm) => (
-                    <p key={firm.id} className="flex items-center justify-between gap-4">
-                      <span className="text-muted-foreground">+ {firm.department}</span>
-                      <span className="font-bold tabular-nums text-foreground">
-                        <Latin>{formatPKR(firm.amount)}</Latin>
+            {items.length > 0 ? (
+              <div className="mb-3 rounded-2xl bg-secondary px-4 py-3 text-sm">
+                {breakdown.map((line, index) =>
+                  line.tone === "heading" ? (
+                    <p
+                      key={index}
+                      className="mb-1 mt-3 border-l-2 border-primary pl-2 text-[11px] font-bold uppercase tracking-wide text-primary first:mt-0"
+                    >
+                      {line.label}
+                    </p>
+                  ) : (
+                    <p
+                      key={index}
+                      className={cn(
+                        "flex items-center justify-between gap-4 py-0.5",
+                        line.tone === "subtotal" && "mt-0.5 border-t border-border pt-1 font-bold",
+                        line.tone === "total" &&
+                          "mt-1 rounded-xl bg-charcoal px-3 py-2 text-base font-bold text-charcoal-foreground",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          line.tone === "line" ? "pl-3 text-muted-foreground" : "text-foreground",
+                          line.tone === "total" && "text-charcoal-foreground",
+                        )}
+                      >
+                        {line.label}
+                      </span>
+                      <span
+                        className={cn(
+                          "font-bold tabular-nums",
+                          line.label.startsWith("−") ? "text-danger" : "text-foreground",
+                          line.tone === "total" && "text-primary",
+                        )}
+                      >
+                        <Latin>{formatPKR(line.amount ?? 0)}</Latin>
                       </span>
                     </p>
-                  ))}
-                </>
-              ) : null}
-              <p
-                className={cn(
-                  "flex items-center justify-between gap-4",
-                  contracts.length > 0 && "mt-1 border-t border-border pt-1",
+                  ),
                 )}
-              >
-                <span className="font-bold text-foreground">= Total calculated</span>
-                <span className="font-bold tabular-nums text-foreground">
-                  <Latin>{formatPKR(selected.total_gross)}</Latin>
-                </span>
-              </p>
-              <p className="text-xs text-muted-foreground">based upon attendance</p>
-              <p className="mt-1 flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">− Deductions</span>
-                <span className="font-bold tabular-nums text-danger">
-                  <Latin>{formatPKR(selected.total_deductions)}</Latin>
-                </span>
-              </p>
-              {selected.total_tax > 0 ? (
-                <>
-                  <p className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground">After deductions</span>
-                    <span className="font-bold tabular-nums text-foreground">
-                      <Latin>
-                        {formatPKR(selected.total_gross - selected.total_deductions)}
-                      </Latin>
-                    </span>
-                  </p>
-                  <p className="flex items-center justify-between gap-4">
-                    <span className="text-muted-foreground">− Tax</span>
-                    <span className="font-bold tabular-nums text-danger">
-                      <Latin>{formatPKR(selected.total_tax)}</Latin>
-                    </span>
-                  </p>
-                </>
-              ) : null}
-              <p className="mt-1 flex items-center justify-between gap-4 border-t border-border pt-1">
-                <span className="font-bold text-foreground">= To pay (net payable)</span>
-                <span className="font-bold tabular-nums text-primary">
-                  <Latin>{formatPKR(selected.total_net)}</Latin>
-                </span>
-              </p>
-            </div>
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Total label={t.payroll.grossPay} value={selected.total_gross} />

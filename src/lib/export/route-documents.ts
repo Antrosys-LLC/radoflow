@@ -7,7 +7,7 @@ import { loadUnmatchedMeals, withUnmatched } from "@/lib/canteen/unmatched";
 import { dailyRate, daysInMonthOf, overtimeRate } from "@/lib/payroll/hours";
 import { loanBalance, monthOf, type LoanRow, type RecoveryRow } from "@/lib/payroll/ledger";
 import {
-  CONTRACT_FIRM,
+  contractFirmItem,
   groupRegister,
   toRegisterRow,
   type RegisterItem,
@@ -810,22 +810,7 @@ export async function registerDocument(
   const contractItems: RegisterItem[] = (contractRows ?? []).map((row) => {
     const department = deptName.get(row.department_id) ?? "Unassigned";
     const amount = Number(row.amount);
-    return {
-      profileId: `contract:${row.department_id}`,
-      name: department,
-      code: "",
-      designation: CONTRACT_FIRM,
-      department,
-      monthlySalary: amount,
-      workingDays: 0,
-      basePay: amount,
-      overtimeHours: 0,
-      overtimePay: 0,
-      gross: amount,
-      withheld: 0,
-      net: amount,
-      lines: [],
-    };
+    return contractFirmItem(department, amount, `contract:${row.department_id}`);
   });
 
   const groups = groupRegister([

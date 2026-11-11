@@ -61,6 +61,9 @@ export interface RegisterRow {
   net: number;
 }
 
+/** What a contract firm's single row carries in the designation column. */
+export const CONTRACT_FIRM = "Contract firm";
+
 export type RegisterTotals = Omit<
   RegisterRow,
   "profileId" | "name" | "code" | "designation" | "department"

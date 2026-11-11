@@ -1,4 +1,5 @@
 import {
+  CONTRACT_FIRM,
   hasOtherDeductions,
   totalsOf,
   type RegisterGroup,
@@ -7,7 +8,7 @@ import {
 } from "@/lib/payroll/register";
 
 import { buildTablePdf, rs, type Column, type TableRow } from "./pdf";
-import { buildWorkbook, type SheetColumn, type SheetRow } from "./xlsx";
+import { buildWorkbook, type Sheet, type SheetColumn, type SheetRow } from "./xlsx";
 
 /**
  * The payroll register as a file — the office's salary sheet, in its own
@@ -65,6 +66,25 @@ function headers(withOther: boolean): string[] {
   ];
 }
 
+/**
+ * How the grand total is made: everybody's payroll, plus each contract firm
+ * billed once, equals the total calculated. Null when no firm is in the run,
+ * so a factory without one prints exactly what it always did.
+ */
+function breakdownOf(
+  all: readonly RegisterRow[],
+  totals: RegisterTotals,
+): { label: string; amount: number }[] | null {
+  const firms = all.filter((row) => row.designation === CONTRACT_FIRM);
+  if (firms.length === 0) return null;
+  const firmsTotal = firms.reduce((sum, firm) => sum + firm.gross, 0);
+  return [
+    { label: "Payroll of all people", amount: totals.gross - firmsTotal },
+    ...firms.map((firm) => ({ label: `+ ${firm.name}`, amount: firm.gross })),
+    { label: "= Total calculated", amount: totals.gross },
+  ];
+}
+
 function everyRow(groups: readonly RegisterGroup[]): RegisterRow[] {
   return groups.flatMap((group) => group.rows);
 }
@@ -92,6 +112,7 @@ export function registerPdf(groups: readonly RegisterGroup[], meta: RegisterMeta
   }
 
   const withheld = totals.advance + totals.advance2 + totals.loan + totals.suit + totals.other;
+  const breakdown = breakdownOf(all, totals);
 
   return buildTablePdf({
     title: meta.title,
@@ -100,12 +121,18 @@ export function registerPdf(groups: readonly RegisterGroup[], meta: RegisterMeta
     columns,
     rows,
     totals: ["", `GRAND TOTAL · ${all.length} people`, "", ...numbers(totals, withOther)],
-    highlights: [
-      { label: "People", value: all.length.toLocaleString("en-PK") },
-      { label: "G salary", value: rs(totals.gross) },
-      { label: "Deductions", value: rs(withheld) },
-      { label: "Net pay", value: rs(totals.net) },
-    ],
+    highlights: breakdown
+      ? [
+          ...breakdown.map((line) => ({ label: line.label, value: rs(line.amount) })),
+          { label: "Deductions", value: rs(withheld) },
+          { label: "Net pay", value: rs(totals.net) },
+        ]
+      : [
+          { label: "People", value: all.length.toLocaleString("en-PK") },
+          { label: "G salary", value: rs(totals.gross) },
+          { label: "Deductions", value: rs(withheld) },
+          { label: "Net pay", value: rs(totals.net) },
+        ],
     footer:
       meta.footer ??
       "AMOUNT = S Rate / days in month x days.  Hours AMOUNT = S Rate / (days in month x 8) x hours.",
@@ -142,6 +169,28 @@ export function registerWorkbook(groups: readonly RegisterGroup[], meta: Registe
     ...columns.slice(3),
   ];
 
+  const breakdown = breakdownOf(all, totals);
+  const withheld = totals.advance + totals.advance2 + totals.loan + totals.suit + totals.other;
+  const totalSheet: Sheet[] = breakdown
+    ? [
+        {
+          name: "Total",
+          title: `${meta.title} — how the total is made`,
+          subtitle: meta.subtitle,
+          orientation: "portrait",
+          columns: [
+            { header: "ITEM", width: 34, format: "text" },
+            { header: "AMOUNT", width: 16, format: "money" },
+          ],
+          rows: [
+            ...breakdown.map((line): SheetRow => [line.label, whole(line.amount)]),
+            ["Less deductions", whole(withheld)],
+          ],
+          totals: ["NET PAY", whole(totals.net)],
+        },
+      ]
+    : [];
+
   return buildWorkbook([
     {
       name: "Register",
@@ -164,5 +213,6 @@ export function registerWorkbook(groups: readonly RegisterGroup[], meta: Registe
       ]),
       totals: ["", "TOTAL", all.length, ...numbers(totals, withOther)],
     },
+    ...totalSheet,
   ]);
 }

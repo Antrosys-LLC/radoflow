@@ -150,6 +150,18 @@ export default async function DashboardPage() {
 
   const live = liveResult.data ?? [];
   const period = payrollResult.data?.[0] ?? null;
+
+  // Contract firms are billed once and sit inside the run's gross, so the card
+  // shows them as the part of the total they are rather than a bare number.
+  const contractFirms = period
+    ? ((
+        await supabase
+          .from("payroll_contract_items")
+          .select("department_id, amount")
+          .eq("period_id", period.id)
+      ).data ?? [])
+    : [];
+  const contractFirmsTotal = contractFirms.reduce((sum, row) => sum + Number(row.amount), 0);
   const devices = devicesResult.data ?? [];
   const departments = deptResult.data ?? [];
 
@@ -583,8 +595,24 @@ export default async function DashboardPage() {
                       {t.status.payroll[period.status]}
                     </span>
                   </div>
+                  {contractFirms.length > 0 ? (
+                    <>
+                      <Fact
+                        label="Payroll of all people"
+                        value={
+                          <Latin>
+                            {formatPKR(Number(period.total_gross) - contractFirmsTotal)}
+                          </Latin>
+                        }
+                      />
+                      <Fact
+                        label={`+ Contract firm${contractFirms.length === 1 ? "" : "s"}`}
+                        value={<Latin>{formatPKR(contractFirmsTotal)}</Latin>}
+                      />
+                    </>
+                  ) : null}
                   <Fact
-                    label={t.dashboard.gross}
+                    label={contractFirms.length > 0 ? "= Total calculated" : t.dashboard.gross}
                     value={<Latin>{formatPKR(Number(period.total_gross))}</Latin>}
                   />
                   <div className="rounded-2xl bg-primary-soft p-4">

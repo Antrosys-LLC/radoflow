@@ -6,7 +6,12 @@ import { loadMenus } from "@/lib/canteen/menu-data";
 import { loadUnmatchedMeals, withUnmatched } from "@/lib/canteen/unmatched";
 import { dailyRate, daysInMonthOf, overtimeRate } from "@/lib/payroll/hours";
 import { loanBalance, monthOf, type LoanRow, type RecoveryRow } from "@/lib/payroll/ledger";
-import { groupRegister, toRegisterRow, type RegisterItem } from "@/lib/payroll/register";
+import {
+  CONTRACT_FIRM,
+  groupRegister,
+  toRegisterRow,
+  type RegisterItem,
+} from "@/lib/payroll/register";
 import type { PayslipLine } from "@/lib/payroll/types";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { formatDate } from "@/lib/time";
@@ -809,7 +814,7 @@ export async function registerDocument(
       profileId: `contract:${row.department_id}`,
       name: department,
       code: "",
-      designation: "Contract firm",
+      designation: CONTRACT_FIRM,
       department,
       monthlySalary: amount,
       workingDays: 0,

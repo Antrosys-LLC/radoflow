@@ -1,3 +1,4 @@
+import { roundMoney } from "./hours";
 import type { PayComponent, PayslipLine } from "./types";
 
 /**
@@ -58,7 +59,9 @@ export interface RecoveryRow {
   source: string;
 }
 
-const round2 = (value: number) => Math.round(value * 100) / 100;
+// The engine's own half-up rule, so 0.285 is 0.29 here as it is on the payslip
+// (a bare Math.round(x * 100) turns it into 0.28).
+const round2 = roundMoney;
 
 /** The first of the month a date falls in. */
 export function monthOf(date: string): string {
@@ -127,7 +130,18 @@ export function installmentDue(
   recoveries: readonly RecoveryRow[],
   month: string,
 ): number {
-  if (loan.status !== "active" || month < loan.first_month) return 0;
+  /*
+   * A loan this month's own run finished paying is marked settled the moment
+   * that run ends. Running the month again must still take its last
+   * installment, or the payslip pays out money the ledger says was recovered.
+   * A loan settled any other way (by hand, or in an earlier month) is not due.
+   */
+  const settledByThisMonth =
+    loan.status === "settled" &&
+    recoveries.some(
+      (row) => row.loan_id === loan.id && row.month === month && row.source === "payroll",
+    );
+  if ((loan.status !== "active" && !settledByThisMonth) || month < loan.first_month) return 0;
   const remaining = Number(loan.principal) - recoveredOn(loan.id, recoveries, month);
   return Math.max(0, round2(Math.min(Number(loan.installment), remaining)));
 }
@@ -213,6 +227,31 @@ export function collectedLoanDeductions(
       return { loanId: line.loanId, amount: round2(line.amount - taken) };
     })
     .reverse();
+}
+
+/**
+ * Which loans change status once a run has written its installments.
+ *
+ * An active loan with nothing left is settled. A settled loan this run took an
+ * installment from, but which still has a balance (a re-run that collected
+ * less), is reopened — otherwise its remainder would never be asked for again.
+ * A loan settled by hand and untouched by the run is left exactly as it is.
+ */
+export function loanStatusChanges(
+  loans: readonly LoanRow[],
+  recoveries: readonly RecoveryRow[],
+  touchedLoanIds: ReadonlySet<string>,
+): { settle: string[]; reopen: string[] } {
+  const settle: string[] = [];
+  const reopen: string[] = [];
+  for (const loan of loans) {
+    const balance = loanBalance(loan, recoveries);
+    if (loan.status === "active" && balance <= 0) settle.push(loan.id);
+    else if (loan.status === "settled" && touchedLoanIds.has(loan.id) && balance > 0) {
+      reopen.push(loan.id);
+    }
+  }
+  return { settle, reopen };
 }
 
 /** The sheet's deduction columns, read back out of a payslip's lines. */

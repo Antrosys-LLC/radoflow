@@ -3,7 +3,7 @@ import { calculatePayroll, summarisePayroll } from "./engine";
 import {
   collectedLoanDeductions,
   ledgerFor,
-  loanBalance,
+  loanStatusChanges,
   monthOf,
   type AdjustmentRow,
   type LoanRow,
@@ -12,7 +12,7 @@ import {
 import { daysBetween, daysInMonthOf, roundMoney } from "./hours";
 import { toEmployee, toLateTier, toPayComponent, toPayRule } from "./mappers";
 import type { AttendanceDay, DayType, PayComponent, PayrollResult } from "./types";
-import { selectAllInBatches } from "@/lib/supabase/in-batches";
+import { PAGE_SIZE, selectAllInBatches } from "@/lib/supabase/in-batches";
 import { isSchemaOutOfDate } from "@/lib/supabase/schema-error";
 import { createServiceClient } from "@/lib/supabase/service";
 
@@ -88,13 +88,12 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
   if (periodError || !period) throw new Error("Pay period not found.");
   if (period.locked) throw new Error("This period is locked and cannot be recalculated.");
 
-  const [
-    { data: staff },
-    { data: rules },
-    { data: components },
-    { data: lateRules },
-    { data: contractDepartments },
-  ] = await Promise.all([
+  /*
+   * One page of the people this run covers. A reply stops silently at a
+   * thousand rows, and everyone past the cut would simply not be paid, so the
+   * caller keeps asking until a page comes back short.
+   */
+  const staffPage = (from: number) =>
     supabase
       .from("profiles")
       .select(
@@ -107,7 +106,18 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
        * the moment they were marked terminated, and a man who left on the 16th
        * would be paid nothing for the 1st to the 15th.
        */
-      .or(`status.eq.active,and(status.eq.terminated,left_on.gte.${period.period_start})`),
+      .or(`status.eq.active,and(status.eq.terminated,left_on.gte.${period.period_start})`)
+      .order("id")
+      .range(from, from + PAGE_SIZE - 1);
+
+  const [
+    { data: firstStaffPage, error: staffError },
+    { data: rules },
+    { data: components },
+    { data: lateRules },
+    { data: contractDepartments },
+  ] = await Promise.all([
+    staffPage(0),
     supabase
       .from("pay_rules")
       .select("*")
@@ -144,7 +154,17 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
       .eq("is_active", true),
   ]);
 
-  if (!staff || staff.length === 0) {
+  if (staffError) throw new Error(`Could not read the factory's staff: ${staffError.message}`);
+
+  const staff = [...(firstStaffPage ?? [])];
+  for (let last = staff.length, from = PAGE_SIZE; last === PAGE_SIZE; from += PAGE_SIZE) {
+    const { data, error } = await staffPage(from);
+    if (error) throw new Error(`Could not read the factory's staff: ${error.message}`);
+    staff.push(...(data ?? []));
+    last = data?.length ?? 0;
+  }
+
+  if (staff.length === 0) {
     throw new Error("No active employees at this factory.");
   }
 
@@ -277,12 +297,26 @@ export async function runPayrollForPeriod(periodId: string): Promise<RunSummary>
    */
   const salaryFrom = new Map<string, string>();
   {
-    const { data: from } = await supabase
-      .from("profiles")
-      .select("id, salary_from")
-      .not("salary_from", "is", null);
-    for (const row of (from ?? []) as unknown as { id: string; salary_from: string }[]) {
-      salaryFrom.set(row.id, row.salary_from);
+    // Only a missing column is forgiven. Any other failure used to read as
+    // "nobody has a joining date" and paid every joiner a whole month.
+    const probe = await supabase.from("profiles").select("salary_from").limit(1);
+    if (probe.error && !isSchemaOutOfDate(probe.error)) {
+      throw new Error(`Could not read joining dates: ${probe.error.message}`);
+    }
+    if (!probe.error) {
+      const from = await selectAllInBatches<{ id: string; salary_from: string }>(
+        staff.map((s) => s.id),
+        (ids, first, last) =>
+          supabase
+            .from("profiles")
+            .select("id, salary_from")
+            .in("id", ids)
+            .not("salary_from", "is", null)
+            .order("id")
+            .range(first, last) as never,
+        "Could not read joining dates",
+      );
+      for (const row of from) salaryFrom.set(row.id, row.salary_from);
     }
   }
   const monthStart = `${period.period_start.slice(0, 7)}-01`;
@@ -607,7 +641,9 @@ async function loadLedger(
       supabase
         .from("employee_loans")
         .select("id, profile_id, principal, installment, installments, first_month, status")
-        .eq("status", "active")
+        // Settled too: a loan this month's run finished is settled by the time
+        // the month is run again, and still owes that run's last installment.
+        .in("status", ["active", "settled"])
         .in("profile_id", ids)
         .order("profile_id")
         .order("id")
@@ -646,9 +682,24 @@ async function settleLoans(
         line.loan_id === row.loan_id && line.month === row.month && row.source === "payroll",
     );
   const all: RecoveryRow[] = [...ledger.recoveries.filter((row) => !replaced(row)), ...written];
-  const settled = ledger.loans.filter((loan) => loanBalance(loan, all) <= 0).map((loan) => loan.id);
+  const { settle, reopen } = loanStatusChanges(
+    ledger.loans,
+    all,
+    new Set(written.map((line) => line.loan_id)),
+  );
 
-  if (settled.length > 0) {
-    await supabase.from("employee_loans").update({ status: "settled" }).in("id", settled);
+  if (settle.length > 0) {
+    const { error } = await supabase
+      .from("employee_loans")
+      .update({ status: "settled" })
+      .in("id", settle);
+    if (error) throw new Error(`Could not settle finished loans: ${error.message}`);
+  }
+  if (reopen.length > 0) {
+    const { error } = await supabase
+      .from("employee_loans")
+      .update({ status: "active" })
+      .in("id", reopen);
+    if (error) throw new Error(`Could not reopen loans with a balance: ${error.message}`);
   }
 }

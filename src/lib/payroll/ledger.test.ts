@@ -5,6 +5,7 @@ import {
   installmentDue,
   ledgerFor,
   loanBalance,
+  loanStatusChanges,
   planLoan,
   sheetDeductions,
   type LoanRow,
@@ -113,5 +114,46 @@ describe("collecting loan deductions", () => {
         { code: "SUIT", label: "Suit", kind: "deduction", amount: 800 },
       ]),
     ).toEqual({ advance: 2500, advance2: 300, loan: 1500, suit: 800 });
+  });
+});
+
+describe("running a month again", () => {
+  const finalMonth: RecoveryRow[] = [
+    { loan_id: "L1", month: "2026-07-01", amount: 14000, source: "manual" },
+    { loan_id: "L1", month: "2026-09-01", amount: 1000, source: "payroll" },
+  ];
+  const settled = { ...loan, status: "settled" };
+
+  it("still takes the last installment of a loan this month's run settled", () => {
+    expect(installmentDue(settled, finalMonth, "2026-09-01")).toBe(1000);
+  });
+
+  it("does not take anything from a loan settled some other way", () => {
+    const handSettled: RecoveryRow[] = [finalMonth[0]!];
+    expect(installmentDue(settled, handSettled, "2026-09-01")).toBe(0);
+    expect(installmentDue(settled, finalMonth, "2026-10-01")).toBe(0);
+  });
+
+  it("settles a finished loan and reopens one a re-run left short", () => {
+    const paid: RecoveryRow[] = [
+      { loan_id: "L1", month: "2026-07-01", amount: 15000, source: "payroll" },
+    ];
+    expect(loanStatusChanges([loan], paid, new Set())).toEqual({ settle: ["L1"], reopen: [] });
+    expect(loanStatusChanges([settled], [finalMonth[0]!], new Set(["L1"]))).toEqual({
+      settle: [],
+      reopen: ["L1"],
+    });
+  });
+
+  it("leaves a loan settled by hand alone", () => {
+    expect(loanStatusChanges([settled], [finalMonth[0]!], new Set())).toEqual({
+      settle: [],
+      reopen: [],
+    });
+  });
+
+  it("rounds a half paisa up, as the payslip does", () => {
+    const [line] = collectedLoanDeductions([{ loanId: "L1", amount: 1.005 }], 0);
+    expect(line!.amount).toBe(1.01);
   });
 });

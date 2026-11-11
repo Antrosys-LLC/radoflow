@@ -899,6 +899,46 @@ describe("net pay can never go negative", () => {
     expect(result.net).toBeGreaterThanOrEqual(0);
   });
 
+  it("does not count waived tax as a deduction that went uncollected", () => {
+    // Tax gives way first. The loan ledger reads `uncollectedDeductions`, and a
+    // rupee of waived tax must not be taken off a loan installment that the
+    // payslip did in fact collect.
+    const withTax: PayComponent[] = [
+      {
+        code: "TAX",
+        label: "Tax",
+        kind: "tax",
+        calc: "percent",
+        amount: 0,
+        percent: 100,
+        sortOrder: 90,
+      },
+      { ...statutory[0]!, amount: 100 },
+    ];
+    const days = [day({ workDate: "2026-08-03", hoursWorked: 1 })];
+    const result = calculatePayroll({ employee: hourlyWorker, rule, days, components: withTax });
+
+    // Gross 320 against 100 of deductions and 320 of tax: the tax gives way by
+    // 100, the deduction is collected in full, and nothing is left uncollected.
+    expect(result.deductions).toBe(100);
+    expect(result.tax).toBe(220);
+    expect(result.uncollectedDeductions).toBe(0);
+  });
+
+  it("pays an hourly worker on no overtime the same duty hours however long they stay", () => {
+    const noOvertime = { ...hourlyWorker, overtimeEligible: false };
+    const pay = (hoursWorked: number) =>
+      calculatePayroll({
+        employee: noOvertime,
+        rule,
+        days: [day({ workDate: "2026-08-03", hoursWorked })],
+      }).gross;
+
+    expect(pay(8.25)).toBe(pay(8));
+    expect(pay(9)).toBe(pay(8));
+    expect(pay(12)).toBe(pay(8));
+  });
+
   it("leaves a normal payslip untouched", () => {
     const days = Array.from({ length: 5 }, (_, i) => day({ workDate: `2026-08-0${i + 3}` }));
     const result = calculatePayroll({

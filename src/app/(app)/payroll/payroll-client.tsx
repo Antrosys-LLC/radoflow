@@ -139,6 +139,7 @@ export function PayrollClient({
   const [rowLimit, setRowLimit] = useState(ROW_PAGE);
 
   const selected = periods.find((p) => p.id === selectedId) ?? null;
+  const contractSum = Math.round(contracts.reduce((sum, firm) => sum + firm.amount, 0) * 100) / 100;
 
   function act(fn: () => Promise<PayrollResultMessage>, loading: string) {
     startTransition(async () => {
@@ -262,6 +263,36 @@ export function PayrollClient({
                 />
               }
             />
+
+            {contracts.length > 0 ? (
+              /*
+               * How the total is made: the people's payroll, plus each firm
+               * billed once. total_gross already holds both, so this only
+               * shows the sum rather than computing a new figure.
+               */
+              <div className="mb-3 rounded-2xl bg-secondary px-4 py-3 text-sm">
+                <p className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Payroll of all people</span>
+                  <span className="font-bold tabular-nums text-foreground">
+                    <Latin>{formatPKR(selected.total_gross - contractSum)}</Latin>
+                  </span>
+                </p>
+                {contracts.map((firm) => (
+                  <p key={firm.id} className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">+ {firm.department}</span>
+                    <span className="font-bold tabular-nums text-foreground">
+                      <Latin>{formatPKR(firm.amount)}</Latin>
+                    </span>
+                  </p>
+                ))}
+                <p className="mt-1 flex items-center justify-between gap-4 border-t border-border pt-1">
+                  <span className="font-bold text-foreground">= Total calculated</span>
+                  <span className="font-bold tabular-nums text-foreground">
+                    <Latin>{formatPKR(selected.total_gross)}</Latin>
+                  </span>
+                </p>
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Total label={t.payroll.grossPay} value={selected.total_gross} />

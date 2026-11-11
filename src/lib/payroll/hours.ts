@@ -170,6 +170,11 @@ export function splitDayHours(
       if (worked <= standard) {
         return { ...EMPTY_BUCKETS, regular: worked };
       }
+      // Someone on no overtime keeps the duty hours and nothing more. Decided
+      // before the threshold: otherwise 8.4 hours paid 8.4 and 8.6 paid 8, so
+      // an hourly worker earned less for working longer.
+      if (!earnsOvertime) return { ...EMPTY_BUCKETS, regular: standard };
+
       const excess = round2(worked - standard);
       const threshold = rule.otThresholdMinutes / 60;
       if (excess < threshold) {
@@ -184,8 +189,6 @@ export function splitDayHours(
        * quietly reintroduce the uncapped cost the ceiling exists to prevent,
        * and a terminal left running overnight would show up as a raise.
        */
-      // Someone on no overtime keeps the duty hours and nothing more.
-      if (!earnsOvertime) return { ...EMPTY_BUCKETS, regular: standard };
 
       const cap = rule.otDailyCapHours;
       const payable = cap >= 0 ? Math.min(excess, cap) : excess;

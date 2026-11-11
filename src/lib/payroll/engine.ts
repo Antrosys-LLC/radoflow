@@ -384,7 +384,13 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
     if (over > 0) deductions = roundMoney(Math.max(0, deductions - over));
   }
 
-  const uncollected = roundMoney(rawDeductions + rawTax - deductions - tax);
+  /*
+   * Only deductions count as uncollected. Tax that gave way is waived, not
+   * owed: counting it here made the loan ledger believe a shortfall that never
+   * hit the installment, so the payslip took the full loan and the books
+   * recorded less than was taken.
+   */
+  const uncollected = roundMoney(rawDeductions - deductions);
   if (uncollected > 0) {
     lines.push({
       code: "UNCOLLECTED",

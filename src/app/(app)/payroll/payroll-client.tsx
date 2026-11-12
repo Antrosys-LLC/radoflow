@@ -14,6 +14,7 @@ import { Latin } from "@/components/latin";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import type { Dictionary } from "@/lib/i18n";
 import { payrollBreakdown } from "@/lib/payroll/breakdown";
+import { movementTag } from "@/lib/payroll/movements";
 import { contractFirmItem, toRegisterRow, type RegisterItem } from "@/lib/payroll/register";
 import { formatDate, formatDateTime, formatHours, formatPKR } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -149,6 +150,11 @@ export function PayrollClient({
         ),
       ]),
     [items, contracts],
+  );
+
+  const movers = useMemo(
+    () => items.map((item) => item.register).filter((row) => row.joinedOn || row.leftOn),
+    [items],
   );
 
   function act(fn: () => Promise<PayrollResultMessage>, loading: string) {
@@ -289,6 +295,10 @@ export function PayrollClient({
                     >
                       {line.label}
                     </p>
+                  ) : line.tone === "note" ? (
+                    <p key={index} className="pb-1 pl-3 text-xs text-muted-foreground">
+                      {line.label}
+                    </p>
                   ) : (
                     <p
                       key={index}
@@ -319,6 +329,47 @@ export function PayrollClient({
                     </p>
                   ),
                 )}
+              </div>
+            ) : null}
+
+            {movers.length > 0 ? (
+              <div className="mb-3 rounded-2xl bg-secondary px-4 py-3 text-sm">
+                <p className="mb-1 border-l-2 border-primary pl-2 text-[11px] font-bold uppercase tracking-wide text-primary">
+                  People who joined or left this period · {movers.length}
+                </p>
+                <ul className="divide-y divide-border">
+                  {movers.map((row) => (
+                    <li key={row.profileId} className="flex items-center justify-between gap-3 py-1.5">
+                      <span className="min-w-0 truncate">
+                        <span className="text-xs text-muted-foreground">
+                          <Latin>{row.code || "—"}</Latin>
+                        </span>{" "}
+                        <span className="font-semibold text-foreground">
+                          <Latin>{row.name}</Latin>
+                        </span>{" "}
+                        <span className="text-xs text-muted-foreground">
+                          <Latin>{row.department}</Latin>
+                        </span>
+                      </span>
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold",
+                          row.leftOn ? "bg-danger/15 text-danger" : "bg-success-soft text-success",
+                        )}
+                      >
+                        <Latin>
+                          {movementTag(
+                            { joinedOn: row.joinedOn ?? null, leftOn: row.leftOn ?? null },
+                            formatDate,
+                          )}
+                        </Latin>
+                      </span>
+                      <span className="shrink-0 font-bold tabular-nums text-foreground">
+                        <Latin>{formatPKR(row.net)}</Latin>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
 

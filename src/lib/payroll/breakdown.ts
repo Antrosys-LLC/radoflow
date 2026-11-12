@@ -14,7 +14,7 @@ import { CONTRACT_FIRM, totalsOf, type RegisterRow } from "./register";
  * all already share, so the three can never print different numbers.
  */
 
-export type BreakdownTone = "heading" | "line" | "subtotal" | "total";
+export type BreakdownTone = "heading" | "line" | "subtotal" | "total" | "note";
 
 export interface BreakdownLine {
   tone: BreakdownTone;
@@ -56,6 +56,12 @@ export function payrollBreakdown(rows: readonly RegisterRow[]): BreakdownLine[] 
     add("line", "− Salary not earned (absence, Sundays, part months)", -adjustment);
   } else if (adjustment > 0) {
     add("line", "+ Paid by the hour or above the stated salary", adjustment);
+  }
+  if (adjustment < 0) {
+    add(
+      "note",
+      "Not paid: Sundays, days absent or on leave, days outside the period, and the part of a month before a joiner started or after a leaver left.",
+    );
   }
   add("subtotal", "= Base pay earned by attendance", people.dayAmount);
   if (people.hourAmount > 0) add("line", "+ Overtime, weekend and holiday pay", people.hourAmount);

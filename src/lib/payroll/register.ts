@@ -39,6 +39,9 @@ export interface RegisterItem {
   withheld: number;
   net: number;
   lines: readonly PayslipLine[];
+  /** Set when this person joined or left inside the period — see `movements.ts`. */
+  joinedOn?: string | null | undefined;
+  leftOn?: string | null | undefined;
 }
 
 export interface RegisterRow {
@@ -59,6 +62,8 @@ export interface RegisterRow {
   suit: number;
   other: number;
   net: number;
+  joinedOn?: string | null | undefined;
+  leftOn?: string | null | undefined;
 }
 
 /** What a contract firm's single row carries in the designation column. */
@@ -86,7 +91,7 @@ export function contractFirmItem(name: string, amount: number, profileId: string
 
 export type RegisterTotals = Omit<
   RegisterRow,
-  "profileId" | "name" | "code" | "designation" | "department"
+  "profileId" | "name" | "code" | "designation" | "department" | "joinedOn" | "leftOn"
 >;
 
 export interface RegisterGroup {
@@ -116,6 +121,8 @@ export function toRegisterRow(item: RegisterItem): RegisterRow {
     ...sheet,
     other: Math.max(0, round2(item.withheld - named)),
     net: round2(item.net),
+    joinedOn: item.joinedOn ?? null,
+    leftOn: item.leftOn ?? null,
   };
 }
 

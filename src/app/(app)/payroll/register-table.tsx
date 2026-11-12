@@ -15,6 +15,8 @@ import {
   type RegisterItem,
   type RegisterTotals,
 } from "@/lib/payroll/register";
+import { movementTag } from "@/lib/payroll/movements";
+import { formatDate } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
 /**
@@ -169,6 +171,21 @@ export function RegisterTable({ items, periodId }: { items: RegisterItem[]; peri
                       </td>
                       <td className="whitespace-nowrap px-2 py-2 text-muted-foreground">
                         <Latin>{row.designation}</Latin>
+                        {row.leftOn || row.joinedOn ? (
+                          <span
+                            className={cn(
+                              "ms-2 rounded-full px-2 py-0.5 text-[10px] font-bold",
+                              row.leftOn ? "bg-danger/15 text-danger" : "bg-success-soft text-success",
+                            )}
+                          >
+                            <Latin>
+                              {movementTag(
+                                { joinedOn: row.joinedOn ?? null, leftOn: row.leftOn ?? null },
+                                formatDate,
+                              )}
+                            </Latin>
+                          </span>
+                        ) : null}
                       </td>
                       <Figures totals={row} withOther={withOther} />
                     </tr>

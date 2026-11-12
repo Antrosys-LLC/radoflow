@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { loadAnomalyCandidates } from "@/lib/assistant/payroll-review";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
+import { loadMovements, type Movement } from "@/lib/payroll/movements";
 import { createClient } from "@/lib/supabase/server";
 
 import { PayrollClient, type ContractRow, type ItemRow, type PeriodRow } from "./payroll-client";
@@ -68,6 +69,17 @@ export default async function PayrollPage({
       supabase.from("departments").select("id, name"),
     ]);
 
+    // Who joined or left inside this period — shown against their roll number.
+    const selectedPeriod = periodRows.find((p) => p.id === selectedId);
+    const movements = selectedPeriod
+      ? await loadMovements(
+          supabase as never,
+          (rows ?? []).map((row) => row.profile_id),
+          selectedPeriod.period_start,
+          selectedPeriod.period_end,
+        )
+      : new Map<string, Movement>();
+
     const personById = new Map((people ?? []).map((p) => [p.id, p]));
     const deptById = new Map((departments ?? []).map((d) => [d.id, d.name]));
 
@@ -121,6 +133,8 @@ export default async function PayrollPage({
             withheld: Number(row.deductions) + Number(row.tax),
             net: Number(row.net),
             lines: (row.breakdown ?? []) as ItemRow["breakdown"] as never,
+            joinedOn: movements.get(row.profile_id)?.joinedOn ?? null,
+            leftOn: movements.get(row.profile_id)?.leftOn ?? null,
           },
         };
       })

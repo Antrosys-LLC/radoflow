@@ -54,6 +54,8 @@ export interface TableDoc {
   highlights?: { label: string; value: string }[] | undefined;
   /** A last page that walks the total down to what has to be paid. */
   breakdown?: BreakdownLine[] | undefined;
+  /** A small table after the breakdown — the people who joined or left. */
+  appendix?: { heading: string; headers: string[]; rows: (string | number)[][] } | undefined;
 }
 
 interface Rgb {
@@ -414,17 +416,40 @@ function drawBreakdown(page: Page, top: number, lines: readonly BreakdownLine[])
       page.rect(left, y - row, width, row, RED_TINT);
       page.rect(left, y - row, 2.5, row, RED);
       page.text(left + 8, y - row + (row - font) / 2 + 1, line.label, font, true, RED_DEEP);
+    } else if (line.tone === "note") {
+      page.text(
+        left + 16,
+        y - row + (row - font) / 2 + 1,
+        truncate(line.label, font - 1.5, width - 24),
+        font - 1.5,
+        false,
+        MUTED,
+      );
     } else if (line.tone === "total") {
       page.rect(left, y - row - 2, width, row + 2, BAND);
       page.text(left + 8, y - row + (row - font) / 2 - 1, line.label, font + 1, true, WHITE);
-      page.rightText(left + width - 8, y - row + (row - font) / 2 - 1, amount, font + 1, true, WHITE);
+      page.rightText(
+        left + width - 8,
+        y - row + (row - font) / 2 - 1,
+        amount,
+        font + 1,
+        true,
+        WHITE,
+      );
     } else {
       const bold = line.tone === "subtotal";
       if (bold) {
         page.rect(left, y - row, width, row, TINT);
         page.line(left, y, left + width, y, 0.35, 0.6);
       }
-      page.text(left + (bold ? 8 : 16), y - row + (row - font) / 2 + 1, line.label, font, bold, INK);
+      page.text(
+        left + (bold ? 8 : 16),
+        y - row + (row - font) / 2 + 1,
+        line.label,
+        font,
+        bold,
+        INK,
+      );
       page.rightText(left + width - 8, y - row + (row - font) / 2 + 1, amount, font, bold, INK);
     }
     y -= row;
@@ -495,7 +520,12 @@ export function buildTablePdf(doc: TableDoc): Buffer {
     });
   };
 
-  const pageTotal = chunks.length + (doc.breakdown?.length ? 1 : 0);
+  const appendixRows = doc.appendix?.rows ?? [];
+  const appendixPerPage = Math.max(1, Math.floor((size.height - MARGIN * 2 - 66 - 60) / 16));
+  const appendixPages =
+    appendixRows.length === 0 ? 0 : Math.ceil(appendixRows.length / appendixPerPage);
+  const breakdownPages = doc.breakdown?.length ? 1 : 0;
+  const pageTotal = chunks.length + breakdownPages + appendixPages;
 
   const pages = chunks.map((chunk, pageIndex) => {
     const page = new Page(size.width, size.height);
@@ -556,8 +586,46 @@ export function buildTablePdf(doc: TableDoc): Buffer {
     page.watermark();
     const y = letterhead(page, doc.title, doc.subtitle, true);
     drawBreakdown(page, y - 4, doc.breakdown);
-    pageFooter(page, pageTotal, pageTotal);
+    pageFooter(page, chunks.length + 1, pageTotal);
     pages.push(page);
+  }
+
+  if (doc.appendix && appendixPages > 0) {
+    const { heading, headers, rows } = doc.appendix;
+    const colW = usableWidth / headers.length;
+    for (let n = 0; n < appendixPages; n++) {
+      const page = new Page(size.width, size.height);
+      page.watermark();
+      let y = letterhead(page, doc.title, doc.subtitle, true) - 4;
+      page.text(MARGIN, y - 10, heading, 9.5, true, RED_DEEP);
+      y -= 20;
+      page.rect(MARGIN, y - 16, usableWidth, 16, BAND);
+      headers.forEach((h, i) =>
+        page.text(
+          MARGIN + i * colW + 4,
+          y - 11,
+          truncate(h, 7.5, colW - 8, true),
+          7.5,
+          true,
+          WHITE,
+        ),
+      );
+      y -= 16;
+      rows.slice(n * appendixPerPage, (n + 1) * appendixPerPage).forEach((cells, r) => {
+        if (r % 2 === 1) page.rect(MARGIN, y - 16, usableWidth, 16, ZEBRA);
+        cells.forEach((cell, i) => {
+          const value = truncate(fmt(cell), 8, colW - 8);
+          if (typeof cell === "number") {
+            page.rightText(MARGIN + (i + 1) * colW - 4, y - 11, value, 8, false, INK);
+          } else {
+            page.text(MARGIN + i * colW + 4, y - 11, value, 8, false, INK);
+          }
+        });
+        y -= 16;
+      });
+      pageFooter(page, chunks.length + breakdownPages + n + 1, pageTotal);
+      pages.push(page);
+    }
   }
 
   return assemble(pages, doc.title);

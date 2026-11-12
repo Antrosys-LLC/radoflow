@@ -5,6 +5,7 @@ import { dayPrices } from "@/lib/canteen/menu";
 import { loadMenus } from "@/lib/canteen/menu-data";
 import { loadUnmatchedMeals, withUnmatched } from "@/lib/canteen/unmatched";
 import { dailyRate, daysInMonthOf, overtimeRate } from "@/lib/payroll/hours";
+import { loadMovements, type Movement } from "@/lib/payroll/movements";
 import { loanBalance, monthOf, type LoanRow, type RecoveryRow } from "@/lib/payroll/ledger";
 import {
   contractFirmItem,
@@ -745,6 +746,7 @@ export function registerItemFromPayroll(
   who: DirectoryRow | undefined,
   department: string,
   fallbackSalary: number,
+  movement?: Movement | null,
 ): RegisterItem {
   const lines = (item.breakdown ?? []) as unknown as PayslipLine[];
   return {
@@ -762,6 +764,8 @@ export function registerItemFromPayroll(
     withheld: Number(item.deductions) + Number(item.tax),
     net: Number(item.net),
     lines,
+    joinedOn: movement?.joinedOn ?? null,
+    leftOn: movement?.leftOn ?? null,
   };
 }
 
@@ -778,9 +782,10 @@ export async function registerDocument(
 
   const items = await payrollItems(supabase, period.id);
   const ids = items.map((item) => item.profile_id);
-  const [people, deptName] = await Promise.all([
+  const [people, deptName, movements] = await Promise.all([
     directory(supabase, ids),
     departmentNames(supabase),
+    loadMovements(supabase as never, ids, period.period_start, period.period_end),
   ]);
 
   // Only a run saved before the salary column existed needs the profile's.
@@ -818,7 +823,13 @@ export async function registerDocument(
       const who = people.get(item.profile_id);
       const department = (who?.department_id && deptName.get(who.department_id)) || "Unassigned";
       return toRegisterRow(
-        registerItemFromPayroll(item, who, department, salaries.get(item.profile_id) ?? 0),
+        registerItemFromPayroll(
+          item,
+          who,
+          department,
+          salaries.get(item.profile_id) ?? 0,
+          movements.get(item.profile_id),
+        ),
       );
     }),
     ...contractItems.map(toRegisterRow),
@@ -878,12 +889,16 @@ export async function payslipFromRun(
     .select("monthly_salary, duty_hours")
     .eq("id", profileId)
     .maybeSingle();
+  const movement = (
+    await loadMovements(supabase as never, [profileId], period.period_start, period.period_end)
+  ).get(profileId);
 
   const register = registerItemFromPayroll(
     item,
     who,
     (who?.department_id && deptName.get(who.department_id)) || "",
     Number(profile?.monthly_salary ?? 0),
+    movement,
   );
   const daysInMonth = daysInMonthOf(period.period_start);
   const lines = register.lines;
@@ -915,6 +930,10 @@ export async function payslipFromRun(
         },
         { label: "Salary covers", value: `${dutyHours} hours a day` },
         { label: "Days absent", value: String(Number(item.days_absent)) },
+        ...(movement?.joinedOn
+          ? [{ label: "Joined on", value: formatDate(movement.joinedOn) }]
+          : []),
+        ...(movement?.leftOn ? [{ label: "Left on", value: formatDate(movement.leftOn) }] : []),
       ],
       earnings: lines
         .filter((line) => line.kind === "base" || line.kind === "earning")

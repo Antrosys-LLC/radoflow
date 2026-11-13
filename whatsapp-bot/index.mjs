@@ -93,6 +93,7 @@ function chatClass(jid) {
 
 async function handle(sock, msg) {
   const jid = msg.key.remoteJid;
+  console.log("DEBUG incoming:", JSON.stringify({ jid, fromMe: msg.key.fromMe, text: textOf(msg.message) }));
   if (!jid || jid === "status@broadcast" || msg.key.fromMe) return;
 
   const isGroup = jid.endsWith("@g.us");

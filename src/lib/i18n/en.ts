@@ -806,6 +806,13 @@ const en = {
     // Two templates because "1 people" is wrong; both carry the same slots.
     showing: "Showing {count} people · {expected} expected to attend",
     showingOne: "Showing {count} person · {expected} expected to attend",
+    // The download panel under the filters.
+    downloadScopeAll: "Whole factory",
+    downloadScopeDepartments: "By department",
+    downloadScopePerson: "One person",
+    downloadHint: "Pick the days and who to include. Every day in the range is listed, absentees too.",
+    downloadPickPerson: "Choose a person",
+    downloadLabel: "Check-in/out register",
   },
   /**
    * The attendance log — the audit trail behind a payslip, and the toasts its

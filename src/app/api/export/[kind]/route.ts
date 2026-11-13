@@ -67,6 +67,9 @@ type Kind = keyof typeof REQUIRED_PERMISSION;
 
 const XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+/** The longest range a check-in / check-out file will list day by day. */
+const MAX_LOG_DAYS = 93;
+
 const money = (value: number) => Math.round(value);
 const hours = (value: number) => Math.round(value * 100) / 100;
 
@@ -375,6 +378,27 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
         return NextResponse.json({ error: "No such person." }, { status: 404 });
       }
 
+      // Every date in the range, so a day with no punches shows as such
+      // instead of silently not being in the file. A range too long to list is
+      // refused rather than cut short: a file that quietly stops at day 93
+      // reads as a factory that stopped coming in.
+      if (from > to) {
+        return NextResponse.json(
+          { error: "The start date is after the end date." },
+          { status: 400 },
+        );
+      }
+      const dates: string[] = [];
+      for (let d = from; d <= to; d = nextDay(d)) {
+        dates.push(d);
+        if (dates.length > MAX_LOG_DAYS) {
+          return NextResponse.json(
+            { error: `Choose a range of at most ${MAX_LOG_DAYS} days.` },
+            { status: 400 },
+          );
+        }
+      }
+
       const logRows = await selectAllInBatches<LogRow>(
         people.map((p) => p.id),
         (ids, first, last) =>
@@ -392,41 +416,61 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
         `Could not read attendance for ${from} to ${to}`,
       );
 
-      const personOf = new Map(people.map((p) => [p.id, p]));
-      const label = (status: string | null) =>
-        status ? status.charAt(0).toUpperCase() + status.slice(1) : "Pending";
+      const label = (status: string) =>
+        status.charAt(0).toUpperCase() + status.slice(1).replaceAll("_", " ");
 
-      // Every date in the range, so a day with no punches shows as such
-      // instead of silently not being in the file.
-      const dates: string[] = [];
-      for (let d = from; d <= to && dates.length < 93; d = nextDay(d)) dates.push(d);
+      /*
+       * What the day was, in the words of the register page: a punch in with a
+       * punch out is Present, a punch in alone is a missing check-out (still on
+       * the floor, if it is today), and no punch at all is Absent — unless
+       * attendance is not required of that person, or it is a Sunday.
+       */
+      const stateOf = (person: (typeof people)[number], row: LogRow | undefined, date: string) => {
+        if (row?.first_in) {
+          if (!row.last_out) return "No check-out";
+          return row.status && row.status !== "pending" ? label(row.status) : "Present";
+        }
+        if (row?.status && row.status !== "pending" && row.status !== "absent") {
+          return label(row.status);
+        }
+        if (new Date(`${date}T00:00:00Z`).getUTCDay() === 0) return "Sunday";
+        return person.requires_attendance ? "Absent" : "Not required";
+      };
 
       const dayOf = new Map(logRows.map((row) => [`${row.profile_id}|${row.work_date}`, row]));
-      const sorted = [...people].sort((a, b) => a.full_name.localeCompare(b.full_name));
+      const byName = [...people].sort((a, b) => a.full_name.localeCompare(b.full_name));
+      // The register page asks for the file grouped by date, then department,
+      // then name; the attendance log keeps one person's days together.
+      const byDay = url.searchParams.get("order") === "date";
+      const sorted = byDay
+        ? [...people].sort(
+            (a, b) =>
+              departmentOf(a.department_id).localeCompare(departmentOf(b.department_id)) ||
+              a.full_name.localeCompare(b.full_name),
+          )
+        : byName;
 
-      const table = sorted.flatMap((person) =>
-        dates.map((date) => {
-          const row = dayOf.get(`${person.id}|${date}`);
-          return {
-            personId: person.id,
-            iso: date,
-            date: formatDate(date),
-            code: person.employee_code,
-            name: person.full_name,
-            department: departmentOf(person.department_id),
-            checkIn: row?.first_in ? formatTime(row.first_in) : "—",
-            checkOut: row?.last_out ? formatTime(row.last_out) : "—",
-            hours: hours(Number(row?.regular_hours ?? 0)),
-            // A flexible-hours person is never late, whatever the stored flag says.
-            late: row && !person.flexible_hours && row.is_late ? (row.minutes_late ?? 0) : 0,
-            status: row
-              ? label(row.status)
-              : new Date(`${date}T00:00:00Z`).getUTCDay() === 0
-                ? "Sunday"
-                : "No record",
-          };
-        }),
-      );
+      const build = (date: string, person: (typeof people)[number]) => {
+        const row = dayOf.get(`${person.id}|${date}`);
+        return {
+          iso: date,
+          date: formatDate(date),
+          code: person.employee_code,
+          name: person.full_name,
+          department: departmentOf(person.department_id),
+          checkIn: row?.first_in ? formatTime(row.first_in) : "—",
+          checkOut: row?.last_out ? formatTime(row.last_out) : "—",
+          hours: hours(Number(row?.regular_hours ?? 0)),
+          // A flexible-hours person is never late, whatever the stored flag says.
+          late: row && !person.flexible_hours && row.is_late ? (row.minutes_late ?? 0) : 0,
+          status: stateOf(person, row, date),
+          punched: Boolean(row?.first_in),
+        };
+      };
+
+      const table = byDay
+        ? dates.flatMap((date) => sorted.map((person) => build(date, person)))
+        : sorted.flatMap((person) => dates.map((date) => build(date, person)));
 
       const totalHours = hours(table.reduce((t, r) => t + r.hours, 0));
       const title = `Check-in and check-out log — ${profileId ? (people[0]?.full_name ?? "") : scopeNote}`;
@@ -446,7 +490,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
         return fileResponse(
           buildTablePdf({
             title,
-            subtitle: `${period} · ${table.length} rows`,
+            subtitle: `${period} · ${people.length} ${people.length === 1 ? "person" : "people"} · ${table.length} rows`,
             columns: [
               { header: "Date", width: 62 },
               { header: "Code", width: 52 },
@@ -456,7 +500,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
               { header: "Check out", width: 56 },
               { header: "Hours", width: 40, align: "right" },
               { header: "Late (min)", width: 44, align: "right" },
-              { header: "Status", width: 48 },
+              { header: "Status", width: 58 },
             ],
             rows: table.map(cells),
             totals: ["Total", "", `${people.length} people`, "", "", "", totalHours, "", ""],
@@ -466,6 +510,20 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
           "application/pdf",
         );
       }
+
+      // One line per date: the headcount a supervisor reads off at day's end.
+      const perDate = dates.map((date) => {
+        const day = table.filter((r) => r.iso === date);
+        const count = (status: string) => day.filter((r) => r.status === status).length;
+        return [
+          formatDate(date),
+          day.filter((r) => r.punched).length,
+          count("No check-out"),
+          count("Absent"),
+          day.filter((r) => r.late > 0).length,
+          hours(day.reduce((t, r) => t + r.hours, 0)),
+        ];
+      });
 
       return fileResponse(
         buildWorkbook([
@@ -482,10 +540,24 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
               { header: "Check out", width: 12, format: "text" },
               { header: "Hours", width: 10, format: "hours" },
               { header: "Late (min)", width: 11, format: "number" },
-              { header: "Status", width: 12, format: "text" },
+              { header: "Status", width: 14, format: "text" },
             ],
             rows: table.map(cells),
             totals: ["", "", `${people.length} people`, "", "", "", totalHours, "", ""],
+          },
+          {
+            name: "Each day",
+            title: `${title} — headcount`,
+            subtitle: period,
+            columns: [
+              { header: "Date", width: 14, format: "text" },
+              { header: "Came in", width: 12, format: "number" },
+              { header: "No check-out", width: 14, format: "number" },
+              { header: "Absent", width: 12, format: "number" },
+              { header: "Late", width: 10, format: "number" },
+              { header: "Hours", width: 12, format: "hours" },
+            ],
+            rows: perDate,
           },
           {
             name: "By date",
@@ -501,7 +573,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
                 format: "text" as const,
               })),
             ],
-            rows: sorted.map((person) => [
+            rows: byName.map((person) => [
               person.employee_code,
               person.full_name,
               departmentOf(person.department_id),

@@ -20,6 +20,8 @@ import { createClient } from "@/lib/supabase/server";
 import { formatHours, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
+import { RegisterDownload } from "./register-download";
+
 export const metadata: Metadata = {
   title: { absolute: "Check In / Out | Rado Dyeing and Textile" },
   description: "Every person's check-in and check-out for a single day.",
@@ -236,6 +238,16 @@ export default async function RegisterPage({
             {t.common.show}
           </button>
         </form>
+
+        {/* Not offered to someone held to their own row: the export route
+            needs attendance.view.all and would refuse it. */}
+        {canSeeEveryone ? (
+          <RegisterDownload
+            date={date}
+            departments={departments ?? []}
+            people={visible.map((p) => ({ id: p.id, name: p.full_name, code: p.employee_code }))}
+          />
+        ) : null}
 
         <p className="mt-3 text-xs text-muted-foreground">
           <Fill

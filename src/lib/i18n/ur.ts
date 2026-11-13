@@ -726,6 +726,13 @@ const ur: Dictionary = {
     checkOut: "روانگی",
     showing: "{count} لوگ دکھائے جا رہے ہیں · {expected} کی حاضری لگنی ہے",
     showingOne: "{count} ملازم دکھایا جا رہا ہے · {expected} کی حاضری لگنی ہے",
+    // The download panel under the filters.
+    downloadScopeAll: "پوری فیکٹری",
+    downloadScopeDepartments: "شعبہ وار",
+    downloadScopePerson: "ایک شخص",
+    downloadHint: "دن اور افراد منتخب کریں۔ حدود کا ہر دن درج ہوگا، غیر حاضر افراد بھی۔",
+    downloadPickPerson: "شخص منتخب کریں",
+    downloadLabel: "چیک اِن/آؤٹ رجسٹر",
   },
   logs: {
     title: "حاضری کا ریکارڈ",

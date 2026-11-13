@@ -737,6 +737,13 @@ const roman: Dictionary = {
     checkOut: "Rawangi",
     showing: "{count} log dikhaye ja rahe hain · {expected} ki haazri lagni hai",
     showingOne: "{count} mulazim dikhaya ja raha hai · {expected} ki haazri lagni hai",
+    // The download panel under the filters.
+    downloadScopeAll: "Poori factory",
+    downloadScopeDepartments: "Shobay ke hisaab se",
+    downloadScopePerson: "Ek shakhs",
+    downloadHint: "Din aur afraad chunein. Hadd ka har din likha jayega, ghair haazir afraad bhi.",
+    downloadPickPerson: "Shakhs chunein",
+    downloadLabel: "Check-in/out register",
   },
   logs: {
     title: "Haazri ka Record",

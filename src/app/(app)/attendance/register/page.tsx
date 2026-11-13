@@ -14,6 +14,7 @@ import {
   type RegisterPerson,
   type RegisterState,
 } from "@/lib/attendance/register";
+import { canteenCardDepartmentIds, withoutCanteenCards, withoutCardDepartments } from "@/lib/people/canteen-cards";
 import { matchesPerson } from "@/lib/people/match";
 import { selectInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
@@ -87,14 +88,19 @@ export default async function RegisterPage({
   const date = params.date || todayInPakistan();
   const canSeeEveryone = session.isSuperuser || session.permissions.has("attendance.view.all");
 
-  const [{ data: departments }, { data: staff }] = await Promise.all([
+  const [{ data: allDepartments }, { data: allStaff }, cardDepartments] = await Promise.all([
     supabase.from("departments").select("id, name").order("name"),
     supabase
       .from("profiles")
       .select("id, full_name, employee_code, department_id, requires_attendance")
       .eq("status", "active")
       .order("full_name"),
+    canteenCardDepartmentIds(supabase),
   ]);
+
+  // Kitchen cards are counted at the canteen, not here.
+  const departments = withoutCardDepartments(allDepartments ?? [], cardDepartments);
+  const staff = withoutCanteenCards(allStaff ?? [], cardDepartments);
 
   const deptName = new Map((departments ?? []).map((d) => [d.id, d.name]));
 

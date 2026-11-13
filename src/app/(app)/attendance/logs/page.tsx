@@ -7,6 +7,7 @@ import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refre
 import { ExportButtons } from "@/components/export-buttons";
 import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
+import { canteenCardDepartmentIds, withoutCanteenCards, withoutCardDepartments } from "@/lib/people/canteen-cards";
 import { matchesPerson } from "@/lib/people/match";
 import { AskAbout } from "@/components/assistant/ask-about";
 import { Card, SectionTitle } from "@/components/ui-kit";
@@ -185,7 +186,7 @@ export default async function AttendanceLogPage({
       : [params.dept]
     : [];
 
-  const [{ data: departments }, { data: staff }] = await Promise.all([
+  const [{ data: allDepartments }, { data: allStaff }, cardDepartments] = await Promise.all([
     supabase.from("departments").select("id, name").order("name"),
     supabase
       .from("profiles")
@@ -194,7 +195,12 @@ export default async function AttendanceLogPage({
       )
       .eq("status", "active")
       .order("full_name"),
+    canteenCardDepartmentIds(supabase),
   ]);
+
+  // Kitchen cards are counted at the canteen, not here.
+  const departments = withoutCardDepartments(allDepartments ?? [], cardDepartments);
+  const staff = withoutCanteenCards(allStaff ?? [], cardDepartments);
 
   const allPeople = staff ?? [];
   const deptName = new Map((departments ?? []).map((d) => [d.id, d.name]));

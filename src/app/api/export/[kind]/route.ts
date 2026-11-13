@@ -17,6 +17,7 @@ import { estimateSalaries } from "@/lib/payroll/estimate";
 import { countWorkingDays, splitDayHours } from "@/lib/payroll/hours";
 import type { RegisterItem } from "@/lib/payroll/register";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
+import { canteenCardDepartmentIds, withoutCanteenCards, withoutCardDepartments } from "@/lib/people/canteen-cards";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -267,6 +268,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
 
     const { data: departments } = await supabase.from("departments").select("id, name");
     const deptName = new Map((departments ?? []).map((d) => [d.id, d.name]));
+    // Kitchen cards are counted at the canteen; no other file lists them.
+    const cardDepartments = await canteenCardDepartmentIds(supabase);
     const departmentOf = (id: string | null) => (id ? (deptName.get(id) ?? "") : "");
 
     const { data: staffRows } = await supabase
@@ -277,7 +280,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
       .eq("status", "active")
       .order("full_name");
 
-    const everyone = staffRows ?? [];
+    const everyone = withoutCanteenCards(staffRows ?? [], cardDepartments);
     const staff = deptIds.length
       ? everyone.filter((p) => p.department_id && deptIds.includes(p.department_id))
       : everyone;

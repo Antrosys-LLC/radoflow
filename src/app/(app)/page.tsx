@@ -29,6 +29,7 @@ import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payrol
 import { requireSession } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
+import { canteenCardDepartmentIds } from "@/lib/people/canteen-cards";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatHours, formatPKR, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
@@ -121,32 +122,46 @@ export default async function DashboardPage() {
   monthPromise.catch(() => undefined);
   shiftsPromise.catch(() => undefined);
 
-  const [liveResult, meResult, payrollResult, devicesResult, deptResult, headcountResult] = await Promise.all([
-    seesFloor ? supabase.from("live_attendance").select("*") : Promise.resolve({ data: null }),
-    // Yesterday too: after midnight a night worker's own day is still last night.
-    supabase
-      .from("attendance_days")
-      .select("work_date, first_in, last_out, regular_hours, minutes_late, is_late, status")
-      .eq("profile_id", session.userId)
-      .in("work_date", [yesterday, today]),
-    seesPayroll
-      ? supabase
-          .from("payroll_periods")
-          .select("id, label, status, total_net, total_gross, total_deductions, total_tax, headcount, period_end")
-          .order("period_start", { ascending: false })
-          .limit(1)
-      : Promise.resolve({ data: null }),
-    seesDevices
-      ? supabase.from("devices").select("id, name, status, last_seen_at").eq("is_active", true)
-      : Promise.resolve({ data: null }),
-    seesDirectory
-      ? supabase.from("departments").select("id, name")
-      : Promise.resolve({ data: null }),
-    // Everyone on the books, not only those the floor board tracks.
-    seesFloor
-      ? supabase.from("profiles").select("id", { count: "exact", head: true }).eq("status", "active")
-      : Promise.resolve({ count: null }),
-  ]);
+  const cardDepartments = await canteenCardDepartmentIds(supabase);
+
+  const [liveResult, meResult, payrollResult, devicesResult, deptResult, headcountResult] =
+    await Promise.all([
+      seesFloor ? supabase.from("live_attendance").select("*") : Promise.resolve({ data: null }),
+      // Yesterday too: after midnight a night worker's own day is still last night.
+      supabase
+        .from("attendance_days")
+        .select("work_date, first_in, last_out, regular_hours, minutes_late, is_late, status")
+        .eq("profile_id", session.userId)
+        .in("work_date", [yesterday, today]),
+      seesPayroll
+        ? supabase
+            .from("payroll_periods")
+            .select(
+              "id, label, status, total_net, total_gross, total_deductions, total_tax, headcount, period_end",
+            )
+            .order("period_start", { ascending: false })
+            .limit(1)
+        : Promise.resolve({ data: null }),
+      seesDevices
+        ? supabase.from("devices").select("id, name, status, last_seen_at").eq("is_active", true)
+        : Promise.resolve({ data: null }),
+      seesDirectory
+        ? supabase.from("departments").select("id, name")
+        : Promise.resolve({ data: null }),
+      // Everyone on the books, not only those the floor board tracks.
+      seesFloor
+        ? supabase
+            .from("profiles")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "active")
+            // Kitchen cards are not part of the headcount.
+            .or(
+              cardDepartments.length
+                ? `department_id.is.null,department_id.not.in.(${cardDepartments.join(",")})`
+                : "id.not.is.null",
+            )
+        : Promise.resolve({ count: null }),
+    ]);
 
   const live = liveResult.data ?? [];
   const period = payrollResult.data?.[0] ?? null;

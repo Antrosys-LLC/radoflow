@@ -32,6 +32,7 @@ import {
 } from "@/lib/payroll/hours";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
+import { canteenCardDepartmentIds, withoutCanteenCards, withoutCardDepartments } from "@/lib/people/canteen-cards";
 import { createClient } from "@/lib/supabase/server";
 import { formatHours, todayInPakistan } from "@/lib/time";
 
@@ -68,7 +69,7 @@ export default async function ReportsPage({
   const from = params.from || `${today.slice(0, 7)}-01`;
   const to = params.to || today;
 
-  const [{ data: departments }, { data: staff }] = await Promise.all([
+  const [{ data: allDepartments }, { data: allStaff }, cardDepartments] = await Promise.all([
     supabase.from("departments").select("id, name").order("name"),
     supabase
       .from("profiles")
@@ -76,7 +77,12 @@ export default async function ReportsPage({
         "id, full_name, employee_code, department_id, duty_hours, monthly_salary, worker_type, requires_attendance, overtime_eligible, sunday_policy",
       )
       .eq("status", "active"),
+    canteenCardDepartmentIds(supabase),
   ]);
+
+  // Kitchen cards are counted at the canteen, not in a report.
+  const departments = withoutCardDepartments(allDepartments ?? [], cardDepartments);
+  const staff = withoutCanteenCards(allStaff ?? [], cardDepartments);
 
   const deptName = new Map((departments ?? []).map((d) => [d.id, d.name]));
   const everyone = staff ?? [];

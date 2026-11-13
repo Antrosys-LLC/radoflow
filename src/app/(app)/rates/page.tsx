@@ -9,6 +9,7 @@ import { matchesPerson } from "@/lib/people/match";
 import { Card, SectionTitle } from "@/components/ui-kit";
 import { requireAnyPermission } from "@/lib/auth/session";
 import { dictionaryFor, type Dictionary } from "@/lib/i18n";
+import { canteenCardDepartmentIds, withoutCanteenCards, withoutCardDepartments } from "@/lib/people/canteen-cards";
 import { createClient } from "@/lib/supabase/server";
 
 import { ContractFirms } from "./contract-firms";
@@ -33,8 +34,13 @@ export default async function RatesPage({
   const canManage = session.permissions.has("rates.manage");
   const supabase = await createClient();
 
-  const [{ data: departments }, { data: contractFirms }, { data: staff }, { data: components }] =
-    await Promise.all([
+  const [
+    { data: allDepartments },
+    { data: contractFirms },
+    { data: allStaff },
+    { data: components },
+    cardDepartments,
+  ] = await Promise.all([
       supabase.from("departments").select("id, name").order("name"),
       supabase
         .from("departments")
@@ -50,7 +56,12 @@ export default async function RatesPage({
         .eq("status", "active")
         .order("full_name"),
       supabase.from("profile_pay_components").select("id, profile_id, label, kind, amount"),
+      canteenCardDepartmentIds(supabase),
     ]);
+
+  // Kitchen cards carry no pay, so they have no place on the screen that sets it.
+  const departments = withoutCardDepartments(allDepartments ?? [], cardDepartments);
+  const staff = withoutCanteenCards(allStaff ?? [], cardDepartments);
 
   const deptName = new Map((departments ?? []).map((d) => [d.id, d.name]));
 

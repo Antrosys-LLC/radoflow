@@ -12,6 +12,7 @@ import {
 } from "@/lib/attendance/shift-detect";
 import type { ShiftClock } from "@/lib/attendance/shift-now";
 import { ingestMealScans } from "@/lib/canteen/ingest";
+import { CANTEEN_CARDS_DEPARTMENT } from "@/lib/people/canteen-cards";
 import { PAKISTAN_TIMEZONE } from "@/lib/time";
 import { createServiceClient } from "@/lib/supabase/service";
 import type { Json } from "@/lib/supabase/database.types";
@@ -122,8 +123,7 @@ export async function recordDeviceContact(serialNumber: string): Promise<DeviceR
   return { ...device, sync_role: syncRole };
 }
 
-/** The department whose people are kitchen cards and nothing else. */
-export const CANTEEN_CARDS_DEPARTMENT = "CANTEEN";
+export { CANTEEN_CARDS_DEPARTMENT };
 
 async function canteenCardProfiles(profileIds: readonly string[]): Promise<Set<string>> {
   const cards = new Set<string>();

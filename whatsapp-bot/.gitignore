@@ -1,0 +1,4 @@
+node_modules/
+# The linked-device login. Anyone holding this folder IS the bot's WhatsApp number.
+auth/
+.env

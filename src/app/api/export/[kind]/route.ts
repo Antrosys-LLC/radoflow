@@ -13,13 +13,19 @@ import {
 } from "@/lib/export/route-documents";
 import { buildWorkbook, type Sheet } from "@/lib/export/xlsx";
 import { getSession } from "@/lib/auth/session";
+import { authenticateBot, mayReceivePay, SENSITIVE_EXPORTS } from "@/lib/bot/auth";
 import { estimateSalaries } from "@/lib/payroll/estimate";
 import { countWorkingDays, splitDayHours } from "@/lib/payroll/hours";
 import type { RegisterItem } from "@/lib/payroll/register";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
-import { canteenCardDepartmentIds, withoutCanteenCards, withoutCardDepartments } from "@/lib/people/canteen-cards";
+import {
+  canteenCardDepartmentIds,
+  withoutCanteenCards,
+  withoutCardDepartments,
+} from "@/lib/people/canteen-cards";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import {
   formatDate,
   formatDateTime,
@@ -134,7 +140,25 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
     return NextResponse.json({ error: "Unknown export." }, { status: 404 });
   }
 
-  const session = await getSession();
+  /*
+   * The WhatsApp bot asks for the same files, as the person whose phone sent the
+   * message. A request carrying the bot header is either that or refused — it
+   * never falls through to the cookie path — and a general group is never sent
+   * salaries.
+   */
+  const bot = await authenticateBot(request);
+  if (bot.status === "denied") return NextResponse.json({ error: "Not allowed." }, { status: 401 });
+  if (bot.status === "unknown-sender") {
+    return NextResponse.json(
+      { error: "Your number is not registered in RadoFlow." },
+      { status: 403 },
+    );
+  }
+  if (bot.status === "ok" && SENSITIVE_EXPORTS.has(kind) && !mayReceivePay(bot.chat)) {
+    return NextResponse.json({ error: "Pay is not shared in this group." }, { status: 403 });
+  }
+
+  const session = bot.status === "ok" ? bot.session : await getSession();
   if (!session) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
   const url = request.nextUrl;
@@ -153,7 +177,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
     return NextResponse.json({ error: "Not allowed to download this." }, { status: 403 });
   }
 
-  const supabase = await createClient();
+  // The bot has no cookie for row-level security to read; the permission check
+  // above, made against the sender's own permissions, is what limits it.
+  const supabase =
+    bot.status === "ok"
+      ? (createServiceClient() as unknown as Awaited<ReturnType<typeof createClient>>)
+      : await createClient();
   const today = todayInPakistan();
   const from = url.searchParams.get("from") || `${today.slice(0, 7)}-01`;
   const to = url.searchParams.get("to") || today;
@@ -249,7 +278,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
     }
 
     if (kind === "canteen-invoice") {
-      return documentResponse(await canteenInvoiceDocument(supabase, { from, to, format, deptIds }));
+      return documentResponse(
+        await canteenInvoiceDocument(supabase, { from, to, format, deptIds }),
+      );
     }
 
     if (kind === "register") {
@@ -489,6 +520,106 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
         r.status,
       ];
 
+      /*
+       * "Till now": one line per person for everything from the start date up to
+       * this moment, so a supervisor at 2 p.m. can see who has come in, who is
+       * still absent and how many hours are in so far. A day still open (checked
+       * in, not yet out) counts as present and is marked, not hidden.
+       */
+      if (url.searchParams.get("report") === "till") {
+        const asOf = formatDateTime(new Date());
+        const lines = [...people]
+          .sort(
+            (a, b) =>
+              departmentOf(a.department_id).localeCompare(departmentOf(b.department_id)) ||
+              a.full_name.localeCompare(b.full_name),
+          )
+          .map((person) => {
+            const mine = table.filter((r) => r.code === person.employee_code);
+            const punched = mine.filter((r) => r.punched);
+            const last = punched[punched.length - 1];
+            return [
+              person.employee_code,
+              person.full_name,
+              departmentOf(person.department_id),
+              punched.length,
+              mine.filter((r) => r.status === "Absent").length,
+              mine.filter((r) => r.late > 0).length,
+              mine.filter((r) => r.status === "No check-out").length,
+              hours(mine.reduce((t, r) => t + r.hours, 0)),
+              last ? `${last.date} ${last.checkIn}` : "—",
+              last ? (last.checkOut === "—" ? "Still in" : `${last.date} ${last.checkOut}`) : "—",
+            ];
+          });
+        const tillTitle = `Check-in and check-out till now — ${profileId ? (people[0]?.full_name ?? "") : scopeNote}`;
+        const tillSubtitle = `${period} · as of ${asOf}`;
+        const sum = (index: number) => lines.reduce((t, l) => t + Number(l[index]), 0);
+        const totalsRow = [
+          "Total",
+          `${lines.length} people`,
+          "",
+          sum(3),
+          sum(4),
+          sum(5),
+          sum(6),
+          hours(sum(7)),
+          "",
+          "",
+        ];
+
+        if (format === "pdf") {
+          return fileResponse(
+            buildTablePdf({
+              title: tillTitle,
+              subtitle: tillSubtitle,
+              columns: [
+                { header: "Code", width: 50 },
+                { header: "Name", width: 120 },
+                { header: "Department", width: 90 },
+                { header: "Present", width: 40, align: "right" },
+                { header: "Absent", width: 40, align: "right" },
+                { header: "Late", width: 34, align: "right" },
+                { header: "No out", width: 38, align: "right" },
+                { header: "Hours", width: 42, align: "right" },
+                { header: "Last check in", width: 82 },
+                { header: "Last check out", width: 82 },
+              ],
+              rows: lines,
+              totals: totalsRow,
+              orientation: "landscape",
+            }),
+            filename("check-in-out-till-now", "pdf"),
+            "application/pdf",
+          );
+        }
+
+        return fileResponse(
+          buildWorkbook([
+            {
+              name: "Till now",
+              title: tillTitle,
+              subtitle: tillSubtitle,
+              columns: [
+                { header: "Unique ID", width: 14, format: "text" },
+                { header: "Name", width: 26, format: "text" },
+                { header: "Department", width: 20, format: "text" },
+                { header: "Days present", width: 13, format: "number" },
+                { header: "Days absent", width: 13, format: "number" },
+                { header: "Late days", width: 11, format: "number" },
+                { header: "No check-out", width: 13, format: "number" },
+                { header: "Hours", width: 10, format: "hours" },
+                { header: "Last check in", width: 20, format: "text" },
+                { header: "Last check out", width: 20, format: "text" },
+              ],
+              rows: lines,
+              totals: totalsRow,
+            },
+          ]),
+          filename("check-in-out-till-now", "xlsx"),
+          XLSX,
+        );
+      }
+
       if (format === "pdf") {
         return fileResponse(
           buildTablePdf({
@@ -528,6 +659,48 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
         ];
       });
 
+      // One sheet per day (up to a month), for the report handed over day by day.
+      const daySheets = byDay
+        ? dates.slice(0, 31).map((date) => {
+            const day = table.filter((r) => r.iso === date);
+            return {
+              name: formatDate(date).slice(0, 6),
+              title: `${title} — ${formatDate(date)}`,
+              subtitle: `${day.filter((r) => r.punched).length} came in · ${day.filter((r) => r.status === "Absent").length} absent`,
+              columns: [
+                { header: "Unique ID", width: 14, format: "text" as const },
+                { header: "Name", width: 26, format: "text" as const },
+                { header: "Department", width: 20, format: "text" as const },
+                { header: "Check in", width: 12, format: "text" as const },
+                { header: "Check out", width: 12, format: "text" as const },
+                { header: "Hours", width: 10, format: "hours" as const },
+                { header: "Late (min)", width: 11, format: "number" as const },
+                { header: "Status", width: 14, format: "text" as const },
+              ],
+              rows: day.map((r) => [
+                r.code,
+                r.name,
+                r.department,
+                r.checkIn,
+                r.checkOut,
+                r.hours,
+                r.late,
+                r.status,
+              ]),
+              totals: [
+                "",
+                `${day.length} people`,
+                "",
+                "",
+                "",
+                hours(day.reduce((t, r) => t + r.hours, 0)),
+                "",
+                "",
+              ],
+            };
+          })
+        : [];
+
       return fileResponse(
         buildWorkbook([
           {
@@ -562,6 +735,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
             ],
             rows: perDate,
           },
+          ...daySheets,
           {
             name: "By date",
             title: `${title} (in – out)`,

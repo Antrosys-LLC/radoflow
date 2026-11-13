@@ -812,6 +812,10 @@ const en = {
     downloadScopePerson: "One person",
     downloadHint: "Pick the days and who to include. Every day in the range is listed, absentees too.",
     downloadPickPerson: "Choose a person",
+    downloadReportDaily: "Each day",
+    downloadReportTill: "Till now",
+    downloadTillHint: "One line per person from the start date up to this moment: days present and absent, late, hours so far and the last check in and out.",
+    downloadLabelTill: "Till-now report",
     downloadLabel: "Check-in/out register",
   },
   /**

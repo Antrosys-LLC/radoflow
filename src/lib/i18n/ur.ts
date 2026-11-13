@@ -732,6 +732,10 @@ const ur: Dictionary = {
     downloadScopePerson: "ایک شخص",
     downloadHint: "دن اور افراد منتخب کریں۔ حدود کا ہر دن درج ہوگا، غیر حاضر افراد بھی۔",
     downloadPickPerson: "شخص منتخب کریں",
+    downloadReportDaily: "ہر دن",
+    downloadReportTill: "اس وقت تک",
+    downloadTillHint: "شروع کی تاریخ سے اس لمحے تک ہر شخص کی ایک سطر: حاضر اور غیر حاضر دن، تاخیر، اب تک کے گھنٹے اور آخری چیک اِن/آؤٹ۔",
+    downloadLabelTill: "اس وقت تک کی رپورٹ",
     downloadLabel: "چیک اِن/آؤٹ رجسٹر",
   },
   logs: {

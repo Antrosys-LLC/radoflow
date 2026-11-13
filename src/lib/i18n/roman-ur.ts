@@ -743,6 +743,10 @@ const roman: Dictionary = {
     downloadScopePerson: "Ek shakhs",
     downloadHint: "Din aur afraad chunein. Hadd ka har din likha jayega, ghair haazir afraad bhi.",
     downloadPickPerson: "Shakhs chunein",
+    downloadReportDaily: "Har din",
+    downloadReportTill: "Is waqt tak",
+    downloadTillHint: "Shuru ki tareekh se is lamhe tak har shakhs ki ek line: haazir aur ghair haazir din, takheer, ab tak ke ghantay aur aakhri check-in/out.",
+    downloadLabelTill: "Is waqt tak ki report",
     downloadLabel: "Check-in/out register",
   },
   logs: {

@@ -26,21 +26,27 @@ const DATE_INPUT =
  */
 export function RegisterDownload({
   date,
+  today,
   departments,
   people,
 }: {
   date: string;
+  /** The factory's today, which a till-now report always ends on. */
+  today: string;
   departments: { id: string; name: string }[];
   people: { id: string; name: string; code: string }[];
 }) {
   const t = useDictionary();
   const [scope, setScope] = useState<Scope>("all");
+  const [report, setReport] = useState<"daily" | "till">("daily");
   const [from, setFrom] = useState(date);
   const [to, setTo] = useState(date);
   const [deptIds, setDeptIds] = useState<string[]>([]);
   const [personId, setPersonId] = useState("");
 
-  const rangeOk = Boolean(from) && Boolean(to) && from <= to;
+  // A till-now report ends at this moment, whatever the other date says.
+  const end = report === "till" ? today : to;
+  const rangeOk = Boolean(from) && Boolean(end) && from <= end;
   const scopeOk =
     scope === "all" ||
     (scope === "departments" && deptIds.length > 0) ||
@@ -60,6 +66,33 @@ export function RegisterDownload({
         {t.logs.downloadLogTitle}
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">{t.register.downloadHint}</p>
+
+      <div className="mt-3 flex flex-wrap gap-2" role="radiogroup">
+        {(["daily", "till"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={report === value}
+            onClick={() => {
+              setReport(value);
+              // Till now starts from the first of the month unless told otherwise.
+              setFrom(value === "till" ? `${today.slice(0, 7)}-01` : date);
+            }}
+            className={cn(
+              "rounded-xl px-4 py-2 text-sm font-semibold transition-colors",
+              report === value
+                ? "bg-primary text-primary-foreground"
+                : "bg-card text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {value === "daily" ? t.register.downloadReportDaily : t.register.downloadReportTill}
+          </button>
+        ))}
+      </div>
+      {report === "till" ? (
+        <p className="mt-2 text-xs text-muted-foreground">{t.register.downloadTillHint}</p>
+      ) : null}
 
       <div className="mt-3 flex flex-wrap gap-2" role="radiogroup">
         {scopes.map((option) => (
@@ -141,32 +174,35 @@ export function RegisterDownload({
           <input
             type="date"
             value={from}
-            max={to || undefined}
+            max={end || undefined}
             onChange={(event) => setFrom(event.target.value)}
             className={`${DATE_INPUT} block`}
           />
         </label>
-        <label className="block">
-          <span className="text-xs font-semibold text-muted-foreground">{t.logs.to}</span>
-          <input
-            type="date"
-            value={to}
-            min={from || undefined}
-            onChange={(event) => setTo(event.target.value)}
-            className={`${DATE_INPUT} block`}
-          />
-        </label>
+        {report === "daily" ? (
+          <label className="block">
+            <span className="text-xs font-semibold text-muted-foreground">{t.logs.to}</span>
+            <input
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(event) => setTo(event.target.value)}
+              className={`${DATE_INPUT} block`}
+            />
+          </label>
+        ) : null}
 
         {/* Remounted by key so a changed choice never reuses a stale closure. */}
         <fieldset disabled={!ready} className="disabled:opacity-50">
           <ExportButtons
-            key={`${scope}|${from}|${to}|${deptIds.join(",")}|${personId}`}
+            key={`${report}|${scope}|${from}|${end}|${deptIds.join(",")}|${personId}`}
             kind="attendance-log"
-            label={t.register.downloadLabel}
+            label={report === "till" ? t.register.downloadLabelTill : t.register.downloadLabel}
             params={{
               from,
-              to,
+              to: end,
               order: "date",
+              report: report === "till" ? "till" : undefined,
               dept: scope === "departments" ? deptIds.join(",") : undefined,
               person: scope === "person" ? personId : undefined,
             }}

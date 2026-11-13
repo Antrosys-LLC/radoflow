@@ -30,7 +30,7 @@ const PUBLIC_HOME = "/home";
  * Both present DEVICE_INGEST_SECRET and have no user session to check, so
  * redirecting them to /login would silently swallow attendance data.
  */
-const DEVICE_PATHS = ["/iclock", "/api/devices/ingest", "/api/cron"];
+const DEVICE_PATHS = ["/iclock", "/api/devices/ingest", "/api/cron", "/api/bot"];
 
 /** Always reachable, so a misconfigured deployment can still be diagnosed. */
 const DIAGNOSTIC_PATHS = ["/api/health"];

@@ -250,6 +250,7 @@ export default async function RegisterPage({
         {canSeeEveryone ? (
           <RegisterDownload
             date={date}
+            today={todayInPakistan()}
             departments={departments ?? []}
             people={visible.map((p) => ({ id: p.id, name: p.full_name, code: p.employee_code }))}
           />

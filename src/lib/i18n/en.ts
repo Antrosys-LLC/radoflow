@@ -766,7 +766,8 @@ const en = {
     shiftNotStartedYet: "Shift not started yet",
     notDueYet: "Not due on the floor at this time",
     noFixedHours: "No fixed hours",
-    noFixedHoursHint: "People with no in or out time to keep, or paid a fixed salary. They are not on any shift, so nobody is chased for them",
+    noFixedHoursHint:
+      "People with no in or out time to keep, or paid a fixed salary. They are not on any shift, so nobody is chased for them",
     flexibleHoursLabel: "No time limit",
     fixedSalaryLabel: "Fixed salary",
     finishedToday: "Finished today",
@@ -810,11 +811,13 @@ const en = {
     downloadScopeAll: "Whole factory",
     downloadScopeDepartments: "By department",
     downloadScopePerson: "One person",
-    downloadHint: "Pick the days and who to include. Every day in the range is listed, absentees too.",
+    downloadHint:
+      "Pick the days and who to include. Every day in the range is listed, absentees too.",
     downloadPickPerson: "Choose a person",
     downloadReportDaily: "Each day",
     downloadReportTill: "Till now",
-    downloadTillHint: "One line per person from the start date up to this moment: days present and absent, late, hours so far and the last check in and out.",
+    downloadTillHint:
+      "One line per person from the start date up to this moment: days present and absent, late, hours so far and the last check in and out.",
     downloadLabelTill: "Till-now report",
     downloadLabel: "Check-in/out register",
   },
@@ -1543,7 +1546,8 @@ const en = {
     markPaidAndLock: "Mark paid and lock",
     deletePayroll: "Delete payroll",
     deletePayrollTitle: "Delete this payroll?",
-    deletePayrollHint: "Deleting {label} removes its calculated lines and loan installments. Approved payrolls can never be deleted. Enter your own sign-in password to confirm.",
+    deletePayrollHint:
+      "Deleting {label} removes its calculated lines and loan installments. Approved payrolls can never be deleted. Enter your own sign-in password to confirm.",
     deletePasswordLabel: "Your password",
     deletePayrollConfirm: "Delete payroll",
     deleting: "Deleting…",
@@ -1841,6 +1845,9 @@ const en = {
     componentOngoing: "From {from} — ongoing",
     nothingAttached: "Nothing attached to this person yet.",
     needNameAndAmount: "Enter a name and an amount to attach it.",
+    // The full-detail view, opened from a person's name on the card.
+    viewDetails: "View details for {name}",
+    groupCount: "{count} people",
   },
   /**
    * Roles, and what each may do.

@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
-import { Banknote, KeyRound, Pencil, Plus, Search, Trash2, UserPlus, X } from "lucide-react";
+import { Banknote, Eye, KeyRound, Pencil, Plus, Search, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { ApproverPicker } from "@/components/approver-picker";
@@ -19,12 +19,20 @@ import { CnicInput, PasswordInput } from "@/components/credential-inputs";
 import { BulkBar } from "./bulk-bar";
 import { Fill } from "@/components/fill";
 import { useDictionary } from "@/components/language-provider";
+import type { Dictionary } from "@/lib/i18n";
 import { Latin } from "@/components/latin";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { suggestSalary, type SalarySuggestion } from "@/lib/people/designation-salary";
 import { matchesPerson } from "@/lib/people/match";
 import { SwipeToConfirm } from "@/components/swipe-to-confirm";
 import { Avatar, Card, SectionTitle } from "@/components/ui-kit";
 import { cn } from "@/lib/utils";
+import { formatDate, formatPKR } from "@/lib/time";
 
 /**
  * The plain-string sibling of `<Fill>`, for the places a sentence has to be a
@@ -82,6 +90,7 @@ export interface UserRow {
   siteId: string | null;
   departmentId: string | null;
   shiftId: string | null;
+  joinedOn: string | null;
   components: {
     id: string;
     label: string;
@@ -106,9 +115,6 @@ export interface PermissionOption {
   module: string;
   label: string;
 }
-
-/** How many people are drawn before "Show more". */
-const PAGE_SIZE = 50;
 
 export function UsersManager({
   users,
@@ -135,6 +141,7 @@ export function UsersManager({
   const tuning = tuningId ? (users.find((u) => u.id === tuningId) ?? null) : null;
   const [paying, setPaying] = useState<UserRow | null>(null);
   const [editing, setEditing] = useState<UserRow | null>(null);
+  const [viewing, setViewing] = useState<UserRow | null>(null);
 
   /*
    * Filtered here rather than through the URL, because this list is already a
@@ -147,10 +154,6 @@ export function UsersManager({
   // the old four-digit codes, and anyone who has resigned, are one click away
   // under the other statuses, not in the way of the everyday list.
   const [statusFilter, setStatusFilter] = useState("active");
-  // Cards drawn so far. 560 of them is ~30,000 page elements, and until React
-  // has hydrated every one the buttons do nothing — typing and clicks stall.
-  const [limit, setLimit] = useState(PAGE_SIZE);
-
   /*
    * Held as a set of ids rather than a flag on each row: the list is filtered
    * client-side, and a selection that lived on the rows would silently empty
@@ -179,10 +182,30 @@ export function UsersManager({
     return matchesPerson(user, deferredQuery);
   });
 
-  // Only what is on screen can be selected in one go — "select all" over a
-  // hidden remainder is how the wrong forty people get suspended.
-  const visible = shown.slice(0, limit);
-  const allShownSelected = visible.length > 0 && visible.every((user) => selected.has(user.id));
+  const allShownSelected = shown.length > 0 && shown.every((user) => selected.has(user.id));
+
+  /*
+   * Grouped by department, each in its own accordion section, collapsed by
+   * default. This is what keeps five hundred and sixty cards from hydrating
+   * at once: a closed accordion panel is unmounted, not just hidden, so only
+   * the department somebody actually opens pays that cost.
+   */
+  const byDepartment = new Map<string, UserRow[]>();
+  for (const user of shown) {
+    const key = user.departmentId ?? "";
+    const list = byDepartment.get(key) ?? [];
+    list.push(user);
+    byDepartment.set(key, list);
+  }
+  const groups: { key: string; name: string; people: UserRow[] }[] = [];
+  for (const d of departments) {
+    const people = byDepartment.get(d.id);
+    if (people?.length) groups.push({ key: d.id, name: d.name, people });
+  }
+  const unassigned = byDepartment.get("");
+  if (unassigned?.length) {
+    groups.push({ key: "__none__", name: t.common.unassigned, people: unassigned });
+  }
 
   return (
     <div className="space-y-5">
@@ -257,7 +280,7 @@ export function UsersManager({
               type="checkbox"
               checked={allShownSelected}
               onChange={() =>
-                setSelected(allShownSelected ? new Set() : new Set(visible.map((u) => u.id)))
+                setSelected(allShownSelected ? new Set() : new Set(shown.map((u) => u.id)))
               }
               className="size-4 rounded border-input"
             />
@@ -265,37 +288,44 @@ export function UsersManager({
           </label>
         </div>
 
-        <div className="grid gap-2 lg:grid-cols-2">
-          {visible.map((user) => (
-            <UserCard
-              key={user.id}
-              user={user}
-              roles={roles}
-              canManageAccess={canManageAccess}
-              selected={selected.has(user.id)}
-              onSelect={() => toggleSelected(user.id)}
-              onTune={() => setTuningId(user.id)}
-              onPay={() => setPaying(user)}
-              onEdit={() => setEditing(user)}
-            />
+        <Accordion type="multiple" className="space-y-2">
+          {groups.map((group) => (
+            <AccordionItem
+              key={group.key}
+              value={group.key}
+              className="overflow-hidden rounded-2xl border border-border bg-secondary/40"
+            >
+              <AccordionTrigger className="gap-3 px-4 py-3 hover:no-underline">
+                <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                  <span className="truncate text-sm font-bold text-foreground">
+                    <Latin>{group.name}</Latin>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-card px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+                    <Fill template={t.users.groupCount} values={{ count: group.people.length }} />
+                  </span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="px-3 sm:px-4">
+                <div className="grid gap-2 lg:grid-cols-2">
+                  {group.people.map((user) => (
+                    <UserCard
+                      key={user.id}
+                      user={user}
+                      roles={roles}
+                      canManageAccess={canManageAccess}
+                      selected={selected.has(user.id)}
+                      onSelect={() => toggleSelected(user.id)}
+                      onTune={() => setTuningId(user.id)}
+                      onPay={() => setPaying(user)}
+                      onEdit={() => setEditing(user)}
+                      onView={() => setViewing(user)}
+                    />
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
           ))}
-        </div>
-
-        {shown.length > limit ? (
-          <button
-            type="button"
-            onClick={() => setLimit((was) => was + PAGE_SIZE)}
-            className="mt-3 w-full rounded-2xl bg-secondary px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:text-primary"
-          >
-            <Fill
-              template={t.users.showMore}
-              values={{
-                count: Math.min(PAGE_SIZE, shown.length - limit),
-                left: shown.length - limit,
-              }}
-            />
-          </button>
-        ) : null}
+        </Accordion>
 
         {shown.length === 0 ? (
           <p className="rounded-2xl bg-secondary px-4 py-8 text-center text-sm text-muted-foreground">
@@ -343,6 +373,29 @@ export function UsersManager({
           onClose={() => setEditing(null)}
         />
       ) : null}
+
+      {viewing ? (
+        <PersonDetailDialog
+          user={viewing}
+          sites={sites}
+          departments={departments}
+          shifts={shifts}
+          canManageAccess={canManageAccess}
+          onClose={() => setViewing(null)}
+          onEdit={() => {
+            setEditing(viewing);
+            setViewing(null);
+          }}
+          onPay={() => {
+            setPaying(viewing);
+            setViewing(null);
+          }}
+          onTune={() => {
+            setTuningId(viewing.id);
+            setViewing(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -356,6 +409,7 @@ function UserCard({
   onTune,
   onPay,
   onEdit,
+  onView,
 }: {
   user: UserRow;
   roles: Option[];
@@ -365,6 +419,7 @@ function UserCard({
   onTune: () => void;
   onPay: () => void;
   onEdit: () => void;
+  onView: () => void;
 }) {
   const t = useDictionary();
   const [state, formAction] = useActionState(setUserRole, INITIAL);
@@ -425,32 +480,41 @@ function UserCard({
           aria-label={fill(t.users.selectPerson, { name: user.full_name })}
           className="mt-1 size-4 shrink-0 rounded border-input"
         />
-        <Avatar name={user.full_name} />
-        <div className="min-w-0 flex-1">
-          {/* Name, employee code and CNIC — all three Latin in every
-              language, because a reordered CNIC is a different CNIC. */}
-          <p className="truncate text-sm font-bold text-foreground">
-            <Latin>{user.full_name}</Latin>
-          </p>
-          <p className="truncate text-xs text-muted-foreground">
-            <Latin>{user.employee_code}</Latin> ·{" "}
-            {user.cnic ? (
-              <span className="font-mono">
-                <Latin>{user.cnic}</Latin>
-              </span>
-            ) : (
-              <span className="font-semibold text-danger">{t.users.noCnic}</span>
-            )}
-          </p>
-          {user.overrides.length > 0 ? (
-            <p className="mt-1 text-[11px] font-bold text-primary">
-              <Fill
-                template={t.users.customAccessCount}
-                values={{ count: user.overrides.length }}
-              />
+        <button
+          type="button"
+          onClick={onView}
+          aria-label={fill(t.users.viewDetails, { name: user.full_name })}
+          className="group flex min-w-0 flex-1 items-start gap-3 rounded-xl text-left"
+        >
+          <Avatar name={user.full_name} />
+          <div className="min-w-0 flex-1">
+            {/* Name, employee code and CNIC — all three Latin in every
+                language, because a reordered CNIC is a different CNIC. */}
+            <p className="truncate text-sm font-bold text-foreground transition-colors group-hover:text-primary">
+              <Latin>{user.full_name}</Latin>
             </p>
-          ) : null}
-        </div>
+            <p className="truncate text-xs text-muted-foreground">
+              <Latin>{user.employee_code}</Latin> ·{" "}
+              {user.designation ? <Latin>{user.designation}</Latin> : null}
+              {user.designation ? " · " : null}
+              {user.cnic ? (
+                <span className="font-mono">
+                  <Latin>{user.cnic}</Latin>
+                </span>
+              ) : (
+                <span className="font-semibold text-danger">{t.users.noCnic}</span>
+              )}
+            </p>
+            {user.overrides.length > 0 ? (
+              <p className="mt-1 text-[11px] font-bold text-primary">
+                <Fill
+                  template={t.users.customAccessCount}
+                  values={{ count: user.overrides.length }}
+                />
+              </p>
+            ) : null}
+          </div>
+        </button>
         {suspended ? (
           <span className="rounded-full bg-danger-soft px-2.5 py-1 text-[10px] font-bold uppercase text-danger">
             {t.status.employment.suspended}
@@ -865,13 +929,19 @@ function AddUserDialog({
               />
             </Field>
             <Field label={t.profile.joinedOn}>
-              <input type="date" name="joined_on" dir="ltr" required={holder !== null} className={INPUT} />
+              <input
+                type="date"
+                name="joined_on"
+                dir="ltr"
+                required={holder !== null}
+                className={INPUT}
+              />
             </Field>
             {holder ? (
               <p className="rounded-2xl bg-warning-soft px-4 py-3 text-sm font-semibold text-warning sm:col-span-2">
-                This roll number already belongs to {holder.name} ({holder.code}). Adding this person
-                resigns {holder.name} on the joining date: everything up to that date stays with{" "}
-                {holder.name}, and from that date on this roll number records this new person.
+                This roll number already belongs to {holder.name} ({holder.code}). Adding this
+                person resigns {holder.name} on the joining date: everything up to that date stays
+                with {holder.name}, and from that date on this roll number records this new person.
               </p>
             ) : null}
             <Field label={t.users.cnic}>
@@ -1041,8 +1111,9 @@ function AddUserDialog({
                 />
                 {suggestion ? (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Usual salary for this designation: Rs {suggestion.salary.toLocaleString("en-PK")} (
-                    {suggestion.people} of {suggestion.of} people). You can change it.
+                    Usual salary for this designation: Rs{" "}
+                    {suggestion.salary.toLocaleString("en-PK")} ({suggestion.people} of{" "}
+                    {suggestion.of} people). You can change it.
                   </p>
                 ) : null}
               </Field>
@@ -1071,6 +1142,154 @@ function AddUserDialog({
           <CreateUserButton />
         </form>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Everything about one person, read-only, with a button to each dialog that
+ * can change a part of it. The card itself only ever shows a few fields at
+ * once — this is the full record, so "what is this person's duty boundary"
+ * or "do they have a phone on file" never means opening three dialogs to
+ * find out.
+ */
+function PersonDetailDialog({
+  user,
+  sites,
+  departments,
+  shifts,
+  canManageAccess,
+  onClose,
+  onEdit,
+  onPay,
+  onTune,
+}: {
+  user: UserRow;
+  sites: Option[];
+  departments: DepartmentOption[];
+  shifts: Option[];
+  canManageAccess: boolean;
+  onClose: () => void;
+  onEdit: () => void;
+  onPay: () => void;
+  onTune: () => void;
+}) {
+  const t = useDictionary();
+  const siteName = sites.find((s) => s.id === user.siteId)?.name ?? t.profile.notRecorded;
+  const deptName = departments.find((d) => d.id === user.departmentId)?.name ?? t.common.unassigned;
+  const shiftName = shifts.find((s) => s.id === user.shiftId)?.name ?? t.users.noShift;
+  const monthly = user.payClass === "monthly";
+  const canAdminister = canManageAccess || !user.isSuperuser;
+
+  return (
+    <Dialog title={<Latin>{user.full_name}</Latin>} onClose={onClose}>
+      <div className="flex flex-wrap items-center gap-4">
+        <Avatar name={user.full_name} className="size-14" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-muted-foreground">
+            <Latin>{user.employee_code}</Latin> ·{" "}
+            {user.designation ? <Latin>{user.designation}</Latin> : t.profile.noDesignation}
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <span className="rounded-full bg-primary-soft px-2.5 py-1 text-[11px] font-bold text-primary">
+              <Latin>{user.roleName}</Latin>
+            </span>
+            <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-bold text-foreground">
+              {t.status.employment[user.status as keyof typeof t.status.employment] ?? user.status}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <dl className="mt-5 grid gap-3 sm:grid-cols-2">
+        <Fact
+          label={t.users.cnic}
+          value={user.cnic ? <Latin>{user.cnic}</Latin> : t.users.noCnic}
+        />
+        <Fact
+          label={t.users.phone}
+          value={user.phone ? <Latin>{user.phone}</Latin> : t.profile.notRecorded}
+        />
+        <Fact
+          label={t.users.email}
+          value={user.email ? <Latin>{user.email}</Latin> : t.profile.notRecorded}
+        />
+        <Fact label={t.common.department} value={<Latin>{deptName}</Latin>} />
+        <Fact label={t.common.site} value={<Latin>{siteName}</Latin>} />
+        <Fact label={t.users.shift} value={<Latin>{shiftName}</Latin>} />
+        <Fact
+          label={t.profile.joinedOn}
+          value={user.joinedOn ? <Latin>{formatDate(user.joinedOn)}</Latin> : t.profile.notRecorded}
+        />
+        <Fact
+          label={monthly ? t.profile.monthlySalary : t.profile.hourlyRate}
+          value={<Latin>{formatPKR(monthly ? user.monthlySalary : user.hourlyRate)}</Latin>}
+        />
+        <Fact label={t.users.salaryCovers} value={<Latin>{user.dutyHours}h</Latin>} />
+        <Fact label={t.users.sunday} value={sundayLabel(t, user.sundayPolicy)} />
+        <Fact
+          label={t.users.earnsOvertime}
+          value={user.overtimeEligible ? t.common.yes : t.common.no}
+        />
+        <Fact
+          label={t.profile.clockInRequired}
+          value={user.requiresAttendance ? t.common.yes : t.common.no}
+        />
+      </dl>
+
+      <div className="mt-5 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-secondary px-3 py-2 text-xs font-semibold text-foreground transition-all hover:text-primary"
+        >
+          <Pencil className="size-3.5" />
+          {t.users.editProfile}
+        </button>
+        <button
+          type="button"
+          onClick={onPay}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-secondary px-3 py-2 text-xs font-semibold text-foreground transition-all hover:text-primary"
+        >
+          <Banknote className="size-3.5" />
+          {t.users.payAndDuty}
+        </button>
+        {canManageAccess && !user.isSuperuser ? (
+          <button
+            type="button"
+            onClick={onTune}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-secondary px-3 py-2 text-xs font-semibold text-foreground transition-all hover:text-primary"
+          >
+            <KeyRound className="size-3.5" />
+            {t.users.customAccess}
+          </button>
+        ) : null}
+        {canAdminister ? <PasswordReset userId={user.id} name={user.full_name} /> : null}
+      </div>
+    </Dialog>
+  );
+}
+
+function sundayLabel(t: Dictionary, policy: UserRow["sundayPolicy"]): string {
+  switch (policy) {
+    case "off":
+      return t.users.sundayOff;
+    case "optional":
+      return t.users.sundayOptional;
+    case "compulsory":
+      return t.users.sundayCompulsory;
+    case "adjust_in_leave":
+      return t.users.sundayAdjust;
+  }
+}
+
+function Fact({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl bg-secondary px-4 py-3">
+      <dt className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-0.5 truncate text-sm font-bold text-foreground">{value}</dd>
     </div>
   );
 }

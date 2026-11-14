@@ -718,7 +718,8 @@ const roman: Dictionary = {
     shiftNotStartedYet: "Shift abhi shuru nahi hui",
     notDueYet: "Is waqt in ki floor par aane ki bari nahi",
     noFixedHours: "Koi muqarrara auqat nahi",
-    noFixedHoursHint: "Woh log jin ke aane jaane ka koi waqt muqarrar nahi ya jinhein muqarrara tankhwah milti hai. Yeh kisi shift mein nahi, is liye in ke liye kisi ka peecha nahi kiya jata",
+    noFixedHoursHint:
+      "Woh log jin ke aane jaane ka koi waqt muqarrar nahi ya jinhein muqarrara tankhwah milti hai. Yeh kisi shift mein nahi, is liye in ke liye kisi ka peecha nahi kiya jata",
     flexibleHoursLabel: "Koi waqt ki had nahi",
     fixedSalaryLabel: "Muqarrara tankhwah",
     finishedToday: "Aaj kaam khatam",
@@ -745,7 +746,8 @@ const roman: Dictionary = {
     downloadPickPerson: "Shakhs chunein",
     downloadReportDaily: "Har din",
     downloadReportTill: "Is waqt tak",
-    downloadTillHint: "Shuru ki tareekh se is lamhe tak har shakhs ki ek line: haazir aur ghair haazir din, takheer, ab tak ke ghantay aur aakhri check-in/out.",
+    downloadTillHint:
+      "Shuru ki tareekh se is lamhe tak har shakhs ki ek line: haazir aur ghair haazir din, takheer, ab tak ke ghantay aur aakhri check-in/out.",
     downloadLabelTill: "Is waqt tak ki report",
     downloadLabel: "Check-in/out register",
   },
@@ -1192,7 +1194,8 @@ const roman: Dictionary = {
     markPaidAndLock: "Ada shuda laga kar band karein",
     deletePayroll: "Payroll delete karein",
     deletePayrollTitle: "Yeh payroll delete karein?",
-    deletePayrollHint: "{label} delete karne se iski calculate ki hui lines aur qist hat jayengi. Manzoor shuda payroll kabhi delete nahi hota. Tasdeeq ke liye apna password likhein.",
+    deletePayrollHint:
+      "{label} delete karne se iski calculate ki hui lines aur qist hat jayengi. Manzoor shuda payroll kabhi delete nahi hota. Tasdeeq ke liye apna password likhein.",
     deletePasswordLabel: "Aap ka password",
     deletePayrollConfirm: "Payroll delete karein",
     deleting: "Delete ho raha hai…",
@@ -1441,6 +1444,8 @@ const roman: Dictionary = {
     componentOngoing: "{from} se — jari",
     nothingAttached: "Is fard par abhi kuch nahi laga.",
     needNameAndAmount: "Lagane ke liye naam aur raqam likhein.",
+    viewDetails: "{name} ki tafseel dekhein",
+    groupCount: "{count} afraad",
   },
   roles: {
     title: "Kirdar",

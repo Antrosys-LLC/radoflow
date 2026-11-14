@@ -707,7 +707,8 @@ const ur: Dictionary = {
     shiftNotStartedYet: "شفٹ ابھی شروع نہیں ہوئی",
     notDueYet: "اس وقت ان کی فلور پر آنے کی باری نہیں",
     noFixedHours: "کوئی مقررہ اوقات نہیں",
-    noFixedHoursHint: "وہ لوگ جن کے آنے جانے کا کوئی وقت مقرر نہیں یا جنہیں مقررہ تنخواہ ملتی ہے۔ یہ کسی شفٹ میں نہیں، اس لیے ان کے لیے کسی کا پیچھا نہیں کیا جاتا",
+    noFixedHoursHint:
+      "وہ لوگ جن کے آنے جانے کا کوئی وقت مقرر نہیں یا جنہیں مقررہ تنخواہ ملتی ہے۔ یہ کسی شفٹ میں نہیں، اس لیے ان کے لیے کسی کا پیچھا نہیں کیا جاتا",
     flexibleHoursLabel: "کوئی وقت کی حد نہیں",
     fixedSalaryLabel: "مقررہ تنخواہ",
     finishedToday: "آج کام ختم",
@@ -734,7 +735,8 @@ const ur: Dictionary = {
     downloadPickPerson: "شخص منتخب کریں",
     downloadReportDaily: "ہر دن",
     downloadReportTill: "اس وقت تک",
-    downloadTillHint: "شروع کی تاریخ سے اس لمحے تک ہر شخص کی ایک سطر: حاضر اور غیر حاضر دن، تاخیر، اب تک کے گھنٹے اور آخری چیک اِن/آؤٹ۔",
+    downloadTillHint:
+      "شروع کی تاریخ سے اس لمحے تک ہر شخص کی ایک سطر: حاضر اور غیر حاضر دن، تاخیر، اب تک کے گھنٹے اور آخری چیک اِن/آؤٹ۔",
     downloadLabelTill: "اس وقت تک کی رپورٹ",
     downloadLabel: "چیک اِن/آؤٹ رجسٹر",
   },
@@ -1167,7 +1169,8 @@ const ur: Dictionary = {
     markPaidAndLock: "ادا شدہ لگا کر بند کریں",
     deletePayroll: "پے رول حذف کریں",
     deletePayrollTitle: "کیا یہ پے رول حذف کریں؟",
-    deletePayrollHint: "{label} حذف کرنے سے اس کی حساب شدہ لائنیں اور قرض کی قسطیں ہٹ جائیں گی۔ منظور شدہ پے رول کبھی حذف نہیں ہو سکتا۔ تصدیق کے لیے اپنا پاس ورڈ لکھیں۔",
+    deletePayrollHint:
+      "{label} حذف کرنے سے اس کی حساب شدہ لائنیں اور قرض کی قسطیں ہٹ جائیں گی۔ منظور شدہ پے رول کبھی حذف نہیں ہو سکتا۔ تصدیق کے لیے اپنا پاس ورڈ لکھیں۔",
     deletePasswordLabel: "آپ کا پاس ورڈ",
     deletePayrollConfirm: "پے رول حذف کریں",
     deleting: "حذف ہو رہا ہے…",
@@ -1411,6 +1414,8 @@ const ur: Dictionary = {
     componentOngoing: "{from} سے — جاری",
     nothingAttached: "اس فرد پر ابھی کچھ نہیں لگا۔",
     needNameAndAmount: "لگانے کے لیے نام اور رقم لکھیں۔",
+    viewDetails: "{name} کی تفصیل دیکھیں",
+    groupCount: "{count} افراد",
   },
   roles: {
     title: "کردار",

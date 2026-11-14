@@ -33,7 +33,7 @@ export default async function UsersPage() {
     supabase
       .from("profiles")
       .select(
-        "id, employee_code, full_name, cnic, email, phone, designation, status, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours, payroll_exempt, overtime_eligible, site_id, department_id, shift_id",
+        "id, employee_code, full_name, cnic, email, phone, designation, status, worker_type, pay_class, monthly_salary, hourly_rate, duty_hours, sunday_policy, requires_attendance, flexible_hours, payroll_exempt, overtime_eligible, site_id, department_id, shift_id, joined_on",
       )
       .order("full_name"),
     supabase.from("roles").select("id, name, is_superuser").order("rank"),
@@ -103,6 +103,7 @@ export default async function UsersPage() {
       siteId: profile.site_id,
       departmentId: profile.department_id,
       shiftId: profile.shift_id,
+      joinedOn: profile.joined_on,
       components: componentsByUser.get(profile.id) ?? [],
     };
   });

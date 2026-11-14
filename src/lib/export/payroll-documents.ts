@@ -72,28 +72,25 @@ function movers(all: readonly RegisterRow[]): RegisterRow[] {
     .sort((a, b) => (a.leftOn ?? a.joinedOn ?? "").localeCompare(b.leftOn ?? b.joinedOn ?? ""));
 }
 
-const moverCells = (row: RegisterRow): (string | number)[] => [
+/** Who, what and when — then the register's own figure columns. */
+const MOVER_LEAD = 5;
+
+const moverCells = (row: RegisterRow, withOther: boolean): (string | number)[] => [
   row.code,
   row.name,
   row.department,
   row.leftOn ? "Left" : "Joined",
   formatDate((row.leftOn ?? row.joinedOn) as string),
-  whole(row.sRate),
-  hoursValue(row.days),
-  whole(row.gross),
-  whole(row.net),
+  ...numbers(row, withOther),
 ];
 
-const MOVER_HEADERS = [
+const moverHeaders = (withOther: boolean): string[] => [
   "ROLL NO",
   "NAME",
   "DEPARTMENT",
   "EVENT",
   "DATE",
-  "S RATE",
-  "DAYS",
-  "G SALARY",
-  "NET PAY",
+  ...registerColumns(withOther).map((column) => column.header),
 ];
 
 const lineAmount = (lines: readonly BreakdownLine[], label: string) =>
@@ -193,8 +190,16 @@ export function registerPdf(groups: readonly RegisterGroup[], meta: RegisterMeta
       moving.length > 0
         ? {
             heading: `PEOPLE WHO JOINED OR LEFT THIS PERIOD · ${moving.length}`,
-            headers: MOVER_HEADERS,
-            rows: moving.map(moverCells),
+            headers: moverHeaders(withOther),
+            widths: [
+              40,
+              90,
+              64,
+              34,
+              50,
+              ...registerColumns(withOther).map((c) => (c.kind === "count" ? 28 : 44)),
+            ],
+            rows: moving.map((row) => moverCells(row, withOther)),
           }
         : undefined,
     footer:
@@ -259,14 +264,19 @@ export function registerWorkbook(groups: readonly RegisterGroup[], meta: Registe
             name: "Joined & left",
             title: `${meta.title} — people who joined or left this period`,
             subtitle: meta.subtitle,
-            columns: MOVER_HEADERS.map(
+            columns: moverHeaders(withOther).map(
               (header, i): SheetColumn => ({
                 header,
-                width: i === 1 || i === 2 ? 26 : i === 0 || i === 3 || i === 4 ? 14 : 13,
-                format: i === 6 ? "hours" : i >= 5 ? "money" : "text",
+                width: i === 1 || i === 2 ? 26 : i < MOVER_LEAD ? 14 : 13,
+                format:
+                  i < MOVER_LEAD
+                    ? "text"
+                    : registerColumns(withOther)[i - MOVER_LEAD]?.kind === "count"
+                      ? "hours"
+                      : "money",
               }),
             ),
-            rows: moving.map((row): SheetRow => moverCells(row)),
+            rows: moving.map((row): SheetRow => moverCells(row, withOther)),
           },
         ]
       : [];

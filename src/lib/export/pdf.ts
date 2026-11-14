@@ -55,7 +55,15 @@ export interface TableDoc {
   /** A last page that walks the total down to what has to be paid. */
   breakdown?: BreakdownLine[] | undefined;
   /** A small table after the breakdown — the people who joined or left. */
-  appendix?: { heading: string; headers: string[]; rows: (string | number)[][] } | undefined;
+  appendix?:
+    | {
+        heading: string;
+        headers: string[];
+        rows: (string | number)[][];
+        /** Relative column widths, scaled to the page; equal when omitted. */
+        widths?: number[];
+      }
+    | undefined;
 }
 
 interface Rgb {
@@ -610,34 +618,48 @@ export function buildTablePdf(doc: TableDoc): Buffer {
   }
 
   if (doc.appendix && appendixPages > 0) {
-    const { heading, headers, rows } = doc.appendix;
-    const colW = usableWidth / headers.length;
+    const { heading, headers, rows, widths: weights } = doc.appendix;
+    const weightOf = (i: number) => weights?.[i] ?? 1;
+    const weightTotal = headers.reduce((t, _h, i) => t + weightOf(i), 0);
+    const colWs = headers.map((_h, i) => (weightOf(i) / weightTotal) * usableWidth);
+    const colX = colWs.map((_w, i) => colWs.slice(0, i).reduce((t, w) => t + w, 0));
+    // A heading that does not fit breaks at its space, as in the main table.
+    const lines = headers.map((h, i) => {
+      if (truncate(h, 7, colWs[i]! - 8, true) === h || !h.includes(" ")) return [h];
+      const at = h.indexOf(" ");
+      return [h.slice(0, at), h.slice(at + 1)];
+    });
+    const bandH = lines.some((l) => l.length > 1) ? 25 : 16;
     for (let n = 0; n < appendixPages; n++) {
       const page = new Page(size.width, size.height);
       page.watermark();
       let y = letterhead(page, doc.title, doc.subtitle, true) - 4;
       page.text(MARGIN, y - 10, heading, 9.5, true, RED_DEEP);
       y -= 20;
-      page.rect(MARGIN, y - 16, usableWidth, 16, BAND);
-      headers.forEach((h, i) =>
-        page.text(
-          MARGIN + i * colW + 4,
-          y - 11,
-          truncate(h, 7.5, colW - 8, true),
-          7.5,
-          true,
-          WHITE,
-        ),
+      page.rect(MARGIN, y - bandH, usableWidth, bandH, BAND);
+      lines.forEach((parts, i) =>
+        parts.forEach((part, line) => {
+          // A one-line heading in a two-line band sits on the lower line.
+          const row = bandH > 16 && parts.length === 1 ? 1 : line;
+          page.text(
+            MARGIN + colX[i]! + 4,
+            bandH > 16 ? y - 10 - row * 9 : y - 11,
+            truncate(part, 7, colWs[i]! - 8, true),
+            7,
+            true,
+            WHITE,
+          );
+        }),
       );
-      y -= 16;
+      y -= bandH;
       rows.slice(n * appendixPerPage, (n + 1) * appendixPerPage).forEach((cells, r) => {
         if (r % 2 === 1) page.rect(MARGIN, y - 16, usableWidth, 16, ZEBRA);
         cells.forEach((cell, i) => {
-          const value = truncate(fmt(cell), 8, colW - 8);
+          const value = truncate(fmt(cell), 8, colWs[i]! - 8);
           if (typeof cell === "number") {
-            page.rightText(MARGIN + (i + 1) * colW - 4, y - 11, value, 8, false, INK);
+            page.rightText(MARGIN + colX[i]! + colWs[i]! - 4, y - 11, value, 8, false, INK);
           } else {
-            page.text(MARGIN + i * colW + 4, y - 11, value, 8, false, INK);
+            page.text(MARGIN + colX[i]! + 4, y - 11, value, 8, false, INK);
           }
         });
         y -= 16;

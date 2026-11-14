@@ -74,7 +74,35 @@ describe("parseCommand", () => {
 
   it("reads Roman Urdu aliases", () => {
     expect(parseCommand("haazri aaj", TODAY).kind).toBe("attendance");
-    expect(parseCommand("khana kal", TODAY)).toEqual({ kind: "canteen", date: "2026-11-12" });
+    expect(parseCommand("khana kal", TODAY)).toEqual({
+      kind: "canteen",
+      date: "2026-11-12",
+      to: "2026-11-12",
+      format: "both",
+      file: false,
+    });
+  });
+
+  it("only sends the canteen file when asked for one", () => {
+    expect(parseCommand("canteen", TODAY)).toMatchObject({ file: false });
+    expect(parseCommand("canteen file", TODAY)).toMatchObject({
+      date: TODAY,
+      to: TODAY,
+      file: true,
+    });
+    expect(parseCommand("canteen excel", TODAY)).toMatchObject({ format: "xlsx", file: true });
+  });
+
+  it("takes a canteen range across two dates, and never runs it backwards", () => {
+    expect(parseCommand("canteen 01-11-2026 to 07-11-2026", TODAY)).toMatchObject({
+      date: "2026-11-01",
+      to: "2026-11-07",
+      file: true,
+    });
+    expect(parseCommand("canteen 10-11-2026 05-11-2026", TODAY)).toMatchObject({
+      date: "2026-11-10",
+      to: "2026-11-10",
+    });
   });
 
   it("does not guess at what it does not understand", () => {

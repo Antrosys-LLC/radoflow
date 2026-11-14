@@ -219,6 +219,21 @@ export async function runCommand(
   if (command.kind === "canteen") {
     if (!can(session, "canteen.view")) return refuse("see the canteen");
 
+    if (command.file) {
+      const formats = command.format === "both" ? ["pdf", "xlsx"] : [command.format];
+      const when =
+        command.date === command.to
+          ? formatDate(command.date)
+          : `${formatDate(command.date)} – ${formatDate(command.to)}`;
+      return {
+        text: `Canteen history for ${when}. Sending ${formats.join(" and ")}…`,
+        downloads: formats.map((format) => ({
+          kind: "canteen",
+          query: { from: command.date, to: command.to, format },
+        })),
+      };
+    }
+
     const counts = new Map<string, number>();
     for (let from = 0; ; from += 1000) {
       const { data } = await supabase

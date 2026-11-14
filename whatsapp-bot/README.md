@@ -21,6 +21,7 @@ In a **group**, start with `!` or `rado` so ordinary chat is ignored. In a
 | `!attendance dyeing yesterday`                  | One department, one day                                       |
 | `!checkins dyeing`                              | Each person's in and out time in that department              |
 | `!canteen 13-11-2026`                           | Meals served that day                                         |
+| `!canteen file` / `!canteen 01-11-2026 to 07-11-2026` | The canteen history, PDF and Excel                      |
 | `!report dyeing`                                | The check-in/out file, PDF and Excel                          |
 | `!report dyeing 01-11-2026 to 07-11-2026 excel` | A range, one format                                           |
 | `!report till now`                              | Everyone, from the 1st until this moment                      |

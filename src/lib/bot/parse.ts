@@ -12,7 +12,7 @@ export type Command =
   | { kind: "help" }
   | { kind: "attendance"; date: string; query: string }
   | { kind: "checkins"; date: string; query: string }
-  | { kind: "canteen"; date: string }
+  | { kind: "canteen"; date: string; to: string; format: ReportFormat; file: boolean }
   | {
       kind: "report";
       from: string;
@@ -106,15 +106,22 @@ export function parseCommand(text: string, today: string): Command {
   if (!kind) return { kind: "unknown", text: text.trim() };
 
   let format: ReportFormat = "both";
+  let formatGiven = false;
   let till = false;
+  let wantsFile = false;
   const dates: string[] = [];
   const rest: string[] = [];
 
   for (const word of words) {
     const w = word.toLowerCase();
-    if (w === "pdf") format = "pdf";
-    else if (w === "xlsx" || w === "excel" || w === "xls") format = "xlsx";
-    else if (w === "till" || w === "now" || w === "tak" || w === "abhi") till = true;
+    if (w === "pdf") {
+      format = "pdf";
+      formatGiven = true;
+    } else if (w === "xlsx" || w === "excel" || w === "xls") {
+      format = "xlsx";
+      formatGiven = true;
+    } else if (w === "till" || w === "now" || w === "tak" || w === "abhi") till = true;
+    else if (w === "file" || w === "history" || w === "download") wantsFile = true;
     else if (parseDate(w, today)) dates.push(parseDate(w, today)!);
     else if (!FILLER.has(w)) rest.push(word);
   }
@@ -129,8 +136,11 @@ export function parseCommand(text: string, today: string): Command {
       return { kind: "attendance", date, query };
     case "checkins":
       return { kind: "checkins", date, query };
-    case "canteen":
-      return { kind: "canteen", date };
+    case "canteen": {
+      const to = dates[1] ?? date;
+      const file = wantsFile || formatGiven || dates.length > 1;
+      return { kind: "canteen", date, to: to < date ? date : to, format, file };
+    }
     case "payroll":
       return { kind: "payroll" };
     case "report": {
@@ -150,9 +160,10 @@ export const HELP_TEXT = [
   "*attendance* [date] [department] — who came in, absent, late",
   "*checkins* <department> [date] — each person's in and out times",
   "*canteen* [date] — meals served",
+  "*canteen file* [from] [to] [pdf|excel] — the canteen history file",
   "*report* [department or name] [date] [pdf|excel] — the check-in/out file",
   "*report till now* [department or name] — everything from the 1st until this moment",
-  "*payroll* — the latest pay run (private chat or payroll group only)",
+  "*payroll* — the latest pay run and its salary register (private chat or payroll group only)",
   "",
   "Dates: today, yesterday, 2026-11-13, 13-11-2026. Leave the date out for today.",
 ].join("\n");

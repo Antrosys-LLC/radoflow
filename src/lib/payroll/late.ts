@@ -108,6 +108,7 @@ export function calculateLatePenalties(
       code: `LATE_${tier.fromMinutes}`,
       label: `${tier.label} (${detail})`,
       kind: "deduction",
+      days: count,
       amount,
     };
   });

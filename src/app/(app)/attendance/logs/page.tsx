@@ -19,8 +19,12 @@ import {
   dailyRate,
   isSunday,
   overtimeRate,
+  roundMoney,
   splitDayHours,
+  sundayWork,
 } from "@/lib/payroll/hours";
+import { calculateLatePenalties } from "@/lib/payroll/late";
+import { toLateTier } from "@/lib/payroll/mappers";
 import {
   DEFAULT_PAY_RULE,
   type AttendanceDay,
@@ -134,10 +138,43 @@ interface Summary {
   asDays: AttendanceDay[];
   buckets: HourBuckets[];
   workingDays: number;
+  /** Weekday overtime only — Sunday hours are counted apart. */
   overtime: number;
   clocked: number;
   late: number;
+  /** Pay for each part, so the screen can show them one by one. */
+  workingPay: number;
+  sundayDays: number;
+  /** Sunday, off-day and holiday hours worked. */
+  sundayHours: number;
+  sundayPay: number;
+  overtimePay: number;
+  lateAmount: number;
 }
+
+/** The parts of a person's arrangement that price their days. */
+interface PayTerms {
+  monthlySalary: number;
+  contractor: boolean;
+  flexible: boolean;
+  weekendRate: number | null;
+  holidayRate: number | null;
+}
+
+interface CohortPerson {
+  id: string;
+  full_name: string;
+  employee_code: string;
+  department_id: string | null;
+  duty_hours: number;
+  monthly_salary: number;
+  worker_type: string;
+  flexible_hours?: boolean | null;
+  weekend_hourly_rate?: number | null;
+  holiday_hourly_rate?: number | null;
+}
+
+const amount = (value: number) => (value > 0 ? `Rs ${money(value)}` : "—");
 
 export default async function AttendanceLogPage({
   searchParams,
@@ -191,7 +228,7 @@ export default async function AttendanceLogPage({
     supabase
       .from("profiles")
       .select(
-        "id, full_name, employee_code, department_id, duty_hours, monthly_salary, worker_type, requires_attendance, flexible_hours",
+        "id, full_name, employee_code, department_id, duty_hours, monthly_salary, worker_type, requires_attendance, flexible_hours, weekend_hourly_rate, holiday_hourly_rate",
       )
       .eq("status", "active")
       .order("full_name"),
@@ -285,6 +322,15 @@ export default async function AttendanceLogPage({
   const days = batched.sort((a, b) => (a.work_date < b.work_date ? 1 : -1));
 
   const rule = DEFAULT_PAY_RULE;
+  // The same ladder the payroll run reads, so the deduction shown here is the
+  // one the payslip will take.
+  const { data: lateRules } = await supabase
+    .from("late_penalty_rules")
+    .select("*")
+    .eq("is_active", true)
+    .order("from_minutes", { ascending: true })
+    .order("id", { ascending: true });
+  const tiers = (lateRules ?? []).map(toLateTier);
   const daysInMonth = new Date(Number(from.slice(0, 4)), Number(from.slice(5, 7)), 0).getDate();
 
   const byProfile = new Map<string, DayRow[]>();
@@ -294,8 +340,22 @@ export default async function AttendanceLogPage({
     byProfile.set(row.profile_id, list);
   }
 
+  const termsOf = (p: {
+    monthly_salary: number | null;
+    worker_type: string;
+    flexible_hours?: boolean | null;
+    weekend_hourly_rate?: number | null;
+    holiday_hourly_rate?: number | null;
+  }): PayTerms => ({
+    monthlySalary: Number(p.monthly_salary ?? 0),
+    contractor: p.worker_type === "contractor",
+    flexible: Boolean(p.flexible_hours),
+    weekendRate: p.weekend_hourly_rate == null ? null : Number(p.weekend_hourly_rate),
+    holidayRate: p.holiday_hourly_rate == null ? null : Number(p.holiday_hourly_rate),
+  });
+
   /** Turns one person's stored days into the buckets payroll would produce. */
-  function summarise(profileId: string, dutyHours: number): Summary {
+  function summarise(profileId: string, dutyHours: number, terms?: PayTerms): Summary {
     const rows = byProfile.get(profileId) ?? [];
     const asDays: AttendanceDay[] = rows.map((row) => ({
       workDate: row.work_date,
@@ -310,13 +370,40 @@ export default async function AttendanceLogPage({
     }));
 
     const buckets = asDays.map((d) => splitDayHours(d, rule, dutyHours));
+    const workingDays = countWorkingDays(asDays);
+    const sunday = sundayWork(asDays, rule, dutyHours);
+    const offHours = buckets.reduce((total, b) => total + b.weekend, 0);
+    const holidayHours = buckets.reduce((total, b) => total + b.holiday, 0);
+    const allOvertime = buckets.reduce((total, b) => total + b.overtime, 0);
+    const weekdayOvertime = roundMoney(allOvertime - sunday.hours);
+
+    // A contractor is billed as a firm and a fixed salary is not earned by the
+    // day, so neither is priced here — as before.
+    const priced = terms !== undefined && !terms.contractor && dutyHours > 0;
+    const salary = terms?.monthlySalary ?? 0;
+    const perDay = priced ? dailyRate(salary, daysInMonth) : 0;
+    const perOt = priced ? overtimeRate(salary, daysInMonth) : 0;
+    const weekendRate = terms?.weekendRate ?? rule.weekendHourlyRate;
+    const holidayRate = terms?.holidayRate ?? rule.holidayHourlyRate;
+    const lateAmount =
+      priced && !terms.flexible
+        ? calculateLatePenalties(asDays, tiers, perDay, salary, dutyHours).total
+        : 0;
 
     return {
       rows,
       asDays,
       buckets,
-      workingDays: countWorkingDays(asDays),
-      overtime: buckets.reduce((total, b) => total + b.overtime, 0),
+      workingDays,
+      workingPay: roundMoney(workingDays * perDay),
+      sundayDays: sunday.days,
+      sundayHours: roundMoney(sunday.hours + offHours + holidayHours),
+      sundayPay: priced
+        ? roundMoney(sunday.hours * perOt + offHours * weekendRate + holidayHours * holidayRate)
+        : 0,
+      overtimePay: roundMoney(weekdayOvertime * perOt),
+      lateAmount,
+      overtime: weekdayOvertime,
       clocked: rows.reduce((total, r) => total + Number(r.regular_hours ?? 0), 0),
       late: rows.filter((r) => r.is_late).length,
     };
@@ -513,7 +600,7 @@ export default async function AttendanceLogPage({
         <PersonLog
           t={t}
           person={person}
-          summary={summarise(person.id, Number(person.duty_hours ?? 8))}
+          summary={summarise(person.id, Number(person.duty_hours ?? 8), termsOf(person))}
           daysInMonth={daysInMonth}
           from={from}
           to={to}
@@ -535,7 +622,7 @@ export default async function AttendanceLogPage({
         <Cohort
           t={t}
           people={cohort}
-          summarise={summarise}
+          summarise={(p) => summarise(p.id, Number(p.duty_hours ?? 8), termsOf(p))}
           deptName={deptName}
           daysInMonth={daysInMonth}
           from={from}
@@ -750,7 +837,7 @@ function Cohort({
     monthly_salary: number;
     worker_type: string;
   }[];
-  summarise: (profileId: string, dutyHours: number) => Summary;
+  summarise: (person: CohortPerson) => Summary;
   deptName: Map<string, string>;
   daysInMonth: number;
   from: string;
@@ -758,18 +845,18 @@ function Cohort({
   selectedDepts: string[];
 }) {
   const rows = people.map((p) => {
-    const s = summarise(p.id, Number(p.duty_hours ?? 8));
+    const s = summarise(p);
     const contractor = p.worker_type === "contractor";
-    const perDay = contractor ? 0 : dailyRate(Number(p.monthly_salary ?? 0), daysInMonth);
-    const perOt = contractor ? 0 : overtimeRate(Number(p.monthly_salary ?? 0), daysInMonth);
 
     return {
       person: p,
       ...s,
       contractor,
+      // Working days + Sundays + overtime, less lateness: the parts a payslip
+      // is built from, each shown in its own column.
       earned: contractor
         ? Number(p.monthly_salary ?? 0)
-        : s.workingDays * perDay + s.overtime * perOt,
+        : Math.max(0, s.workingPay + s.sundayPay + s.overtimePay - s.lateAmount),
     };
   });
 
@@ -779,8 +866,25 @@ function Cohort({
       overtime: acc.overtime + r.overtime,
       late: acc.late + r.late,
       earned: acc.earned + r.earned,
+      workingPay: acc.workingPay + r.workingPay,
+      sundayDays: acc.sundayDays + r.sundayDays,
+      sundayHours: acc.sundayHours + r.sundayHours,
+      sundayPay: acc.sundayPay + r.sundayPay,
+      overtimePay: acc.overtimePay + r.overtimePay,
+      lateAmount: acc.lateAmount + r.lateAmount,
     }),
-    { workingDays: 0, overtime: 0, late: 0, earned: 0 },
+    {
+      workingDays: 0,
+      overtime: 0,
+      late: 0,
+      earned: 0,
+      workingPay: 0,
+      sundayDays: 0,
+      sundayHours: 0,
+      sundayPay: 0,
+      overtimePay: 0,
+      lateAmount: 0,
+    },
   );
 
   return (
@@ -825,7 +929,7 @@ function Cohort({
 
       <Card className="p-0">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[44rem] text-sm">
+          <table className="w-full min-w-[78rem] text-sm">
             <thead>
               {/* Column alignment is reading flow: the figures sit at the end
                   of the line, which is the right in English and the left in
@@ -834,10 +938,15 @@ function Cohort({
                 <th className="px-4 py-3 font-semibold">{t.common.person}</th>
                 <th className="px-4 py-3 font-semibold">{t.common.department}</th>
                 <th className="px-4 py-3 text-end font-semibold">{t.logs.workingDays}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.workingPay}</th>
                 <th className="px-4 py-3 text-end font-semibold">{t.common.hours}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.sundays}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.sundayPay}</th>
                 <th className="px-4 py-3 text-end font-semibold">{t.logs.overtime}</th>
-                <th className="px-4 py-3 text-end font-semibold">{t.common.late}</th>
-                <th className="px-4 py-3 text-end font-semibold">{t.logs.earned}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.overtimePay}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.lateDays}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.lateDeduction}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.netEarned}</th>
               </tr>
             </thead>
             <tbody>
@@ -873,7 +982,25 @@ function Cohort({
                     <Latin>{row.workingDays}</Latin>
                   </td>
                   <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>{amount(row.workingPay)}</Latin>
+                  </td>
+                  <td className="px-4 py-3 text-end tabular-nums">
                     <Latin>{formatHours(row.clocked)}</Latin>
+                  </td>
+                  <td
+                    className={cn(
+                      "px-4 py-3 text-end tabular-nums",
+                      row.sundayHours > 0 && "font-semibold text-success",
+                    )}
+                  >
+                    {row.sundayHours > 0 ? (
+                      <Latin>{`${row.sundayDays} d · ${formatHours(row.sundayHours)}`}</Latin>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>{amount(row.sundayPay)}</Latin>
                   </td>
                   <td
                     className={cn(
@@ -883,6 +1010,9 @@ function Cohort({
                   >
                     {row.overtime > 0 ? <Latin>{formatHours(row.overtime)}</Latin> : "—"}
                   </td>
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>{amount(row.overtimePay)}</Latin>
+                  </td>
                   <td
                     className={cn(
                       "px-4 py-3 text-end tabular-nums",
@@ -890,6 +1020,14 @@ function Cohort({
                     )}
                   >
                     {row.late > 0 ? <Latin>{row.late}</Latin> : "—"}
+                  </td>
+                  <td
+                    className={cn(
+                      "px-4 py-3 text-end tabular-nums",
+                      row.lateAmount > 0 && "font-semibold text-danger",
+                    )}
+                  >
+                    <Latin>{row.lateAmount > 0 ? `− Rs ${money(row.lateAmount)}` : "—"}</Latin>
                   </td>
                   <td className="px-4 py-3 text-end font-semibold tabular-nums">
                     <Latin>Rs {money(row.earned)}</Latin>
@@ -899,7 +1037,7 @@ function Cohort({
 
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  <td colSpan={11} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     {t.common.nobodyMatches}
                   </td>
                 </tr>
@@ -917,12 +1055,31 @@ function Cohort({
                   <td className="px-4 py-3 text-end tabular-nums">
                     <Latin>{totals.workingDays}</Latin>
                   </td>
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>{amount(totals.workingPay)}</Latin>
+                  </td>
                   <td className="px-4 py-3" />
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    {totals.sundayHours > 0 ? (
+                      <Latin>{`${totals.sundayDays} d · ${formatHours(totals.sundayHours)}`}</Latin>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>{amount(totals.sundayPay)}</Latin>
+                  </td>
                   <td className="px-4 py-3 text-end tabular-nums">
                     <Latin>{formatHours(totals.overtime)}</Latin>
                   </td>
                   <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>{amount(totals.overtimePay)}</Latin>
+                  </td>
+                  <td className="px-4 py-3 text-end tabular-nums">
                     {totals.late > 0 ? <Latin>{totals.late}</Latin> : "—"}
+                  </td>
+                  <td className="px-4 py-3 text-end tabular-nums">
+                    <Latin>{totals.lateAmount > 0 ? `− Rs ${money(totals.lateAmount)}` : "—"}</Latin>
                   </td>
                   <td className="px-4 py-3 text-end tabular-nums">
                     <Latin>Rs {money(totals.earned)}</Latin>
@@ -998,10 +1155,22 @@ function PersonLog({
           hint={<Fill template={t.logs.overtimeBeyond} values={{ hours: `${dutyHours}h` }} />}
         />
         <Tile
+          icon={CalendarDays}
+          label={t.logs.sundays}
+          value={`${summary.sundayDays} d · ${formatHours(summary.sundayHours)}`}
+          hint={amount(summary.sundayPay)}
+        />
+        <Tile
           icon={TriangleAlert}
           label={t.logs.lateArrivals}
           value={summary.late}
-          hint={person.flexible_hours ? t.logs.notTrackedFlexible : t.logs.pastGrace}
+          hint={
+            summary.lateAmount > 0
+              ? `− Rs ${money(summary.lateAmount)}`
+              : person.flexible_hours
+                ? t.logs.notTrackedFlexible
+                : t.logs.pastGrace
+          }
         />
       </div>
 
@@ -1036,7 +1205,7 @@ function PersonLog({
                   perHour: <strong className="text-foreground">Rs {money(perOtHour)}</strong>,
                   total: (
                     <strong className="text-foreground">
-                      Rs {money(summary.workingDays * perDay + summary.overtime * perOtHour)}
+                      Rs {money(Math.max(0, summary.workingPay + summary.sundayPay + summary.overtimePay - summary.lateAmount))}
                     </strong>
                   ),
                 }}
@@ -1047,8 +1216,17 @@ function PersonLog({
                 one Latin run rather than four separate wraps. */}
             <p className="mt-1 text-xs text-muted-foreground">
               <Latin>
-                {summary.workingDays} × {money(perDay)} + {formatHours(summary.overtime)} ×{" "}
-                {money(perOtHour)}.
+                {summary.workingDays} × {money(perDay)} = {money(summary.workingPay)}
+                {summary.sundayHours > 0
+                  ? ` + Sundays/off-days ${formatHours(summary.sundayHours)} h = ${money(summary.sundayPay)}`
+                  : ""}
+                {summary.overtime > 0
+                  ? ` + overtime ${formatHours(summary.overtime)} × ${money(perOtHour)} = ${money(summary.overtimePay)}`
+                  : ""}
+                {summary.lateAmount > 0
+                  ? ` − late ${summary.late} d = ${money(summary.lateAmount)}`
+                  : ""}
+                .
               </Latin>
             </p>
           </>
@@ -1102,6 +1280,7 @@ function PersonLog({
                 <th className="px-4 py-3 font-semibold">{t.common.checkedOut}</th>
                 <th className="px-4 py-3 text-end font-semibold">{t.logs.clocked}</th>
                 <th className="px-4 py-3 text-end font-semibold">{t.logs.duty}</th>
+                <th className="px-4 py-3 text-end font-semibold">{t.logs.sundays}</th>
                 <th className="px-4 py-3 text-end font-semibold">{t.logs.overtime}</th>
                 <th className="px-4 py-3 text-end font-semibold">{t.common.late}</th>
                 <th className="px-4 py-3 font-semibold">{t.logs.counts}</th>
@@ -1115,7 +1294,17 @@ function PersonLog({
                 const attended = row.status === "present" || row.status === "partial";
                 const clocked = Number(row.regular_hours ?? 0);
                 // Anything past duty + the ceiling is recorded but never paid.
-                const unpaid = Math.max(0, clocked - buckets.regular - buckets.overtime);
+                const unpaid = Math.max(
+                  0,
+                  clocked - buckets.regular - buckets.overtime - buckets.weekend - buckets.holiday,
+                );
+                // A default Sunday's hours are overtime by rule; off-days and
+                // holidays run at their own rates. All three are "not a working
+                // day", so they sit in one column apart from weekday overtime.
+                const offDayHours = sunday
+                  ? buckets.overtime + buckets.weekend + buckets.holiday
+                  : buckets.weekend + buckets.holiday;
+                const weekdayOvertime = sunday ? 0 : buckets.overtime;
 
                 return (
                   <tr
@@ -1187,10 +1376,18 @@ function PersonLog({
                     <td
                       className={cn(
                         "px-4 py-3 text-end tabular-nums",
-                        buckets.overtime > 0 && "font-semibold text-success",
+                        offDayHours > 0 && "font-semibold text-success",
                       )}
                     >
-                      {buckets.overtime > 0 ? <Latin>{formatHours(buckets.overtime)}</Latin> : "—"}
+                      {offDayHours > 0 ? <Latin>{formatHours(offDayHours)}</Latin> : "—"}
+                    </td>
+                    <td
+                      className={cn(
+                        "px-4 py-3 text-end tabular-nums",
+                        weekdayOvertime > 0 && "font-semibold text-success",
+                      )}
+                    >
+                      {weekdayOvertime > 0 ? <Latin>{formatHours(weekdayOvertime)}</Latin> : "—"}
                     </td>
                     <td
                       className={cn(
@@ -1234,7 +1431,7 @@ function PersonLog({
               {summary.rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={canCorrect ? 9 : 8}
+                    colSpan={canCorrect ? 10 : 9}
                     className="px-4 py-10 text-center text-sm text-muted-foreground"
                   >
                     <Fill template={t.logs.noAttendanceBetween} values={{ from, to }} />

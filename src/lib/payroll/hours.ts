@@ -255,6 +255,31 @@ export function excessHours(
   return Math.max(0, round2(excess - cap));
 }
 
+/**
+ * Hours and days worked on a default Sunday, which `splitDayHours` pays as
+ * overtime. Reported separately so a payslip can show Sundays on their own line
+ * instead of hiding them inside weekday overtime. The figure is read off
+ * `splitDayHours`, never recomputed, so the two cannot disagree.
+ */
+export function sundayWork(
+  days: readonly AttendanceDay[],
+  rule: PayRule,
+  dutyHours?: number,
+  terms: DutyTerms = {},
+): { hours: number; days: number } {
+  let hours = 0;
+  let count = 0;
+  for (const day of days) {
+    if (!(isSunday(day.workDate) && day.dayType === "off")) continue;
+    const paid = splitDayHours(day, rule, dutyHours, terms).overtime;
+    if (paid > 0) {
+      hours = round2(hours + paid);
+      count += 1;
+    }
+  }
+  return { hours, days: count };
+}
+
 /** Adds a day's buckets into a running period total. */
 export function addBuckets(total: HourBuckets, day: HourBuckets): HourBuckets {
   return {

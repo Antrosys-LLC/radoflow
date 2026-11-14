@@ -68,7 +68,18 @@ describe("payroll register documents", () => {
 
   it("writes the sheet's columns, in its order, with no OTHER column when nobody needs one", () => {
     const xml = sheetXml(registerWorkbook(groups, meta), "xl/worksheets/sheet1.xml");
-    const order = ["S RATE", "DAYS", "G SALARY", "LOAN DED.", "SUITE DED.", "NET PAY"].map((h) =>
+    const order = [
+      "S RATE",
+      "WD DAYS",
+      "WD AMOUNT",
+      "SUN AMOUNT",
+      "OT AMOUNT",
+      "G SALARY",
+      "LATE DED.",
+      "LOAN DED.",
+      "SUITE DED.",
+      "NET PAY",
+    ].map((h) =>
       xml.indexOf(`>${h}<`),
     );
     expect(order.every((i) => i > 0)).toBe(true);
@@ -87,6 +98,9 @@ describe("payroll register documents", () => {
     const text = registerPdf(groups, meta).toString("latin1");
     expect(text).toContain("/MediaBox [0 0 842 595]");
     expect(text).toContain("GRAND TOTAL");
-    expect(text).toContain("SUITE DED.");
+    // Headings that do not fit a column break onto two lines.
+    expect(text).toContain("SUITE");
+    expect(text).toContain("SUN");
+    expect(text).toContain("LATE");
   });
 });

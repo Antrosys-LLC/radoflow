@@ -866,6 +866,13 @@ const en = {
     // Cohort table.
     overtime: "Overtime",
     earned: "Earned",
+    workingPay: "Working-day pay",
+    sundays: "Sundays / off-days",
+    sundayPay: "Sunday pay",
+    overtimePay: "Overtime pay",
+    lateDays: "Late days",
+    lateDeduction: "Late deduction",
+    netEarned: "Net earned",
     contract: "Contract",
     peopleCount: "{count} people",
     peopleCountOne: "{count} person",

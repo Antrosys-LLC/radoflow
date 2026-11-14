@@ -2,6 +2,7 @@ import { payrollBreakdown, type BreakdownLine } from "@/lib/payroll/breakdown";
 import { movementTag } from "@/lib/payroll/movements";
 import {
   hasOtherDeductions,
+  registerColumns,
   totalsOf,
   type RegisterGroup,
   type RegisterRow,
@@ -32,20 +33,9 @@ const whole = (value: number) => Math.round(value);
 const hoursValue = (value: number) => Math.round(value * 100) / 100;
 
 function numbers(totals: RegisterTotals, withOther: boolean): number[] {
-  return [
-    whole(totals.sRate),
-    hoursValue(totals.days),
-    whole(totals.dayAmount),
-    hoursValue(totals.hours),
-    whole(totals.hourAmount),
-    whole(totals.gross),
-    whole(totals.advance),
-    whole(totals.advance2),
-    whole(totals.loan),
-    whole(totals.suit),
-    ...(withOther ? [whole(totals.other)] : []),
-    whole(totals.net),
-  ];
+  return registerColumns(withOther).map((column) =>
+    column.kind === "money" ? whole(totals[column.key]) : hoursValue(totals[column.key]),
+  );
 }
 
 /** The four leading text columns: SR, ROLL NO, NAME, DESIGNATION. */
@@ -57,18 +47,7 @@ function headers(withOther: boolean): string[] {
     "ROLL NO",
     "NAME",
     "DESIGNATION",
-    "S RATE",
-    "DAYS",
-    "AMOUNT",
-    "HOURS",
-    "AMOUNT",
-    "G SALARY",
-    "ADVANCE",
-    "ADVANCE",
-    "LOAN DED.",
-    "SUITE DED.",
-    ...(withOther ? ["OTHER DED."] : []),
-    "NET PAY",
+    ...registerColumns(withOther).map((column) => column.header),
   ];
 }
 
@@ -161,8 +140,19 @@ export function registerPdf(groups: readonly RegisterGroup[], meta: RegisterMeta
   const withOther = hasOtherDeductions(all);
   const totals = totalsOf(all);
 
+  const figures = registerColumns(withOther);
   const widthOf = (i: number) =>
-    i === 0 ? 20 : i === 1 ? 40 : i === 2 ? 96 : i === 3 ? 72 : i === 5 || i === 7 ? 34 : 52;
+    i === 0
+      ? 20
+      : i === 1
+        ? 40
+        : i === 2
+          ? 90
+          : i === 3
+            ? 62
+            : figures[i - IDENTITY_COLUMNS]?.kind === "count"
+              ? 30
+              : 46;
 
   const columns: Column[] = headers(withOther).map((header, i) => ({
     header,
@@ -209,7 +199,7 @@ export function registerPdf(groups: readonly RegisterGroup[], meta: RegisterMeta
         : undefined,
     footer:
       meta.footer ??
-      "AMOUNT = S Rate / days in month x days.  Hours AMOUNT = S Rate / (days in month x 8) x hours.",
+      "WD AMOUNT = S Rate / days in month x working days.  SUN = Sundays, off-days and holidays worked.  OT AMOUNT = S Rate / (days in month x 8) x weekday overtime hours.  LATE DED. = deducted for late arrival.",
   });
 }
 
@@ -220,9 +210,26 @@ export function registerWorkbook(groups: readonly RegisterGroup[], meta: Registe
 
   const columns: SheetColumn[] = headers(withOther).map((header, i) => ({
     header,
-    width: i === 0 ? 6 : i === 1 ? 12 : i === 2 ? 26 : i === 3 ? 30 : i === 5 || i === 7 ? 9 : 13,
+    width:
+      i === 0
+        ? 6
+        : i === 1
+          ? 12
+          : i === 2
+            ? 26
+            : i === 3
+              ? 30
+              : registerColumns(withOther)[i - IDENTITY_COLUMNS]?.kind === "count"
+                ? 9
+                : 13,
     format:
-      i === 0 ? "number" : i < IDENTITY_COLUMNS ? "text" : i === 5 || i === 7 ? "hours" : "money",
+      i === 0
+        ? "number"
+        : i < IDENTITY_COLUMNS
+          ? "text"
+          : registerColumns(withOther)[i - IDENTITY_COLUMNS]?.kind === "count"
+            ? "hours"
+            : "money",
   }));
 
   const rows: SheetRow[] = [];

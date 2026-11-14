@@ -470,7 +470,6 @@ const isSubtotal = (row: TableRow): row is { subtotal: (string | number)[] } =>
 export function buildTablePdf(doc: TableDoc): Buffer {
   const size = doc.orientation === "landscape" ? LANDSCAPE : PORTRAIT;
   const ROW = 15;
-  const HEADER = 18;
   const usableWidth = size.width - MARGIN * 2;
   const bottom = MARGIN + 14;
 
@@ -478,6 +477,21 @@ export function buildTablePdf(doc: TableDoc): Buffer {
   const requested = doc.columns.reduce((t, c) => t + c.width, 0);
   const scale = requested > 0 ? usableWidth / requested : 1;
   const widths = doc.columns.map((c) => c.width * scale);
+
+  /*
+   * A heading that does not fit its column breaks at its space onto a second
+   * line rather than being cut off — "SUN AMOUNT" must not read "SUN AMO…".
+   * The band grows to two lines only when some heading needs it.
+   */
+  const headerLines = doc.columns.map((c, i) => {
+    const room = widths[i]! - 8;
+    if (truncate(c.header, 7.5, room, true) === c.header || !c.header.includes(" ")) {
+      return [c.header];
+    }
+    const at = c.header.indexOf(" ");
+    return [c.header.slice(0, at), c.header.slice(at + 1)];
+  });
+  const HEADER = headerLines.some((lines) => lines.length > 1) ? 25 : 18;
 
   const contentTop = size.height - MARGIN - 66;
   const firstTop = contentTop - (doc.highlights?.length ? 50 : 0);
@@ -535,14 +549,19 @@ export function buildTablePdf(doc: TableDoc): Buffer {
 
     // Column headings, on the dark band.
     page.rect(MARGIN, y - HEADER, usableWidth, HEADER, BAND);
-    drawCells(
-      page,
-      y - 12,
-      doc.columns.map((c) => c.header),
-      7.5,
-      true,
-      WHITE,
-    );
+    const twoLine = HEADER > 18;
+    for (let line = 0; line < (twoLine ? 2 : 1); line++) {
+      drawCells(
+        page,
+        twoLine ? y - 10 - line * 9 : y - 12,
+        headerLines.map((lines) =>
+          twoLine && lines.length === 1 ? (line === 0 ? "" : lines[0]!) : (lines[line] ?? ""),
+        ),
+        twoLine ? 7 : 7.5,
+        true,
+        WHITE,
+      );
+    }
     y -= HEADER;
 
     let zebra = 0;

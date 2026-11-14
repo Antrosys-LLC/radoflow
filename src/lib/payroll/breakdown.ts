@@ -37,7 +37,9 @@ export function payrollBreakdown(rows: readonly RegisterRow[]): BreakdownLine[] 
   // Derived from gross and net rather than summed, so the section always
   // reconciles with the figure the run pays — whatever the other column holds.
   const deductions = round2(calculated - net);
-  const named = round2(people.advance + people.advance2 + people.loan + people.suit);
+  const named = round2(
+    people.advance + people.advance2 + people.loan + people.suit + people.lateAmount,
+  );
   const other = round2(deductions - named);
 
   const lines: BreakdownLine[] = [];
@@ -64,8 +66,13 @@ export function payrollBreakdown(rows: readonly RegisterRow[]): BreakdownLine[] 
     );
   }
   add("subtotal", "= Base pay earned by attendance", people.dayAmount);
-  if (people.hourAmount > 0) add("line", "+ Overtime, weekend and holiday pay", people.hourAmount);
-  const allowances = round2(people.gross - people.dayAmount - people.hourAmount);
+  if (people.sundayAmount > 0) {
+    add("line", "+ Sundays, off-days and holidays worked", people.sundayAmount);
+  }
+  if (people.hourAmount > 0) add("line", "+ Weekday overtime", people.hourAmount);
+  const allowances = round2(
+    people.gross - people.dayAmount - people.sundayAmount - people.hourAmount,
+  );
   if (allowances > 0) add("line", "+ Allowances and other earnings", allowances);
   add("subtotal", "= Payroll of all people, by attendance", people.gross);
   if (firms.length > 0) add("line", "+ Contract firms (billed once)", firmsTotal);
@@ -76,7 +83,8 @@ export function payrollBreakdown(rows: readonly RegisterRow[]): BreakdownLine[] 
   if (people.advance2 > 0) add("line", "− Advance (second)", people.advance2);
   if (people.loan > 0) add("line", "− Loan installments", people.loan);
   if (people.suit > 0) add("line", "− Suit deduction", people.suit);
-  if (other > 0) add("line", "− Late arrivals, tax and other deductions", other);
+  if (people.lateAmount > 0) add("line", "− Late arrivals", people.lateAmount);
+  if (other > 0) add("line", "− Tax and other deductions", other);
   add("subtotal", "= Total deductions", deductions);
 
   add("heading", "4 · TO PAY");

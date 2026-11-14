@@ -225,6 +225,8 @@ export interface PayslipLine {
   kind: ComponentKind | "base";
   /** Hours behind this line, where the line is hours-driven. */
   hours?: number;
+  /** Days behind this line — Sundays worked, days late — where that is counted. */
+  days?: number;
   rate?: number;
   amount: number;
 }

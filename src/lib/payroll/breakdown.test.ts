@@ -53,7 +53,7 @@ describe("payroll breakdown", () => {
     // 51,000 of salaries earned only 40,000 of base pay.
     expect(amountOf("− Salary not earned (absence, Sundays, part months)")).toBe(11_000);
     expect(amountOf("= Base pay earned by attendance")).toBe(40_000);
-    expect(amountOf("+ Overtime, weekend and holiday pay")).toBe(1_000);
+    expect(amountOf("+ Weekday overtime")).toBe(1_000);
     expect(amountOf("+ Allowances and other earnings")).toBe(500);
     expect(amountOf("= Payroll of all people, by attendance")).toBe(41_500);
     expect(amountOf("= Total calculated")).toBe(41_500 + 35_000);
@@ -61,7 +61,7 @@ describe("payroll breakdown", () => {
 
   it("breaks deductions down and lands on what is paid", () => {
     expect(amountOf("− Advance")).toBe(1_500);
-    expect(amountOf("− Late arrivals, tax and other deductions")).toBe(500);
+    expect(amountOf("− Tax and other deductions")).toBe(500);
     expect(amountOf("= Total deductions")).toBe(2_000);
     expect(amountOf("= To pay (net payable)")).toBe(76_500 - 2_000);
   });

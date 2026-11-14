@@ -6,21 +6,28 @@ import type { PayslipLine } from "./types";
  *
  * The factory's salary sheet is laid out one way and has been for years:
  *
- *   SR · NAME · DESIGNATION · S RATE · DAYS · AMOUNT · HOURS · AMOUNT ·
- *   G SALARY · ADVANCE · ADVANCE · LOAN DED. · SUITE DED. · NET PAY
+ *   SR · NAME · DESIGNATION · S RATE · WD DAYS · WD AMOUNT · SUN DAYS · SUN HRS ·
+ *   SUN AMOUNT · OT HRS · OT AMOUNT · G SALARY · LATE DAYS · LATE DED. ·
+ *   ADVANCE · ADVANCE · LOAN DED. · SUITE DED. · NET PAY
  *
  * and it is printed a department at a time, each closed with its own totals.
  * This builds exactly that from a pay run, so the register RadoFlow prints is
  * the sheet the accounts office already checks line by line.
  *
  * - S RATE is the monthly salary the daily rate was taken from.
- * - DAYS and the first AMOUNT are the working days and the salary they earned.
- * - HOURS and the second AMOUNT are the overtime hours and their pay (Sunday
- *   and holiday hours included — on the sheet they are all "hours").
+ * - WD DAYS and WD AMOUNT are the working days and the salary they earned.
+ * - SUN DAYS, SUN HRS and SUN AMOUNT are Sundays, off-days and holidays worked
+ *   and what they paid — kept apart from weekday overtime so each can be
+ *   checked on its own.
+ * - OT HRS and OT AMOUNT are weekday overtime only.
  * - G SALARY is gross pay, allowances included.
- * - Anything withheld that the sheet has no column for — lateness, tax, a
- *   one-off deduction — goes in OTHER DED., which appears only when a register
- *   has any.
+ * - LATE DAYS and LATE DED. are the days arrived late and what was taken for them.
+ * - Anything else withheld that the sheet has no column for — tax, a one-off
+ *   deduction — goes in OTHER DED., which appears only when a register has any.
+ *
+ * The split is read off the payslip lines (`SUNDAY`, `WEEKEND`, `HOLIDAY`,
+ * `LATE_*`), so it needs no extra stored column. A pay run saved before Sunday
+ * had its own line shows its Sunday hours inside OT until it is recalculated.
  */
 
 export interface RegisterItem {
@@ -53,9 +60,16 @@ export interface RegisterRow {
   sRate: number;
   days: number;
   dayAmount: number;
+  /** Sundays, off-days and holidays worked. */
+  sundayDays: number;
+  sundayHours: number;
+  sundayAmount: number;
+  /** Weekday overtime only. */
   hours: number;
   hourAmount: number;
   gross: number;
+  lateDays: number;
+  lateAmount: number;
   advance: number;
   advance2: number;
   loan: number;
@@ -102,9 +116,29 @@ export interface RegisterGroup {
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
+const SUNDAY_CODES = new Set(["SUNDAY", "WEEKEND", "HOLIDAY"]);
+
+/** Sundays, off-days and holidays worked, and lateness, read off the payslip lines. */
+function premiumsOf(lines: readonly PayslipLine[]) {
+  const total = { sundayDays: 0, sundayHours: 0, sundayAmount: 0, lateDays: 0, lateAmount: 0 };
+  for (const line of lines) {
+    if (SUNDAY_CODES.has(line.code)) {
+      total.sundayDays += line.days ?? 0;
+      total.sundayHours += line.hours ?? 0;
+      total.sundayAmount += line.amount;
+    } else if (line.code.startsWith("LATE") && line.kind === "deduction") {
+      total.lateDays += line.days ?? 0;
+      total.lateAmount += line.amount;
+    }
+  }
+  return total;
+}
+
 export function toRegisterRow(item: RegisterItem): RegisterRow {
   const sheet = sheetDeductions(item.lines);
   const named = sheet.advance + sheet.advance2 + sheet.loan + sheet.suit;
+  const premium = premiumsOf(item.lines);
+  const late = round2(premium.lateAmount);
 
   return {
     profileId: item.profileId,
@@ -115,24 +149,71 @@ export function toRegisterRow(item: RegisterItem): RegisterRow {
     sRate: round2(item.monthlySalary),
     days: item.workingDays,
     dayAmount: round2(item.basePay),
-    hours: round2(item.overtimeHours),
-    hourAmount: round2(item.overtimePay),
+    sundayDays: premium.sundayDays,
+    sundayHours: round2(premium.sundayHours),
+    sundayAmount: round2(premium.sundayAmount),
+    // `overtimeHours`/`overtimePay` arrive as overtime + Sundays + off-days.
+    hours: Math.max(0, round2(item.overtimeHours - premium.sundayHours)),
+    hourAmount: Math.max(0, round2(item.overtimePay - premium.sundayAmount)),
     gross: round2(item.gross),
+    lateDays: premium.lateDays,
+    lateAmount: late,
     ...sheet,
-    other: Math.max(0, round2(item.withheld - named)),
+    other: Math.max(0, round2(item.withheld - named - late)),
     net: round2(item.net),
     joinedOn: item.joinedOn ?? null,
     leftOn: item.leftOn ?? null,
   };
 }
 
+/**
+ * The register's figure columns, in print order — the one list the screen, the
+ * PDF and the workbook all read, so they cannot drift apart. `OTHER DED.` is
+ * added by the caller only when a register has any.
+ */
+export interface RegisterColumn {
+  key: keyof RegisterTotals;
+  header: string;
+  kind: "money" | "count";
+}
+
+export const REGISTER_COLUMNS: readonly RegisterColumn[] = [
+  { key: "sRate", header: "S RATE", kind: "money" },
+  { key: "days", header: "WD DAYS", kind: "count" },
+  { key: "dayAmount", header: "WD AMOUNT", kind: "money" },
+  { key: "sundayDays", header: "SUN DAYS", kind: "count" },
+  { key: "sundayHours", header: "SUN HRS", kind: "count" },
+  { key: "sundayAmount", header: "SUN AMOUNT", kind: "money" },
+  { key: "hours", header: "OT HRS", kind: "count" },
+  { key: "hourAmount", header: "OT AMOUNT", kind: "money" },
+  { key: "gross", header: "G SALARY", kind: "money" },
+  { key: "lateDays", header: "LATE DAYS", kind: "count" },
+  { key: "lateAmount", header: "LATE DED.", kind: "money" },
+  { key: "advance", header: "ADVANCE", kind: "money" },
+  { key: "advance2", header: "ADVANCE", kind: "money" },
+  { key: "loan", header: "LOAN DED.", kind: "money" },
+  { key: "suit", header: "SUITE DED.", kind: "money" },
+  { key: "other", header: "OTHER DED.", kind: "money" },
+  { key: "net", header: "NET PAY", kind: "money" },
+];
+
+/** The columns a register shows: OTHER DED. only when somebody has one. */
+export function registerColumns(withOther: boolean): RegisterColumn[] {
+  return REGISTER_COLUMNS.filter((column) => withOther || column.key !== "other");
+}
+
 const NUMERIC: (keyof RegisterTotals)[] = [
   "sRate",
   "days",
   "dayAmount",
+  "sundayDays",
+  "sundayHours",
+  "sundayAmount",
   "hours",
   "hourAmount",
   "gross",
+  "lateDays",
+  "lateAmount",
   "advance",
   "advance2",
   "loan",

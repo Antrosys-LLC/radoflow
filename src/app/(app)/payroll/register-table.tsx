@@ -10,6 +10,7 @@ import { Card, SectionTitle } from "@/components/ui-kit";
 import {
   groupRegister,
   hasOtherDeductions,
+  registerColumns,
   toRegisterRow,
   totalsOf,
   type RegisterItem,
@@ -33,20 +34,9 @@ const whole = (value: number) => Math.round(value).toLocaleString("en-PK");
 const decimal = (value: number) => value.toLocaleString("en-PK", { maximumFractionDigits: 2 });
 
 function Figures({ totals, withOther }: { totals: RegisterTotals; withOther: boolean }) {
-  const cells = [
-    whole(totals.sRate),
-    decimal(totals.days),
-    whole(totals.dayAmount),
-    decimal(totals.hours),
-    whole(totals.hourAmount),
-    whole(totals.gross),
-    whole(totals.advance),
-    whole(totals.advance2),
-    whole(totals.loan),
-    whole(totals.suit),
-    ...(withOther ? [whole(totals.other)] : []),
-    whole(totals.net),
-  ];
+  const cells = registerColumns(withOther).map((column) =>
+    column.kind === "money" ? whole(totals[column.key]) : decimal(totals[column.key]),
+  );
   return (
     <>
       {cells.map((value, index) => (
@@ -104,18 +94,7 @@ export function RegisterTable({ items, periodId }: { items: RegisterItem[]; peri
     "SR",
     "NAME",
     "DESIGNATION",
-    "S RATE",
-    "DAYS",
-    "AMOUNT",
-    "HOURS",
-    "AMOUNT",
-    "G SALARY",
-    "ADVANCE",
-    "ADVANCE",
-    "LOAN DED.",
-    "SUITE DED.",
-    ...(withOther ? ["OTHER DED."] : []),
-    "NET PAY",
+    ...registerColumns(withOther).map((column) => column.header),
   ];
 
   return (
@@ -141,7 +120,7 @@ export function RegisterTable({ items, periodId }: { items: RegisterItem[]; peri
             </summary>
 
             <div className="overflow-x-auto px-2 pb-3" dir="ltr">
-              <table className="w-full min-w-[1100px] text-xs">
+              <table className="w-full min-w-[1500px] text-xs">
                 <thead>
                   <tr className="bg-charcoal text-white">
                     {headers.map((header, index) => (
@@ -205,7 +184,7 @@ export function RegisterTable({ items, periodId }: { items: RegisterItem[]; peri
       </div>
 
       <div className="mt-3 overflow-x-auto rounded-2xl bg-charcoal px-2 text-white" dir="ltr">
-        <table className="w-full min-w-[1100px] text-xs">
+        <table className="w-full min-w-[1500px] text-xs">
           <tbody>
             <tr className="font-bold">
               <td className="px-2 py-3" colSpan={3}>

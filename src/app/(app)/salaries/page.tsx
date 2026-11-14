@@ -44,7 +44,7 @@ function breakdownOf(lines: readonly PayslipLine[]) {
 
   return {
     allowances: sum(
-      (line) => line.kind === "earning" && !["OT", "WEEKEND", "HOLIDAY"].includes(line.code),
+      (line) => line.kind === "earning" && !["OT", "SUNDAY", "WEEKEND", "HOLIDAY"].includes(line.code),
     ),
     advances: sum(
       (line) =>

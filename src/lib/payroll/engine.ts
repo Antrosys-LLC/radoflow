@@ -9,6 +9,7 @@ import {
   overtimeRate,
   roundMoney,
   splitDayHours,
+  sundayWork,
   type DutyTerms,
 } from "./hours";
 import { calculateLatePenalties } from "./late";
@@ -301,24 +302,50 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
   const holidayRate = employee.holidayHourlyRate ?? rule.holidayHourlyRate;
 
   const otPay = roundMoney(hours.overtime * otRate);
-  if (otPay > 0) {
+
+  /*
+   * Sunday hours are overtime by rule and keep the overtime rate, but they get
+   * their own line: "overtime 40 h" hides it when 32 of those were Sundays. The
+   * two lines add up to `otPay` exactly — Sunday is rounded first, weekday
+   * overtime takes the rest.
+   */
+  const sunday = sundayWork(days, rule, dutyHours, terms);
+  const sundayPay = roundMoney(Math.min(otPay, sunday.hours * otRate));
+  const weekdayOtPay = roundMoney(otPay - sundayPay);
+  const weekdayOtHours = roundMoney(hours.overtime - sunday.hours);
+
+  if (weekdayOtPay > 0) {
     lines.push({
       code: "OT",
       label: "Overtime",
       kind: "earning",
-      hours: hours.overtime,
+      hours: weekdayOtHours,
       rate: otRate,
-      amount: otPay,
+      amount: weekdayOtPay,
+    });
+  }
+  if (sundayPay > 0) {
+    lines.push({
+      code: "SUNDAY",
+      label: "Sunday work",
+      kind: "earning",
+      hours: sunday.hours,
+      days: sunday.days,
+      rate: otRate,
+      amount: sundayPay,
     });
   }
 
   const { weekendPay, holidayPay } = premiumPay(days, rule, weekendRate, holidayRate);
+  const daysWith = (bucket: "weekend" | "holiday") =>
+    days.filter((d) => splitDayHours(d, rule, dutyHours, terms)[bucket] > 0).length;
   if (weekendPay > 0) {
     lines.push({
       code: "WEEKEND",
       label: "Weekend / off-day shift",
       kind: "earning",
       hours: hours.weekend,
+      days: daysWith("weekend"),
       rate: weekendRate,
       amount: weekendPay,
     });
@@ -329,6 +356,7 @@ export function calculatePayroll(input: PayrollInput): PayrollResult {
       label: "Holiday shift",
       kind: "earning",
       hours: hours.holiday,
+      days: daysWith("holiday"),
       rate: holidayRate,
       amount: holidayPay,
     });

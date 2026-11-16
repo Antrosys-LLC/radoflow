@@ -154,39 +154,69 @@ export async function canteenDocument(
     to,
     format,
     deptIds = [],
-  }: { from: string; to: string; format: "pdf" | "xlsx"; deptIds?: readonly string[] },
+    profileId,
+  }: {
+    from: string;
+    to: string;
+    format: "pdf" | "xlsx";
+    deptIds?: readonly string[];
+    /** Narrows to one person — by internal id or by their employee code. */
+    profileId?: string;
+  },
 ): Promise<Document> {
-  const [{ data: priceSetting }, { data: windows }, allClaims, deptName, menu] = await Promise.all([
-    supabase.from("app_settings").select("value").eq("key", "canteen.meal_price_pkr").maybeSingle(),
-    supabase.from("meal_windows").select("id, name"),
-    mealClaims(supabase, from, to),
-    departmentNames(supabase),
-    loadMenus(supabase, from, to),
-  ]);
+  const [{ data: priceSetting }, { data: windows }, allClaims, deptName, menu, matchedPerson] =
+    await Promise.all([
+      supabase
+        .from("app_settings")
+        .select("value")
+        .eq("key", "canteen.meal_price_pkr")
+        .maybeSingle(),
+      supabase.from("meal_windows").select("id, name"),
+      mealClaims(supabase, from, to),
+      departmentNames(supabase),
+      loadMenus(supabase, from, to),
+      profileId
+        ? supabase
+            .from("profiles")
+            .select("id, full_name")
+            .or(`id.eq.${profileId},employee_code.eq.${profileId}`)
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+  if (profileId && !matchedPerson.data) {
+    return { ok: false, error: "No such person.", status: 404 };
+  }
+  const onePerson = matchedPerson.data;
 
   const price = readMealPrice(priceSetting?.value);
   const prices = dayPrices(menu.menus);
   const people = await directory(supabase, [...new Set(allClaims.map((c) => c.profile_id))]);
 
-  // The whole factory, or only the departments asked for.
-  const scoped = deptIds.length > 0;
-  const claims = scoped
-    ? allClaims.filter((claim) => {
-        const id = people.get(claim.profile_id)?.department_id;
-        return id ? deptIds.includes(id) : false;
-      })
-    : allClaims;
+  // One person outranks a department — the number on somebody's card is a
+  // more exact ask than the department they happen to sit in.
+  const scoped = !onePerson && deptIds.length > 0;
+  const claims = onePerson
+    ? allClaims.filter((claim) => claim.profile_id === onePerson.id)
+    : scoped
+      ? allClaims.filter((claim) => {
+          const id = people.get(claim.profile_id)?.department_id;
+          return id ? deptIds.includes(id) : false;
+        })
+      : allClaims;
   // Meals taken by numbers RadoFlow does not know: counted, and shown highlighted.
-  // They have no department, so a department-scoped report leaves them out.
-  const stray = scoped ? [] : await loadUnmatchedMeals(supabase, from, to);
+  // They have no department or person, so a scoped report leaves them out.
+  const stray = scoped || onePerson ? [] : await loadUnmatchedMeals(supabase, from, to);
   const summary = withUnmatched(summariseMeals(claims, price, prices), stray, price, prices);
   const strayPrice = (date: string) => prices.get(date) ?? price ?? 0;
-  const scope = scoped
-    ? deptIds
-        .map((id) => deptName.get(id))
-        .filter(Boolean)
-        .join(", ") || "Selected departments"
-    : "All departments";
+  const scope = onePerson
+    ? onePerson.full_name
+    : scoped
+      ? deptIds
+          .map((id) => deptName.get(id))
+          .filter(Boolean)
+          .join(", ") || "Selected departments"
+      : "All departments";
   const windowName = new Map((windows ?? []).map((row) => [row.id, row.name]));
 
   const departmentOf = (profileId: string) => {
@@ -350,7 +380,7 @@ export async function canteenDocument(
           { label: "People fed", value: (summary.byPerson.length + stray.length).toLocaleString("en-PK") },
         ],
       }),
-      name: `canteen-${from === to ? from : `${from}-to-${to}`}${scoped ? "-dept" : ""}.pdf`,
+      name: `canteen-${from === to ? from : `${from}-to-${to}`}${onePerson ? "-person" : scoped ? "-dept" : ""}.pdf`,
       type: PDF,
     };
   }
@@ -515,7 +545,7 @@ export async function canteenDocument(
         totals: ["", `${claims.length + stray.length} meals`, "", "", "", "", summary.total.amount],
       },
     ]),
-    name: `canteen-${from === to ? from : `${from}-to-${to}`}${scoped ? "-dept" : ""}.xlsx`,
+    name: `canteen-${from === to ? from : `${from}-to-${to}`}${onePerson ? "-person" : scoped ? "-dept" : ""}.xlsx`,
     type: XLSX,
   };
 }

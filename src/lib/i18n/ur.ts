@@ -1104,6 +1104,9 @@ const ur: Dictionary = {
   reports: {
     title: "رپورٹیں · {scope}",
     wholeFactory: "پوری فیکٹری",
+    downloadScope: "ڈاؤن لوڈ",
+    downloadScopeFiltered: "یہ فلٹر",
+    downloadScopePerson: "ایک فرد",
     periodHint: "{from} سے {to} تک — ہر عدد انہی حسابات سے آتا ہے جو پے رول چلاتے وقت لگتے ہیں۔",
     from: "سے",
     to: "تک",

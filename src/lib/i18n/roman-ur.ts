@@ -1128,6 +1128,9 @@ const roman: Dictionary = {
   reports: {
     title: "Reports · {scope}",
     wholeFactory: "Poori factory",
+    downloadScope: "Download",
+    downloadScopeFiltered: "Yeh filter",
+    downloadScopePerson: "Aik fard",
     periodHint:
       "{from} se {to} tak — har adad unhi hisabat se aata hai jo payroll chalate waqt lagte hain.",
     from: "Se",

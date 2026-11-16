@@ -274,7 +274,15 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
      * from a run.
      */
     if (kind === "canteen") {
-      return documentResponse(await canteenDocument(supabase, { from, to, format, deptIds }));
+      return documentResponse(
+        await canteenDocument(supabase, {
+          from,
+          to,
+          format,
+          deptIds,
+          ...(profileId ? { profileId } : {}),
+        }),
+      );
     }
 
     if (kind === "canteen-invoice") {

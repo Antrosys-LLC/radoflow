@@ -1466,6 +1466,9 @@ const en = {
     // `{scope}` is a department name, or the whole-factory wording below.
     title: "Reports · {scope}",
     wholeFactory: "Whole factory",
+    downloadScope: "Download",
+    downloadScopeFiltered: "This filter",
+    downloadScopePerson: "One person",
     periodHint: "{from} to {to} — every figure comes from the calculations the payroll run uses.",
     from: "From",
     to: "To",

@@ -16,7 +16,6 @@ import {
   type Slice,
 } from "@/components/charts";
 import { AskAbout } from "@/components/assistant/ask-about";
-import { ExportButtons } from "@/components/export-buttons";
 import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
 import { Card, SectionTitle } from "@/components/ui-kit";
@@ -32,9 +31,15 @@ import {
 } from "@/lib/payroll/hours";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
-import { canteenCardDepartmentIds, withoutCanteenCards, withoutCardDepartments } from "@/lib/people/canteen-cards";
+import {
+  canteenCardDepartmentIds,
+  withoutCanteenCards,
+  withoutCardDepartments,
+} from "@/lib/people/canteen-cards";
 import { createClient } from "@/lib/supabase/server";
 import { formatHours, todayInPakistan } from "@/lib/time";
+
+import { ReportsDownload } from "./reports-download";
 
 export const metadata: Metadata = {
   title: { absolute: "Reports | Rado Dyeing and Textile" },
@@ -350,8 +355,6 @@ export default async function ReportsPage({
     .map(([label, v]) => ({ label, value: Math.round(v.overtime * 100) / 100 }))
     .filter((d) => d.value > 0);
 
-  const exportParams = { from, to, dept: params.dept };
-
   // A department name as the office typed it, or the whole factory. Either
   // way it lands in the heading through `<Fill>`, which wraps it — a
   // department called "Dyeing 2" must not be reordered inside an Urdu title.
@@ -386,7 +389,16 @@ export default async function ReportsPage({
                   },
                 }}
               />
-              <ExportButtons kind="payroll" params={exportParams} />
+              <ReportsDownload
+                from={from}
+                to={to}
+                dept={params.dept}
+                people={everyone.map((p) => ({
+                  id: p.id,
+                  name: p.full_name,
+                  code: p.employee_code,
+                }))}
+              />
             </div>
           }
         />

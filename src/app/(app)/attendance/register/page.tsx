@@ -65,7 +65,7 @@ export const dynamic = "force-dynamic";
 const STATE_TONE: Record<RegisterState, string> = {
   present: "bg-success-soft text-success",
   working: "bg-warning-soft text-warning",
-  absent: "bg-danger-soft text-danger",
+  absent: "bg-absent-soft text-absent",
   not_required: "bg-secondary text-muted-foreground",
 };
 
@@ -213,7 +213,7 @@ export default async function RegisterPage({
           icon={UserX}
           label={t.status.attendance.absent}
           value={totals.absent}
-          tone="text-danger"
+          tone="text-absent"
           href={filterQuery("absent")}
           active={stateFilter === "absent"}
         />

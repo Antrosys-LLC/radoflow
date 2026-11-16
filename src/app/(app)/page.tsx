@@ -17,6 +17,12 @@ import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refre
 import { DailyHours, VizRoot } from "@/components/charts";
 import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Avatar, BarMeter, Card, SectionTitle, StatPill } from "@/components/ui-kit";
 import { dailyHourTotals } from "@/lib/attendance/daily-hours";
 import {
@@ -242,6 +248,13 @@ export default async function DashboardPage() {
   const working = live.filter((p) => p.live_status === "working");
   const missing = live.filter((p) => p.live_status === "missing");
   const lateToday = live.filter((p) => p.is_late);
+  // Shift not due yet, or nobody's rostered them on one at all — somebody
+  // covering for a colleague, or on the floor before their own shift starts,
+  // lives here rather than in "missing", which means a shift already began
+  // without them.
+  const notDueYet = live.filter(
+    (p) => p.live_status === "not_started" || p.live_status === "no_shift",
+  );
   const onlineDevices = devices.filter((d) => d.status === "online");
 
   // Attendance per department, from the same rows the floor board uses.
@@ -558,7 +571,7 @@ export default async function DashboardPage() {
             label={t.dashboard.notCheckedIn}
             value={<Latin>{missing.length}</Latin>}
             hint={t.dashboard.shiftStartedWithout}
-            tone={missing.length > 0 ? "danger" : "neutral"}
+            tone={missing.length > 0 ? "absent" : "neutral"}
           />
           <StatPill
             icon={Clock}
@@ -577,64 +590,73 @@ export default async function DashboardPage() {
         </div>
       ) : null}
 
-      {/* Pulled out of the department card into its own section: the people
-          worth acting on should never be a line buried inside another card. */}
-      {seesFloor && missing.length > 0 ? (
-        <Card>
-          <SectionTitle
-            icon={TriangleAlert}
-            title={
-              <>
-                {t.dashboard.absentTodayTitle}
-                <span className="ms-2 inline-flex items-center justify-center rounded-full bg-danger px-2.5 py-0.5 text-xs font-bold text-white">
-                  <Latin>{missing.length}</Latin>
-                </span>
-              </>
-            }
-            subtitle={t.dashboard.absentTodayHint}
-            action={
-              <Link
-                href="/attendance"
-                className="inline-flex items-center gap-2 rounded-xl bg-secondary px-4 py-2 text-sm font-semibold text-foreground transition-all duration-300 hover:bg-primary-soft hover:text-primary"
-              >
-                {t.dashboard.viewFloorBoard}
-                <ArrowRight className="size-4 rtl-flip" />
-              </Link>
-            }
-          />
+      {/* Pulled out of the department card into its own section, and now an
+          accordion rather than always open: the absent list alone can run to
+          forty-plus names, and a card that long pushed the chart and the pay
+          run off the first screen for everyone, not only the person who
+          needed to act on it. A second, separate section sits under it for
+          people no shift has started for yet, or who are on no shift at all
+          — someone covering for a colleague, or in before their own shift —
+          so marking them present never means hunting through "missing",
+          which means a shift already began without them. */}
+      {seesFloor && (missing.length > 0 || notDueYet.length > 0) ? (
+        <Accordion type="multiple" className="space-y-3">
+          {missing.length > 0 ? (
+            <PeopleAccordionItem
+              value="absent"
+              icon={TriangleAlert}
+              title={t.dashboard.absentTodayTitle}
+              subtitle={t.dashboard.absentTodayHint}
+              count={missing.length}
+              countTone="bg-absent text-white"
+            >
+              {missing.map((person) => (
+                <PersonRow
+                  key={person.profile_id}
+                  person={person}
+                  deptName={deptName}
+                  unassignedLabel={t.common.unassigned}
+                  today={today}
+                  canCorrect={canCorrectAttendance}
+                  rowTone="bg-absent-soft/60"
+                />
+              ))}
+            </PeopleAccordionItem>
+          ) : null}
 
-          <div className="grid gap-2 sm:grid-cols-2">
-            {missing.map((person) => (
-              <div
-                key={person.profile_id}
-                className="flex items-center gap-3 rounded-2xl bg-danger-soft/60 p-3"
-              >
-                <Avatar name={person.full_name ?? "??"} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-foreground">
-                    <Latin>{person.full_name}</Latin>
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    <Latin>{person.employee_code}</Latin> ·{" "}
-                    {deptName.get(person.department_id ?? "") ?? t.common.unassigned}
-                  </p>
-                </div>
-                {canCorrectAttendance ? (
-                  <CorrectDayButton
-                    day={{
-                      id: person.day_id,
-                      profileId: person.profile_id ?? "",
-                      workDate: person.work_date ?? today,
-                      firstIn: clockTime(person.first_in),
-                      lastOut: clockTime(person.last_out),
-                      status: person.day_status ?? "present",
-                    }}
-                  />
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </Card>
+          {notDueYet.length > 0 ? (
+            <PeopleAccordionItem
+              value="not-due"
+              icon={Clock}
+              title={t.dashboard.notDueYetTitle}
+              subtitle={t.dashboard.notDueYetHint}
+              count={notDueYet.length}
+              countTone="bg-warning text-charcoal"
+            >
+              {notDueYet.map((person) => (
+                <PersonRow
+                  key={person.profile_id}
+                  person={person}
+                  deptName={deptName}
+                  unassignedLabel={t.common.unassigned}
+                  today={today}
+                  canCorrect={canCorrectAttendance}
+                  rowTone="bg-warning-soft/60"
+                />
+              ))}
+            </PeopleAccordionItem>
+          ) : null}
+        </Accordion>
+      ) : null}
+
+      {seesFloor ? (
+        <Link
+          href="/attendance"
+          className="-mt-1 inline-flex items-center gap-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-primary"
+        >
+          {t.dashboard.viewFloorBoard}
+          <ArrowRight className="size-4 rtl-flip" />
+        </Link>
       ) : null}
 
       <VizRoot>
@@ -863,6 +885,113 @@ function Empty({ text }: { text: string }) {
   return (
     <div className="rounded-2xl bg-secondary p-6 text-center text-sm text-muted-foreground">
       {text}
+    </div>
+  );
+}
+
+/** One of the two dashboard "people worth acting on" sections, collapsed by default. */
+function PeopleAccordionItem({
+  value,
+  icon: Icon,
+  title,
+  subtitle,
+  count,
+  countTone,
+  children,
+}: {
+  value: string;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  subtitle: string;
+  count: number;
+  countTone: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <AccordionItem
+      value={value}
+      className="overflow-hidden rounded-3xl border border-border bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_8px_24px_rgb(0_0_0/0.05)]"
+    >
+      <AccordionTrigger className="gap-3 px-4 py-4 hover:no-underline sm:px-6">
+        <span className="flex min-w-0 flex-1 items-center gap-3">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+            <Icon className="size-5" />
+          </span>
+          <span className="min-w-0">
+            <span className="flex items-center text-lg font-semibold tracking-tight text-foreground">
+              {title}
+              <span
+                className={cn(
+                  "ms-2 inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-xs font-bold",
+                  countTone,
+                )}
+              >
+                <Latin>{count}</Latin>
+              </span>
+            </span>
+            <span className="block text-sm font-normal text-muted-foreground">{subtitle}</span>
+          </span>
+        </span>
+      </AccordionTrigger>
+      <AccordionContent className="px-4 pb-5 sm:px-6">
+        <div className="grid gap-2 sm:grid-cols-2">{children}</div>
+      </AccordionContent>
+    </AccordionItem>
+  );
+}
+
+interface LivePerson {
+  profile_id: string | null;
+  full_name: string | null;
+  employee_code: string | null;
+  department_id: string | null;
+  day_id: string | null;
+  work_date: string | null;
+  first_in: string | null;
+  last_out: string | null;
+  day_status: string | null;
+}
+
+/** One person, with the mark-present ticket action — shared by both accordion sections. */
+function PersonRow({
+  person,
+  deptName,
+  unassignedLabel,
+  today,
+  canCorrect,
+  rowTone,
+}: {
+  person: LivePerson;
+  deptName: Map<string, string>;
+  unassignedLabel: string;
+  today: string;
+  canCorrect: boolean;
+  rowTone: string;
+}) {
+  return (
+    <div className={cn("flex items-center gap-3 rounded-2xl p-3", rowTone)}>
+      <Avatar name={person.full_name ?? "??"} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-foreground">
+          <Latin>{person.full_name}</Latin>
+        </p>
+        <p className="truncate text-xs text-muted-foreground">
+          <Latin>{person.employee_code}</Latin> ·{" "}
+          {deptName.get(person.department_id ?? "") ?? unassignedLabel}
+        </p>
+      </div>
+      {canCorrect ? (
+        <CorrectDayButton
+          day={{
+            id: person.day_id,
+            profileId: person.profile_id ?? "",
+            workDate: person.work_date ?? today,
+            firstIn: clockTime(person.first_in),
+            lastOut: clockTime(person.last_out),
+            status: person.day_status ?? "present",
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -47,7 +47,7 @@ const STATUS_META: Record<
     tone: "bg-secondary text-muted-foreground",
     dot: "bg-muted-foreground",
   },
-  missing: { labelKey: "notCheckedIn", tone: "bg-danger-soft text-danger", dot: "bg-danger" },
+  missing: { labelKey: "notCheckedIn", tone: "bg-absent-soft text-absent", dot: "bg-absent" },
   not_started: {
     labelKey: "shiftNotStarted",
     tone: "bg-warning-soft text-warning",
@@ -114,7 +114,7 @@ export default async function AttendancePage() {
           label={t.attendance.notCheckedIn}
           value={missing.length}
           hint={t.attendance.shiftStartedWithout}
-          tone="danger"
+          tone="absent"
         />
         <Tile
           icon={Clock}
@@ -297,7 +297,9 @@ function PeopleCard({
                           : person.requires_attendance === false
                             ? t.attendance.fixedSalaryLabel
                             : (person.shift_name ?? t.attendance.noShift)}
-                        {person.shift_starts_at && !person.flexible_hours && person.requires_attendance !== false ? (
+                        {person.shift_starts_at &&
+                        !person.flexible_hours &&
+                        person.requires_attendance !== false ? (
                           <>
                             {" "}
                             <Fill
@@ -379,12 +381,13 @@ function Tile({
   label: string;
   value: number;
   hint: string;
-  tone: "success" | "danger" | "warning" | "neutral";
+  tone: "success" | "danger" | "warning" | "absent" | "neutral";
 }) {
   const tones = {
     success: "bg-success-soft text-success",
     danger: "bg-danger-soft text-danger",
     warning: "bg-warning-soft text-warning",
+    absent: "bg-absent-soft text-absent",
     neutral: "bg-secondary text-foreground",
   } as const;
 

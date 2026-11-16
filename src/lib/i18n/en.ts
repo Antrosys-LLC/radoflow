@@ -750,6 +750,9 @@ const en = {
     absentTodayTitle: "Not checked in today",
     absentTodayHint:
       "If somebody here is actually on the floor, mark them present — it goes for approval before it counts.",
+    notDueYetTitle: "Shift not started, or no shift",
+    notDueYetHint:
+      "Covering for someone, or in early? Mark them present here rather than waiting for their own shift to show them as missing.",
     viewFloorBoard: "View the floor board",
     everyoneCheckedIn: "Everyone is checked in.",
     pendingApprovalsTitle: "Waiting on your approval",

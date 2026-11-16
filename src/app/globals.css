@@ -48,6 +48,8 @@
   --color-warning-soft: var(--warning-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
+  --color-absent: var(--absent);
+  --color-absent-soft: var(--absent-soft);
   /* --font-plus-jakarta is injected by next/font in src/app/layout.tsx */
   --font-sans: var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
   /* --font-nastaliq is injected by next/font in src/app/layout.tsx */
@@ -90,6 +92,16 @@
   --warning-soft: oklch(0.987 0.022 95.3);
   --info: oklch(0.62 0.14 250);
   --info-soft: oklch(0.97 0.017 250);
+  /*
+   * Absent gets its own hue rather than reusing `danger`. Red is for a
+   * mistake or a destructive action; a day nobody turned up for is neither —
+   * it is the single most common state on the board, and painting the whole
+   * floor's absentee list the same colour as a delete button overstates it.
+   * Sits between `danger` (25) and `warning` (70) on the hue wheel: a true
+   * orange, legible next to both without being mistaken for either.
+   */
+  --absent: oklch(0.68 0.21 45);
+  --absent-soft: oklch(0.976 0.03 50);
 }
 
 .dark {
@@ -121,6 +133,7 @@
   --danger-soft: oklch(0.3 0.06 22);
   --warning-soft: oklch(0.32 0.06 80);
   --info-soft: oklch(0.3 0.05 250);
+  --absent-soft: oklch(0.32 0.07 48);
   /*
    * The status hues, raised for a dark surface.
    *
@@ -134,6 +147,7 @@
   --destructive: oklch(0.71 0.19 25.3);
   --info: oklch(0.72 0.13 250);
   --success: oklch(0.75 0.16 162.48);
+  --absent: oklch(0.74 0.19 45);
 }
 
 @layer base {

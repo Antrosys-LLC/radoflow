@@ -1,13 +1,25 @@
 import type { ReactNode } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, Clock, NotebookPen, ScrollText, TriangleAlert, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  Clock,
+  NotebookPen,
+  ScrollText,
+  TriangleAlert,
+  Users,
+} from "lucide-react";
 
 import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refresh";
 import { ExportButtons } from "@/components/export-buttons";
 import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
-import { canteenCardDepartmentIds, withoutCanteenCards, withoutCardDepartments } from "@/lib/people/canteen-cards";
+import {
+  canteenCardDepartmentIds,
+  withoutCanteenCards,
+  withoutCardDepartments,
+} from "@/lib/people/canteen-cards";
 import { matchesPerson } from "@/lib/people/match";
 import { AskAbout } from "@/components/assistant/ask-about";
 import { Card, SectionTitle } from "@/components/ui-kit";
@@ -1016,7 +1028,7 @@ function Cohort({
                   <td
                     className={cn(
                       "px-4 py-3 text-end tabular-nums",
-                      row.late > 0 && "font-semibold text-danger",
+                      row.late > 0 && "font-semibold text-warning",
                     )}
                   >
                     {row.late > 0 ? <Latin>{row.late}</Latin> : "—"}
@@ -1024,7 +1036,7 @@ function Cohort({
                   <td
                     className={cn(
                       "px-4 py-3 text-end tabular-nums",
-                      row.lateAmount > 0 && "font-semibold text-danger",
+                      row.lateAmount > 0 && "font-semibold text-warning",
                     )}
                   >
                     <Latin>{row.lateAmount > 0 ? `− Rs ${money(row.lateAmount)}` : "—"}</Latin>
@@ -1079,7 +1091,9 @@ function Cohort({
                     {totals.late > 0 ? <Latin>{totals.late}</Latin> : "—"}
                   </td>
                   <td className="px-4 py-3 text-end tabular-nums">
-                    <Latin>{totals.lateAmount > 0 ? `− Rs ${money(totals.lateAmount)}` : "—"}</Latin>
+                    <Latin>
+                      {totals.lateAmount > 0 ? `− Rs ${money(totals.lateAmount)}` : "—"}
+                    </Latin>
                   </td>
                   <td className="px-4 py-3 text-end tabular-nums">
                     <Latin>Rs {money(totals.earned)}</Latin>
@@ -1205,7 +1219,16 @@ function PersonLog({
                   perHour: <strong className="text-foreground">Rs {money(perOtHour)}</strong>,
                   total: (
                     <strong className="text-foreground">
-                      Rs {money(Math.max(0, summary.workingPay + summary.sundayPay + summary.overtimePay - summary.lateAmount))}
+                      Rs{" "}
+                      {money(
+                        Math.max(
+                          0,
+                          summary.workingPay +
+                            summary.sundayPay +
+                            summary.overtimePay -
+                            summary.lateAmount,
+                        ),
+                      )}
                     </strong>
                   ),
                 }}
@@ -1392,7 +1415,7 @@ function PersonLog({
                     <td
                       className={cn(
                         "px-4 py-3 text-end tabular-nums",
-                        row.is_late && "font-semibold text-danger",
+                        row.is_late && "font-semibold text-warning",
                       )}
                     >
                       {row.minutes_late ? <Latin>{row.minutes_late}m</Latin> : "—"}

@@ -687,6 +687,9 @@ const ur: Dictionary = {
     openMyProfile: "میری پروفائل کھولیں",
     absentTodayTitle: "آج حاضری نہیں لگائی",
     absentTodayHint: "اگر کوئی واقعی موجود ہے تو اسے حاضر کریں — یہ منظوری کے بعد ہی لاگو ہوگا۔",
+    notDueYetTitle: "شفٹ شروع نہیں ہوئی، یا کوئی شفٹ نہیں",
+    notDueYetHint:
+      "کسی کی جگہ ڈیوٹی دے رہے ہیں یا جلدی آگئے؟ یہاں سے حاضر کریں، اپنی شفٹ کے غیرحاضر دکھانے کا انتظار نہ کریں۔",
     viewFloorBoard: "فلور بورڈ دیکھیں",
     everyoneCheckedIn: "سب کی حاضری لگ چکی ہے۔",
     pendingApprovalsTitle: "آپ کی منظوری کا انتظار",

@@ -699,6 +699,9 @@ const roman: Dictionary = {
     absentTodayTitle: "Aaj check-in nahi hua",
     absentTodayHint:
       "Agar koi wakai floor par hai to usay present mark karein — yeh approval ke baad hi lagu hoga.",
+    notDueYetTitle: "Shift shuru nahi hui, ya koi shift nahi",
+    notDueYetHint:
+      "Kisi ki jagah duty de rahe hain ya jaldi aa gaye? Yahan se present karein, apni shift ke missing dikhane ka intezar na karein.",
     viewFloorBoard: "Floor board dekhein",
     everyoneCheckedIn: "Sab ki check-in ho chuki hai.",
     pendingApprovalsTitle: "Aap ki approval ka intezar",

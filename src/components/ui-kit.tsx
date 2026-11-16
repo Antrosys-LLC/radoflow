@@ -62,7 +62,7 @@ export function StatPill({
   /** The figure itself, so callers can wrap it in `<Latin>`. */
   value: React.ReactNode;
   hint?: string;
-  tone?: "neutral" | "primary" | "success" | "warning" | "danger";
+  tone?: "neutral" | "primary" | "success" | "warning" | "danger" | "absent";
 }) {
   const tones = {
     neutral: "bg-secondary text-foreground",
@@ -70,6 +70,7 @@ export function StatPill({
     success: "bg-success-soft text-success",
     warning: "bg-warning-soft text-warning",
     danger: "bg-danger-soft text-danger",
+    absent: "bg-absent-soft text-absent",
   } as const;
 
   return (
@@ -175,7 +176,7 @@ export function StatusBadge({ status }: { status: AttendanceStatus }) {
   const map = {
     present: { icon: CheckCircle2, text: "Present", cls: "bg-success-soft text-success" },
     partial: { icon: Clock3, text: "Partial", cls: "bg-warning-soft text-warning" },
-    absent: { icon: XCircle, text: "Absent", cls: "bg-danger-soft text-danger" },
+    absent: { icon: XCircle, text: "Absent", cls: "bg-absent-soft text-absent" },
     leave: { icon: Clock3, text: "Leave", cls: "bg-info-soft text-info" },
     holiday: { icon: Clock3, text: "Holiday", cls: "bg-secondary text-muted-foreground" },
     off: { icon: Clock3, text: "Off day", cls: "bg-secondary text-muted-foreground" },

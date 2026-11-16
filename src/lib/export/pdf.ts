@@ -34,11 +34,18 @@ export interface Column {
 /**
  * One line of a table.
  *
- * A plain array is a data row. The two object forms are what a register
- * printed by department needs: a heading that opens a department, and the
- * bold line that closes it with its own totals.
+ * A plain array is a data row, optionally tinted to match the colour the
+ * rest of RadoFlow uses for that person's day — amber for late, orange for
+ * absent — so a printed log reads the same way the live screens do. The two
+ * object forms are what a register printed by department needs: a heading
+ * that opens a department, and the bold line that closes it with its own
+ * totals.
  */
-export type TableRow = (string | number)[] | { group: string } | { subtotal: (string | number)[] };
+export type TableRow =
+  | (string | number)[]
+  | { cells: (string | number)[]; tone?: "late" | "absent" }
+  | { group: string }
+  | { subtotal: (string | number)[] };
 
 export interface TableDoc {
   title: string;
@@ -82,6 +89,12 @@ const RED_TINT: Rgb = { r: 0.992, g: 0.933, b: 0.933 };
 const BAND: Rgb = { r: 0.137, g: 0.137, b: 0.149 };
 const TINT: Rgb = { r: 0.957, g: 0.953, b: 0.945 };
 const ZEBRA: Rgb = { r: 0.982, g: 0.98, b: 0.975 };
+/** Late, the same amber as the `warning` token in `globals.css`. */
+const LATE: Rgb = { r: 0.792, g: 0.541, b: 0.016 };
+const LATE_TINT: Rgb = { r: 0.998, g: 0.961, b: 0.878 };
+/** Absent, the same orange as the `absent` token — deliberately not red. */
+const ABSENT: Rgb = { r: 0.761, g: 0.255, b: 0.047 };
+const ABSENT_TINT: Rgb = { r: 0.998, g: 0.936, b: 0.898 };
 const HAIRLINE = 0.88;
 
 const MARGIN = 36;
@@ -467,6 +480,10 @@ function drawBreakdown(page: Page, top: number, lines: readonly BreakdownLine[])
 const isGroup = (row: TableRow): row is { group: string } => !Array.isArray(row) && "group" in row;
 const isSubtotal = (row: TableRow): row is { subtotal: (string | number)[] } =>
   !Array.isArray(row) && "subtotal" in row;
+const isToned = (row: TableRow): row is { cells: (string | number)[]; tone?: "late" | "absent" } =>
+  !Array.isArray(row) && "cells" in row;
+const cellsOf = (row: TableRow): (string | number)[] =>
+  isToned(row) ? row.cells : (row as (string | number)[]);
 
 /**
  * A paginated table.
@@ -591,8 +608,21 @@ export function buildTablePdf(doc: TableDoc): Buffer {
         page.line(MARGIN, y, MARGIN + usableWidth, y, 0.35, 0.6);
         drawCells(page, y - 10.5, row.subtotal, 8, true, INK);
       } else {
-        if (zebra++ % 2 === 1) page.rect(MARGIN, y - ROW, usableWidth, ROW, ZEBRA);
-        drawCells(page, y - 10.5, row, 8, false, INK);
+        const tone = isToned(row) ? row.tone : undefined;
+        if (tone === "late") page.rect(MARGIN, y - ROW, usableWidth, ROW, LATE_TINT);
+        else if (tone === "absent") page.rect(MARGIN, y - ROW, usableWidth, ROW, ABSENT_TINT);
+        else if (zebra % 2 === 1) page.rect(MARGIN, y - ROW, usableWidth, ROW, ZEBRA);
+        zebra++;
+        if (tone === "late") page.rect(MARGIN, y - ROW, 2.5, ROW, LATE);
+        else if (tone === "absent") page.rect(MARGIN, y - ROW, 2.5, ROW, ABSENT);
+        drawCells(
+          page,
+          y - 10.5,
+          cellsOf(row),
+          8,
+          false,
+          tone === "late" ? LATE : tone === "absent" ? ABSENT : INK,
+        );
         page.line(MARGIN, y - ROW, MARGIN + usableWidth, y - ROW, 0.93, 0.3);
       }
       y -= ROW;

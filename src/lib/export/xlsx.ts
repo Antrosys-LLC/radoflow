@@ -36,9 +36,15 @@ export interface SheetColumn {
 
 /**
  * One line of a sheet: a data row, a department heading, or the bold line
- * that closes a department with its own totals.
+ * that closes a department with its own totals. A data row may carry a
+ * `tone` — amber for late, orange for absent — matching what the rest of
+ * RadoFlow uses for that day, instead of the plain zebra banding.
  */
-export type SheetRow = CellValue[] | { group: string } | { subtotal: CellValue[] };
+export type SheetRow =
+  | CellValue[]
+  | { cells: CellValue[]; tone?: "late" | "absent" }
+  | { group: string }
+  | { subtotal: CellValue[] };
 
 export interface Sheet {
   name: string;
@@ -90,6 +96,22 @@ const TOTAL_STYLE: Record<Format, number> = {
   money: 22,
   hours: 23,
   date: 20,
+};
+/** Late, the same amber as the `warning` token in `globals.css`. */
+const LATE_STYLE: Record<Format, number> = {
+  text: 24,
+  number: 25,
+  money: 26,
+  hours: 27,
+  date: 24,
+};
+/** Absent, the same orange as the `absent` token — deliberately not red. */
+const ABSENT_STYLE: Record<Format, number> = {
+  text: 28,
+  number: 29,
+  money: 30,
+  hours: 31,
+  date: 28,
 };
 
 const escapeXml = (value: string) =>
@@ -147,6 +169,9 @@ function cellXml(value: CellValue, ref: string, styleIndex: number): string {
 const isGroup = (row: SheetRow): row is { group: string } => !Array.isArray(row) && "group" in row;
 const isSubtotal = (row: SheetRow): row is { subtotal: CellValue[] } =>
   !Array.isArray(row) && "subtotal" in row;
+const isToned = (row: SheetRow): row is { cells: CellValue[]; tone?: "late" | "absent" } =>
+  !Array.isArray(row) && "cells" in row;
+const cellsOf = (row: SheetRow): CellValue[] => (isToned(row) ? row.cells : (row as CellValue[]));
 
 /** Logo size in pixels, and where the letterhead text starts to clear it. */
 const LOGO_PX = 54;
@@ -243,13 +268,23 @@ function sheetXml(sheet: Sheet): SheetLayout {
           `</row>`,
       );
     } else {
-      const styles = zebra++ % 2 === 1 ? ZEBRA_STYLE : DATA_STYLE;
+      const tone = isToned(row) ? row.tone : undefined;
+      const styles =
+        tone === "late"
+          ? LATE_STYLE
+          : tone === "absent"
+            ? ABSENT_STYLE
+            : zebra % 2 === 1
+              ? ZEBRA_STYLE
+              : DATA_STYLE;
+      zebra++;
+      const cells = cellsOf(row);
       rows.push(
         `<row r="${rowIndex}">` +
           columns
             .map((column, i) =>
               cellXml(
-                row[i] ?? null,
+                cells[i] ?? null,
                 `${columnName(i)}${rowIndex}`,
                 styles[column.format ?? "text"],
               ),
@@ -358,7 +393,7 @@ const STYLES_XML =
   `<numFmt numFmtId="165" formatCode="#,##0.00;(#,##0.00);&quot;-&quot;"/>` +
   `<numFmt numFmtId="166" formatCode="yyyy-mm-dd"/>` +
   `</numFmts>` +
-  `<fonts count="7">` +
+  `<fonts count="9">` +
   `<font><sz val="10"/><color rgb="FF1C1C1E"/><name val="Arial"/><family val="2"/></font>` +
   `<font><b/><sz val="16"/><color rgb="FF1C1C1E"/><name val="Arial"/><family val="2"/></font>` +
   `<font><b/><sz val="12"/><color rgb="FFE01E23"/><name val="Arial"/><family val="2"/></font>` +
@@ -366,14 +401,20 @@ const STYLES_XML =
   `<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Arial"/><family val="2"/></font>` +
   `<font><b/><sz val="10"/><color rgb="FF9E1217"/><name val="Arial"/><family val="2"/></font>` +
   `<font><b/><sz val="10"/><color rgb="FF1C1C1E"/><name val="Arial"/><family val="2"/></font>` +
+  // 7 late (amber), 8 absent (orange) — the same tones as the app's status badges
+  `<font><sz val="10"/><color rgb="FFCA8A04"/><name val="Arial"/><family val="2"/></font>` +
+  `<font><sz val="10"/><color rgb="FFC2410C"/><name val="Arial"/><family val="2"/></font>` +
   `</fonts>` +
-  `<fills count="6">` +
+  `<fills count="8">` +
   `<fill><patternFill patternType="none"/></fill>` +
   `<fill><patternFill patternType="gray125"/></fill>` +
   `<fill><patternFill patternType="solid"><fgColor rgb="FF232326"/><bgColor indexed="64"/></patternFill></fill>` +
   `<fill><patternFill patternType="solid"><fgColor rgb="FFF4F3F1"/><bgColor indexed="64"/></patternFill></fill>` +
   `<fill><patternFill patternType="solid"><fgColor rgb="FFFAFAF8"/><bgColor indexed="64"/></patternFill></fill>` +
   `<fill><patternFill patternType="solid"><fgColor rgb="FFFDEEEE"/><bgColor indexed="64"/></patternFill></fill>` +
+  // 6 late tint, 7 absent tint
+  `<fill><patternFill patternType="solid"><fgColor rgb="FFFEF6E0"/><bgColor indexed="64"/></patternFill></fill>` +
+  `<fill><patternFill patternType="solid"><fgColor rgb="FFFEF0E6"/><bgColor indexed="64"/></patternFill></fill>` +
   `</fills>` +
   `<borders count="4">` +
   `<border><left/><right/><top/><bottom/><diagonal/></border>` +
@@ -382,7 +423,7 @@ const STYLES_XML =
   `<border><left/><right/><top/><bottom style="medium"><color rgb="FFE01E23"/></bottom><diagonal/></border>` +
   `</borders>` +
   `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
-  `<cellXfs count="24">` +
+  `<cellXfs count="34">` +
   // 0 base
   `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>` +
   // 1 company, 2 title, 3 subtitle
@@ -415,6 +456,18 @@ const STYLES_XML =
   `<xf numFmtId="164" fontId="4" fillId="2" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>` +
   `<xf numFmtId="164" fontId="4" fillId="2" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>` +
   `<xf numFmtId="165" fontId="4" fillId="2" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>` +
+  // 24–28 late: text, number, money, hours, date — amber text on an amber tint
+  `<xf numFmtId="0" fontId="7" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>` +
+  `<xf numFmtId="164" fontId="7" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>` +
+  `<xf numFmtId="164" fontId="7" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>` +
+  `<xf numFmtId="165" fontId="7" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>` +
+  `<xf numFmtId="166" fontId="7" fillId="6" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>` +
+  // 29–33 absent: text, number, money, hours, date — orange text on an orange tint
+  `<xf numFmtId="0" fontId="8" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>` +
+  `<xf numFmtId="164" fontId="8" fillId="7" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>` +
+  `<xf numFmtId="164" fontId="8" fillId="7" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>` +
+  `<xf numFmtId="165" fontId="8" fillId="7" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>` +
+  `<xf numFmtId="166" fontId="8" fillId="7" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>` +
   `</cellXfs>` +
   `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>` +
   `</styleSheet>`;

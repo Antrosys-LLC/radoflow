@@ -544,6 +544,14 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
         r.late,
         r.status,
       ];
+      // Only one tone per row, matching the colour the live screens use for the
+      // same day: absent outranks late, since a day can't be both.
+      const toneOf = (r: { status: string; late: number }) =>
+        r.status === "Absent"
+          ? ({ tone: "absent" } as const)
+          : r.late > 0
+            ? ({ tone: "late" } as const)
+            : {};
 
       /*
        * "Till now": one line per person for everything from the start date up to
@@ -661,7 +669,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
               { header: "Late (min)", width: 44, align: "right" },
               { header: "Status", width: 58 },
             ],
-            rows: table.map(cells),
+            rows: table.map((r) => ({ cells: cells(r), ...toneOf(r) })),
             totals: ["Total", "", `${people.length} people`, "", "", "", totalHours, "", ""],
             orientation: "landscape",
           }),
@@ -702,16 +710,19 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
                 { header: "Late (min)", width: 11, format: "number" as const },
                 { header: "Status", width: 14, format: "text" as const },
               ],
-              rows: day.map((r) => [
-                r.code,
-                r.name,
-                r.department,
-                r.checkIn,
-                r.checkOut,
-                r.hours,
-                r.late,
-                r.status,
-              ]),
+              rows: day.map((r) => ({
+                cells: [
+                  r.code,
+                  r.name,
+                  r.department,
+                  r.checkIn,
+                  r.checkOut,
+                  r.hours,
+                  r.late,
+                  r.status,
+                ],
+                ...toneOf(r),
+              })),
               totals: [
                 "",
                 `${day.length} people`,
@@ -743,7 +754,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
               { header: "Late (min)", width: 11, format: "number" },
               { header: "Status", width: 14, format: "text" },
             ],
-            rows: table.map(cells),
+            rows: table.map((r) => ({ cells: cells(r), ...toneOf(r) })),
             totals: ["", "", `${people.length} people`, "", "", "", totalHours, "", ""],
           },
           {

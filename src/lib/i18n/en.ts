@@ -744,6 +744,19 @@ const en = {
     yourRecords: "Your records",
     everythingAvailable: "Everything available to you",
     openMyProfile: "Open my profile",
+    // Pulled out of the department card into its own section, front and
+    // centre: the names worth acting on should never be the thing you have
+    // to go looking for.
+    absentTodayTitle: "Not checked in today",
+    absentTodayHint:
+      "If somebody here is actually on the floor, mark them present — it goes for approval before it counts.",
+    viewFloorBoard: "View the floor board",
+    everyoneCheckedIn: "Everyone is checked in.",
+    pendingApprovalsTitle: "Waiting on your approval",
+    pendingApprovalsHint: "Pay, attendance and calendar changes somebody asked for",
+    viewAllApprovals: "View all approvals",
+    nothingAwaitingApproval: "Nothing is waiting on you right now.",
+    andMoreWaiting: "and {count} more waiting",
   },
   attendance: {
     title: "Attendance",
@@ -796,6 +809,7 @@ const en = {
     // Checked in with no check-out yet: on today's register someone still on
     // the floor, on a past date a missed check-out worth correcting.
     stillIn: "Still in",
+    clearStateFilter: "Showing only {state} — clear",
     // Someone attendance is not required of — a monthly employee the terminals
     // do not track. Not absent; nothing is owed.
     notRequired: "Not required",

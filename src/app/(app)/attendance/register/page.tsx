@@ -1,5 +1,15 @@
 import type { Metadata } from "next";
-import { CalendarDays, Clock, LogIn, LogOut, TriangleAlert, UserCheck, UserX } from "lucide-react";
+import Link from "next/link";
+import {
+  CalendarDays,
+  Clock,
+  LogIn,
+  LogOut,
+  TriangleAlert,
+  UserCheck,
+  UserX,
+  X,
+} from "lucide-react";
 
 import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refresh";
 import { Fill } from "@/components/fill";
@@ -14,13 +24,18 @@ import {
   type RegisterPerson,
   type RegisterState,
 } from "@/lib/attendance/register";
-import { canteenCardDepartmentIds, withoutCanteenCards, withoutCardDepartments } from "@/lib/people/canteen-cards";
+import {
+  canteenCardDepartmentIds,
+  withoutCanteenCards,
+  withoutCardDepartments,
+} from "@/lib/people/canteen-cards";
 import { matchesPerson } from "@/lib/people/match";
 import { selectInBatches } from "@/lib/supabase/in-batches";
 import { createClient } from "@/lib/supabase/server";
-import { formatHours, formatTime, todayInPakistan } from "@/lib/time";
+import { clockTime, formatHours, formatTime, todayInPakistan } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
+import { CorrectDayButton } from "../logs/correct-day";
 import { RegisterDownload } from "./register-download";
 
 export const metadata: Metadata = {
@@ -78,7 +93,7 @@ function stateLabel(t: Dictionary, state: RegisterState): string {
 export default async function RegisterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; q?: string; dept?: string }>;
+  searchParams: Promise<{ date?: string; q?: string; dept?: string; state?: string }>;
 }) {
   const session = await requireAnyPermission(["attendance.view", "attendance.view.all"]);
   const t = dictionaryFor(session.profile.language);
@@ -149,6 +164,31 @@ export default async function RegisterPage({
   const totals = summarise(rows);
   const isToday = date === todayInPakistan();
 
+  // A tile doubles as a filter: clicking "Absent" is how the people worth
+  // acting on stop being a row to scroll past and become the whole list.
+  const REGISTER_STATES = ["present", "working", "absent", "not_required"] as const;
+  const stateFilter = REGISTER_STATES.includes(params.state as RegisterState)
+    ? (params.state as RegisterState)
+    : null;
+  const shownRows = stateFilter ? rows.filter((row) => row.state === stateFilter) : rows;
+
+  const canCorrect =
+    session.isSuperuser ||
+    session.permissions.has("attendance.edit") ||
+    session.permissions.has("attendance.edit.all");
+
+  // What the filter form already chose, so a tile can link to the same
+  // register with only `state` added or changed — never a filter reset.
+  const filterQuery = (state: string) => {
+    const query = new URLSearchParams();
+    if (params.date) query.set("date", params.date);
+    if (params.q) query.set("q", params.q);
+    if (params.dept) query.set("dept", params.dept);
+    if (state) query.set("state", state);
+    const string = query.toString();
+    return string ? `/attendance/register?${string}` : "/attendance/register";
+  };
+
   return (
     <div className="space-y-5 pb-6">
       {/* Only today's register changes under the reader; a past date is settled. */}
@@ -161,15 +201,37 @@ export default async function RegisterPage({
           value={totals.present + totals.working}
           tone="text-success"
         />
-        <Tile icon={Clock} label={t.register.stillIn} value={totals.working} tone="text-warning" />
+        <Tile
+          icon={Clock}
+          label={t.register.stillIn}
+          value={totals.working}
+          tone="text-warning"
+          href={filterQuery("working")}
+          active={stateFilter === "working"}
+        />
         <Tile
           icon={UserX}
           label={t.status.attendance.absent}
           value={totals.absent}
           tone="text-danger"
+          href={filterQuery("absent")}
+          active={stateFilter === "absent"}
         />
         <Tile icon={TriangleAlert} label={t.common.late} value={totals.late} tone="text-warning" />
       </div>
+
+      {stateFilter ? (
+        <Link
+          href={filterQuery("")}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-secondary px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <X className="size-3.5" aria-hidden />
+          <Fill
+            template={t.register.clearStateFilter}
+            values={{ state: stateLabel(t, stateFilter) }}
+          />
+        </Link>
+      ) : null}
 
       <Card>
         <SectionTitle
@@ -258,12 +320,12 @@ export default async function RegisterPage({
 
         <p className="mt-3 text-xs text-muted-foreground">
           <Fill
-            template={rows.length === 1 ? t.register.showingOne : t.register.showing}
-            values={{ count: rows.length, expected: totals.expected }}
+            template={shownRows.length === 1 ? t.register.showingOne : t.register.showing}
+            values={{ count: shownRows.length, expected: totals.expected }}
           />
         </p>
 
-        {rows.length === 0 ? (
+        {shownRows.length === 0 ? (
           <p className="mt-6 rounded-2xl bg-secondary px-4 py-6 text-center text-sm text-muted-foreground">
             {t.common.nobodyMatches}
           </p>
@@ -278,10 +340,11 @@ export default async function RegisterPage({
                   <th className="pb-2 pe-3 font-semibold">{t.register.checkOut}</th>
                   <th className="pb-2 pe-3 text-end font-semibold">{t.common.hours}</th>
                   <th className="pb-2 font-semibold">{t.common.status}</th>
+                  {canCorrect ? <th className="pb-2 ps-3" /> : null}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {shownRows.map((row) => (
                   <tr key={row.person.id} className="border-b border-border/60 last:border-0">
                     <td className="py-2.5 pe-3">
                       <div className="flex items-center gap-2.5">
@@ -340,6 +403,21 @@ export default async function RegisterPage({
                         </span>
                       ) : null}
                     </td>
+                    {canCorrect ? (
+                      <td className="py-2.5 ps-3">
+                        {row.state === "not_required" ? null : (
+                          <CorrectDayButton
+                            day={{
+                              profileId: row.person.id,
+                              workDate: date,
+                              firstIn: clockTime(row.checkIn),
+                              lastOut: clockTime(row.checkOut),
+                              status: row.state === "working" ? "present" : row.state,
+                            }}
+                          />
+                        )}
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -356,14 +434,25 @@ function Tile({
   label,
   value,
   tone,
+  href,
+  active,
 }: {
   icon: typeof UserCheck;
   label: string;
   value: number;
   tone: string;
+  /** Doubles the tile as a one-click filter onto exactly that state. */
+  href?: string;
+  active?: boolean;
 }) {
-  return (
-    <Card className="flex items-center gap-3">
+  const card = (
+    <Card
+      className={cn(
+        "flex items-center gap-3",
+        href && "cursor-pointer hover:bg-secondary/60",
+        active && "ring-2 ring-primary",
+      )}
+    >
       <Icon className={cn("h-5 w-5", tone)} aria-hidden />
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -376,5 +465,12 @@ function Tile({
         </p>
       </div>
     </Card>
+  );
+  return href ? (
+    <Link href={href} className="block">
+      {card}
+    </Link>
+  ) : (
+    card
   );
 }

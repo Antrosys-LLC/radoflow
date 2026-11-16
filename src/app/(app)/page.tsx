@@ -17,7 +17,7 @@ import { ATTENDANCE_REFRESH_SECONDS, AutoRefresh } from "@/components/auto-refre
 import { DailyHours, VizRoot } from "@/components/charts";
 import { Fill } from "@/components/fill";
 import { Latin } from "@/components/latin";
-import { BarMeter, Card, SectionTitle, StatPill } from "@/components/ui-kit";
+import { Avatar, BarMeter, Card, SectionTitle, StatPill } from "@/components/ui-kit";
 import { dailyHourTotals } from "@/lib/attendance/daily-hours";
 import {
   liveWorkDate,
@@ -26,13 +26,24 @@ import {
   type ShiftClock,
 } from "@/lib/attendance/shift-now";
 import { DEFAULT_PAY_RULE, type AttendanceDay, type DayType } from "@/lib/payroll/types";
+import { isLeadership } from "@/lib/auth/antrosys";
 import { requireSession } from "@/lib/auth/session";
 import { dictionaryFor } from "@/lib/i18n";
 import { selectAllInBatches } from "@/lib/supabase/in-batches";
 import { canteenCardDepartmentIds } from "@/lib/people/canteen-cards";
 import { createClient } from "@/lib/supabase/server";
-import { formatDate, formatHours, formatPKR, formatTime, todayInPakistan } from "@/lib/time";
+import {
+  clockTime,
+  formatDate,
+  formatHours,
+  formatPKR,
+  formatTime,
+  todayInPakistan,
+} from "@/lib/time";
 import { cn } from "@/lib/utils";
+
+import { CorrectDayButton } from "./attendance/logs/correct-day";
+import { PendingApprovalsCard, type PendingApproval } from "./pending-approvals-card";
 
 export const metadata: Metadata = {
   title: { absolute: "Dashboard | Rado Attendance & Payroll" },
@@ -58,6 +69,19 @@ export default async function DashboardPage() {
   const seesPayroll = can("payroll.view");
   const seesDevices = can("devices.view");
   const seesDirectory = can("directory.view");
+
+  // The same test /approvals itself uses, so a card that says "nothing is
+  // waiting on you" never disagrees with the screen it points to.
+  const canDecideApprovals =
+    session.isSuperuser ||
+    isLeadership(session) ||
+    can("payroll.approve") ||
+    can("attendance.approve");
+  // Correcting a day straight from the absent list — the live board's own
+  // permission check, repeated here rather than shared, because the two
+  // screens may one day diverge on who may touch a punch.
+  const canCorrectAttendance =
+    session.isSuperuser || can("attendance.edit") || can("attendance.edit.all");
 
   // One instant for the date and the clock below: read apart, a load that
   // straddles midnight pairs yesterday's date with today's time.
@@ -124,47 +148,82 @@ export default async function DashboardPage() {
 
   const cardDepartments = await canteenCardDepartmentIds(supabase);
 
-  const [liveResult, meResult, payrollResult, devicesResult, deptResult, headcountResult] =
-    await Promise.all([
-      seesFloor ? supabase.from("live_attendance").select("*") : Promise.resolve({ data: null }),
-      // Yesterday too: after midnight a night worker's own day is still last night.
-      supabase
-        .from("attendance_days")
-        .select("work_date, first_in, last_out, regular_hours, minutes_late, is_late, status")
-        .eq("profile_id", session.userId)
-        .in("work_date", [yesterday, today]),
-      seesPayroll
-        ? supabase
-            .from("payroll_periods")
-            .select(
-              "id, label, status, total_net, total_gross, total_deductions, total_tax, headcount, period_end",
-            )
-            .order("period_start", { ascending: false })
-            .limit(1)
-        : Promise.resolve({ data: null }),
-      seesDevices
-        ? supabase.from("devices").select("id, name, status, last_seen_at").eq("is_active", true)
-        : Promise.resolve({ data: null }),
-      seesDirectory
-        ? supabase.from("departments").select("id, name")
-        : Promise.resolve({ data: null }),
-      // Everyone on the books, not only those the floor board tracks.
-      seesFloor
-        ? supabase
-            .from("profiles")
-            .select("id", { count: "exact", head: true })
-            .eq("status", "active")
-            // Kitchen cards are not part of the headcount.
-            .or(
-              cardDepartments.length
-                ? `department_id.is.null,department_id.not.in.(${cardDepartments.join(",")})`
-                : "id.not.is.null",
-            )
-        : Promise.resolve({ count: null }),
-    ]);
+  const [
+    liveResult,
+    meResult,
+    payrollResult,
+    devicesResult,
+    deptResult,
+    headcountResult,
+    approvalsResult,
+  ] = await Promise.all([
+    seesFloor ? supabase.from("live_attendance").select("*") : Promise.resolve({ data: null }),
+    // Yesterday too: after midnight a night worker's own day is still last night.
+    supabase
+      .from("attendance_days")
+      .select("work_date, first_in, last_out, regular_hours, minutes_late, is_late, status")
+      .eq("profile_id", session.userId)
+      .in("work_date", [yesterday, today]),
+    seesPayroll
+      ? supabase
+          .from("payroll_periods")
+          .select(
+            "id, label, status, total_net, total_gross, total_deductions, total_tax, headcount, period_end",
+          )
+          .order("period_start", { ascending: false })
+          .limit(1)
+      : Promise.resolve({ data: null }),
+    seesDevices
+      ? supabase.from("devices").select("id, name, status, last_seen_at").eq("is_active", true)
+      : Promise.resolve({ data: null }),
+    seesDirectory
+      ? supabase.from("departments").select("id, name")
+      : Promise.resolve({ data: null }),
+    // Everyone on the books, not only those the floor board tracks.
+    seesFloor
+      ? supabase
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "active")
+          // Kitchen cards are not part of the headcount.
+          .or(
+            cardDepartments.length
+              ? `department_id.is.null,department_id.not.in.(${cardDepartments.join(",")})`
+              : "id.not.is.null",
+          )
+      : Promise.resolve({ count: null }),
+    // Only the requests somebody else made: approving your own is refused
+    // server-side anyway, and a card that lists what you cannot act on is
+    // not the front door this is meant to be.
+    canDecideApprovals
+      ? supabase
+          .from("change_requests")
+          .select("id, title, summary, created_at, requested_by")
+          .eq("status", "pending")
+          .neq("requested_by", session.userId)
+          .order("created_at", { ascending: true })
+          .limit(50)
+      : Promise.resolve({ data: null }),
+  ]);
 
   const live = liveResult.data ?? [];
   const period = payrollResult.data?.[0] ?? null;
+
+  const approvalRows = approvalsResult.data ?? [];
+  const { data: requesters } = approvalRows.length
+    ? await supabase
+        .from("employee_directory")
+        .select("id, full_name")
+        .in("id", [...new Set(approvalRows.map((r) => r.requested_by))])
+    : { data: [] };
+  const requesterName = new Map((requesters ?? []).map((p) => [p.id, p.full_name ?? ""]));
+  const pendingApprovals: PendingApproval[] = approvalRows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    summary: row.summary,
+    createdAt: row.created_at,
+    requestedByName: requesterName.get(row.requested_by) ?? "",
+  }));
 
   // Contract firms are billed once and sit inside the run's gross, so the card
   // shows them as the part of the total they are rather than a bare number.
@@ -362,6 +421,11 @@ export default async function DashboardPage() {
         </p>
       </div>
 
+      {/* Leadership and approvers see this before anything else on the page:
+          a pay or attendance change is sitting unapplied until one of them
+          acts on it, and a badge tucked in the sidebar is too easy to miss. */}
+      {canDecideApprovals ? <PendingApprovalsCard requests={pendingApprovals} /> : null}
+
       {/* Own status. Everyone has this, including the CEO. */}
       <Card>
         <SectionTitle
@@ -513,6 +577,66 @@ export default async function DashboardPage() {
         </div>
       ) : null}
 
+      {/* Pulled out of the department card into its own section: the people
+          worth acting on should never be a line buried inside another card. */}
+      {seesFloor && missing.length > 0 ? (
+        <Card>
+          <SectionTitle
+            icon={TriangleAlert}
+            title={
+              <>
+                {t.dashboard.absentTodayTitle}
+                <span className="ms-2 inline-flex items-center justify-center rounded-full bg-danger px-2.5 py-0.5 text-xs font-bold text-white">
+                  <Latin>{missing.length}</Latin>
+                </span>
+              </>
+            }
+            subtitle={t.dashboard.absentTodayHint}
+            action={
+              <Link
+                href="/attendance"
+                className="inline-flex items-center gap-2 rounded-xl bg-secondary px-4 py-2 text-sm font-semibold text-foreground transition-all duration-300 hover:bg-primary-soft hover:text-primary"
+              >
+                {t.dashboard.viewFloorBoard}
+                <ArrowRight className="size-4 rtl-flip" />
+              </Link>
+            }
+          />
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            {missing.map((person) => (
+              <div
+                key={person.profile_id}
+                className="flex items-center gap-3 rounded-2xl bg-danger-soft/60 p-3"
+              >
+                <Avatar name={person.full_name ?? "??"} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    <Latin>{person.full_name}</Latin>
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    <Latin>{person.employee_code}</Latin> ·{" "}
+                    {deptName.get(person.department_id ?? "") ?? t.common.unassigned}
+                  </p>
+                </div>
+                {canCorrectAttendance ? (
+                  <CorrectDayButton
+                    day={{
+                      id: person.day_id,
+                      profileId: person.profile_id ?? "",
+                      workDate: person.work_date ?? today,
+                      firstIn: clockTime(person.first_in),
+                      lastOut: clockTime(person.last_out),
+                      status: person.day_status ?? "present",
+                    }}
+                  />
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
       <VizRoot>
         <DailyHours
           data={monthHours}
@@ -555,37 +679,6 @@ export default async function DashboardPage() {
                 ))}
               </div>
             )}
-
-            {missing.length > 0 ? (
-              <div className="mt-5 rounded-2xl bg-danger-soft p-4">
-                <p className="text-sm font-bold text-danger">
-                  <Fill
-                    template={t.dashboard.notCheckedInCount}
-                    values={{ count: missing.length }}
-                  />
-                </p>
-                <p className="mt-1 text-xs text-foreground">
-                  {/*
-                   * Joined in the markup rather than with `Array.join`, because
-                   * each name has to be isolated on its own — a run of names
-                   * concatenated into one string can be reordered wholesale in
-                   * a right-to-left paragraph.
-                   */}
-                  {missing.slice(0, 6).map((person, index) => (
-                    <span key={person.profile_id ?? index}>
-                      {index > 0 ? ", " : null}
-                      <Latin>{person.full_name}</Latin>
-                    </span>
-                  ))}
-                  {missing.length > 6 ? (
-                    <>
-                      {" "}
-                      <Fill template={t.dashboard.andMore} values={{ count: missing.length - 6 }} />
-                    </>
-                  ) : null}
-                </p>
-              </div>
-            ) : null}
           </Card>
         ) : null}
 

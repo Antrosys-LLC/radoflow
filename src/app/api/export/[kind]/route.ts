@@ -288,6 +288,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
         await registerDocument(supabase, {
           periodId: url.searchParams.get("period") ?? "",
           format,
+          deptIds,
+          ...(profileId ? { profileId } : {}),
         }),
       );
     }
@@ -312,15 +314,32 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
       .order("full_name");
 
     const everyone = withoutCanteenCards(staffRows ?? [], cardDepartments);
-    const staff = deptIds.length
+    const byDept = deptIds.length
       ? everyone.filter((p) => p.department_id && deptIds.includes(p.department_id))
       : everyone;
-    const scopeNote =
+    const deptScopeNote =
       deptIds.length === 1
         ? (deptName.get(deptIds[0]!) ?? "Department")
         : deptIds.length > 1
           ? `${deptIds.length} departments`
           : "Whole factory";
+
+    /*
+     * The third scope, on top of the factory and the department: one person,
+     * by their internal id or by the company roll number on their card — the
+     * number a supervisor actually has in front of them, not a UUID nobody
+     * can read off a terminal. Every kind below is scoped by this, not by
+     * `byDept` directly, so "whole factory, a department, or one roll
+     * number" is one rule rather than three kinds that each learned it on
+     * their own.
+     */
+    const staff = profileId
+      ? byDept.filter((p) => p.id === profileId || p.employee_code === profileId)
+      : byDept;
+    if (profileId && staff.length === 0) {
+      return NextResponse.json({ error: "No such person." }, { status: 404 });
+    }
+    const scopeNote = profileId && staff.length === 1 ? staff[0]!.full_name : deptScopeNote;
 
     // ---- People ------------------------------------------------------------
     if (kind === "people" || kind === "pay") {
@@ -407,10 +426,8 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
 
     // ---- Attendance log: every day's check-in and check-out ----------------
     if (kind === "attendance-log") {
-      const people = profileId ? staff.filter((p) => p.id === profileId) : staff;
-      if (profileId && people.length === 0) {
-        return NextResponse.json({ error: "No such person." }, { status: 404 });
-      }
+      // `staff` is already scoped to this one person, if `person` named one.
+      const people = staff;
 
       // Every date in the range, so a day with no punches shows as such
       // instead of silently not being in the file. A range too long to list is
@@ -923,10 +940,13 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
     }
 
     // ---- Payroll and payslips: priced by the payroll engine itself ---------
-    const targets = kind === "payslip" ? staff.filter((p) => p.id === profileId) : staff;
-    if (kind === "payslip" && targets.length === 0) {
+    // `staff` is already scoped to one person when `person` named one — a
+    // payslip is always exactly one person's, so it insists on that rather
+    // than silently printing whoever sorted first.
+    if (kind === "payslip" && !profileId) {
       return NextResponse.json({ error: "No such person." }, { status: 404 });
     }
+    const targets = staff;
 
     const outcome = await estimateSalaries(
       supabase,

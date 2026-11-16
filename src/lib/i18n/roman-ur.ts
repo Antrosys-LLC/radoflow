@@ -696,6 +696,17 @@ const roman: Dictionary = {
     yourRecords: "Aap ka record",
     everythingAvailable: "Jo kuch aap ke liye mojood hai",
     openMyProfile: "Meri profile kholein",
+    absentTodayTitle: "Aaj check-in nahi hua",
+    absentTodayHint:
+      "Agar koi wakai floor par hai to usay present mark karein — yeh approval ke baad hi lagu hoga.",
+    viewFloorBoard: "Floor board dekhein",
+    everyoneCheckedIn: "Sab ki check-in ho chuki hai.",
+    pendingApprovalsTitle: "Aap ki approval ka intezar",
+    pendingApprovalsHint:
+      "Tankhwah, attendance aur calendar ki woh tabdeeliyan jo kisi ne maangi hain",
+    viewAllApprovals: "Tamam approvals dekhein",
+    nothingAwaitingApproval: "Filhaal aap ki approval ke liye kuch nahi.",
+    andMoreWaiting: "aur {count} intezar mein",
   },
   attendance: {
     title: "Haazri",
@@ -733,6 +744,7 @@ const roman: Dictionary = {
     subtitleToday: "Aaj — har {seconds} second baad khud taza hota rahega",
     subtitleSettled: "Guzra hua din — ab adad nahi badlenge",
     stillIn: "Abhi IN hain",
+    clearStateFilter: "Sirf {state} dikhaya ja raha hai — hatayein",
     notRequired: "Haazri lazmi nahi",
     checkIn: "Aamad",
     checkOut: "Rawangi",

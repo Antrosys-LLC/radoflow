@@ -771,7 +771,19 @@ export function registerItemFromPayroll(
 
 export async function registerDocument(
   supabase: Client,
-  { periodId, format }: { periodId: string; format: "pdf" | "xlsx" },
+  {
+    periodId,
+    format,
+    deptIds = [],
+    profileId,
+  }: {
+    periodId: string;
+    format: "pdf" | "xlsx";
+    /** The whole run, unless narrowed to one or more departments. */
+    deptIds?: readonly string[];
+    /** Narrows to one person — by internal id or by their employee code. */
+    profileId?: string;
+  },
 ): Promise<Document> {
   const { data: period } = await supabase
     .from("payroll_periods")
@@ -780,13 +792,32 @@ export async function registerDocument(
     .maybeSingle();
   if (!period) return { ok: false, error: "No such pay run.", status: 404 };
 
-  const items = await payrollItems(supabase, period.id);
-  const ids = items.map((item) => item.profile_id);
+  const allItems = await payrollItems(supabase, period.id);
+  const allIds = allItems.map((item) => item.profile_id);
   const [people, deptName, movements] = await Promise.all([
-    directory(supabase, ids),
+    directory(supabase, allIds),
     departmentNames(supabase),
-    loadMovements(supabase as never, ids, period.period_start, period.period_end),
+    loadMovements(supabase as never, allIds, period.period_start, period.period_end),
   ]);
+
+  // One person, by id or by the number on their card, outranks a department:
+  // naming both is how "just this one person, in case two share a name" is
+  // asked for.
+  const items = profileId
+    ? allItems.filter((item) => {
+        const who = people.get(item.profile_id);
+        return item.profile_id === profileId || who?.employee_code === profileId;
+      })
+    : deptIds.length > 0
+      ? allItems.filter((item) => {
+          const who = people.get(item.profile_id);
+          return who?.department_id ? deptIds.includes(who.department_id) : false;
+        })
+      : allItems;
+  if (profileId && items.length === 0) {
+    return { ok: false, error: "No such person on this pay run.", status: 404 };
+  }
+  const ids = items.map((item) => item.profile_id);
 
   // Only a run saved before the salary column existed needs the profile's.
   const needsSalary = items.some((item) => item.monthly_salary == null);
@@ -808,15 +839,21 @@ export async function registerDocument(
 
   // A contract firm has no pay line of its own: it is billed once, from its
   // department, so it is added here or the register falls short of the run.
-  const { data: contractRows } = await supabase
-    .from("payroll_contract_items")
-    .select("department_id, amount")
-    .eq("period_id", period.id);
-  const contractItems: RegisterItem[] = (contractRows ?? []).map((row) => {
-    const department = deptName.get(row.department_id) ?? "Unassigned";
-    const amount = Number(row.amount);
-    return contractFirmItem(department, amount, `contract:${row.department_id}`);
-  });
+  // Not a person, so a one-person register never carries one; scoped to the
+  // chosen departments the same way the people above are.
+  const { data: contractRows } = profileId
+    ? { data: [] }
+    : await supabase
+        .from("payroll_contract_items")
+        .select("department_id, amount")
+        .eq("period_id", period.id);
+  const contractItems: RegisterItem[] = (contractRows ?? [])
+    .filter((row) => deptIds.length === 0 || deptIds.includes(row.department_id))
+    .map((row) => {
+      const department = deptName.get(row.department_id) ?? "Unassigned";
+      const amount = Number(row.amount);
+      return contractFirmItem(department, amount, `contract:${row.department_id}`);
+    });
 
   const groups = groupRegister([
     ...items.map((item) => {
@@ -835,9 +872,17 @@ export async function registerDocument(
     ...contractItems.map(toRegisterRow),
   ]);
 
+  const scopeNote = profileId
+    ? (people.get(items[0]?.profile_id ?? "")?.full_name ?? null)
+    : deptIds.length === 1
+      ? (deptName.get(deptIds[0]!) ?? null)
+      : deptIds.length > 1
+        ? `${deptIds.length} departments`
+        : null;
+
   const meta = {
     title: "SALARY REGISTER",
-    subtitle: `${period.label} · ${formatDate(period.period_start)} to ${formatDate(period.period_end)}`,
+    subtitle: `${period.label} · ${formatDate(period.period_start)} to ${formatDate(period.period_end)}${scopeNote ? ` · ${scopeNote}` : ""}`,
   };
   const month = period.period_start.slice(0, 7);
 

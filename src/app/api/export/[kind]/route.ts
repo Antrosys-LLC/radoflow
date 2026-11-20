@@ -80,6 +80,70 @@ const MAX_LOG_DAYS = 93;
 const money = (value: number) => Math.round(value);
 const hours = (value: number) => Math.round(value * 100) / 100;
 
+/**
+ * Every download that lists people reads the way the office works a
+ * printed register — department by department, not one alphabetical list
+ * with a department column buried in it. Sorts by department, then by
+ * whatever order the caller already put people in within it (stable), and
+ * opens each department with a heading row the PDF and XLSX writers both
+ * already know how to draw.
+ */
+function groupedByDepartment<
+  T,
+  R extends (string | number)[] | { cells: (string | number)[]; tone?: "late" | "absent" },
+>(items: T[], departmentOf: (item: T) => string, toRow: (item: T) => R): (R | { group: string })[] {
+  const sorted = [...items].sort((a, b) =>
+    (departmentOf(a) || "Unassigned").localeCompare(departmentOf(b) || "Unassigned"),
+  );
+  const rows: (R | { group: string })[] = [];
+  let dept: string | null = null;
+  for (let i = 0; i < sorted.length; i++) {
+    const item = sorted[i]!;
+    const d = departmentOf(item) || "Unassigned";
+    if (d !== dept) {
+      dept = d;
+      let count = 0;
+      for (let j = i; j < sorted.length && (departmentOf(sorted[j]!) || "Unassigned") === d; j++) {
+        count++;
+      }
+      rows.push({ group: `${d}  ·  ${count} ${count === 1 ? "person" : "people"}` });
+    }
+    rows.push(toRow(item));
+  }
+  return rows;
+}
+
+/**
+ * The same heading, but for a table already flattened to several rows per
+ * person (a date range's worth of check-in/check-out lines) — grouping has
+ * to watch for a change in `boundaryKey`, not re-sort, or a person's own
+ * days would scatter across their own heading. Person-first logs key on the
+ * department alone, since one person's dates are already kept together;
+ * date-first logs key on date and department together, so the heading opens
+ * again under each date.
+ */
+function withDepartmentHeadings<T, R>(
+  rows: T[],
+  boundaryKey: (row: T) => string,
+  departmentOf: (row: T) => string,
+  peopleByDepartment: Map<string, number>,
+  toRow: (row: T) => R,
+): (R | { group: string })[] {
+  const out: (R | { group: string })[] = [];
+  let lastKey: string | null = null;
+  for (const row of rows) {
+    const key = boundaryKey(row);
+    if (key !== lastKey) {
+      lastKey = key;
+      const d = departmentOf(row) || "Unassigned";
+      const count = peopleByDepartment.get(d) ?? 0;
+      out.push({ group: `${d}  ·  ${count} ${count === 1 ? "person" : "people"}` });
+    }
+    out.push(toRow(row));
+  }
+  return out;
+}
+
 /** The day after `date`, as `YYYY-MM-DD`. Parsed as UTC, like the rest. */
 function nextDay(date: string): string {
   const parsed = new Date(`${date}T00:00:00Z`);
@@ -366,20 +430,24 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
         { header: "CNIC", width: 18, format: "text" as const },
       ];
 
-      const rows = staff.map((p) => [
-        p.employee_code,
-        p.full_name,
-        departmentOf(p.department_id),
-        p.designation ?? "",
-        p.worker_type === "contractor" ? "Contractor" : "Employee",
-        Number(p.monthly_salary),
-        Number(p.duty_hours),
-        p.overtime_eligible ? "Yes" : "No",
-        p.sunday_policy,
-        p.requires_attendance ? "Yes" : "No",
-        p.flexible_hours ? "No" : "Yes",
-        p.cnic ?? "",
-      ]);
+      const rows = groupedByDepartment(
+        staff,
+        (p) => departmentOf(p.department_id),
+        (p) => [
+          p.employee_code,
+          p.full_name,
+          departmentOf(p.department_id),
+          p.designation ?? "",
+          p.worker_type === "contractor" ? "Contractor" : "Employee",
+          Number(p.monthly_salary),
+          Number(p.duty_hours),
+          p.overtime_eligible ? "Yes" : "No",
+          p.sunday_policy,
+          p.requires_attendance ? "Yes" : "No",
+          p.flexible_hours ? "No" : "Yes",
+          p.cnic ?? "",
+        ],
+      );
 
       const total = staff.reduce((t, p) => t + Number(p.monthly_salary), 0);
 
@@ -396,20 +464,24 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
               { header: "Duty", width: 40, align: "right" },
               { header: "Salary", width: 80, align: "right" },
             ],
-            rows: staff.map((p) => [
-              p.employee_code,
-              p.full_name,
-              departmentOf(p.department_id),
-              !p.requires_attendance
-                ? "Fixed"
-                : p.flexible_hours
-                  ? "By hours"
-                  : p.worker_type === "contractor"
-                    ? "Contract"
-                    : "Shift",
-              `${Number(p.duty_hours)}h`,
-              money(Number(p.monthly_salary)),
-            ]),
+            rows: groupedByDepartment(
+              staff,
+              (p) => departmentOf(p.department_id),
+              (p) => [
+                p.employee_code,
+                p.full_name,
+                departmentOf(p.department_id),
+                !p.requires_attendance
+                  ? "Fixed"
+                  : p.flexible_hours
+                    ? "By hours"
+                    : p.worker_type === "contractor"
+                      ? "Contract"
+                      : "Shift",
+                `${Number(p.duty_hours)}h`,
+                money(Number(p.monthly_salary)),
+              ],
+            ),
             totals: ["Total", `${staff.length} people`, "", "", "", money(total)],
           }),
           filename("people", "pdf"),
@@ -497,17 +569,20 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
       };
 
       const dayOf = new Map(logRows.map((row) => [`${row.profile_id}|${row.work_date}`, row]));
-      const byName = [...people].sort((a, b) => a.full_name.localeCompare(b.full_name));
       // The register page asks for the file grouped by date, then department,
-      // then name; the attendance log keeps one person's days together.
+      // then name; the attendance log keeps one person's days together — but
+      // both read department by department, never one flat alphabetical list.
       const byDay = url.searchParams.get("order") === "date";
-      const sorted = byDay
-        ? [...people].sort(
-            (a, b) =>
-              departmentOf(a.department_id).localeCompare(departmentOf(b.department_id)) ||
-              a.full_name.localeCompare(b.full_name),
-          )
-        : byName;
+      const sorted = [...people].sort(
+        (a, b) =>
+          departmentOf(a.department_id).localeCompare(departmentOf(b.department_id)) ||
+          a.full_name.localeCompare(b.full_name),
+      );
+      const peopleByDepartment = new Map<string, number>();
+      for (const p of sorted) {
+        const d = departmentOf(p.department_id) || "Unassigned";
+        peopleByDepartment.set(d, (peopleByDepartment.get(d) ?? 0) + 1);
+      }
 
       const build = (date: string, person: (typeof people)[number]) => {
         const row = dayOf.get(`${person.id}|${date}`);
@@ -561,35 +636,35 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
        */
       if (url.searchParams.get("report") === "till") {
         const asOf = formatDateTime(new Date());
-        const lines = [...people]
-          .sort(
-            (a, b) =>
-              departmentOf(a.department_id).localeCompare(departmentOf(b.department_id)) ||
-              a.full_name.localeCompare(b.full_name),
-          )
-          .map((person) => {
-            const mine = table.filter((r) => r.code === person.employee_code);
-            const punched = mine.filter((r) => r.punched);
-            const last = punched[punched.length - 1];
-            return [
-              person.employee_code,
-              person.full_name,
-              departmentOf(person.department_id),
-              punched.length,
-              mine.filter((r) => r.status === "Absent").length,
-              mine.filter((r) => r.late > 0).length,
-              mine.filter((r) => r.status === "No check-out").length,
-              hours(mine.reduce((t, r) => t + r.hours, 0)),
-              last ? `${last.date} ${last.checkIn}` : "—",
-              last ? (last.checkOut === "—" ? "Still in" : `${last.date} ${last.checkOut}`) : "—",
-            ];
-          });
+        const tillRow = (person: (typeof sorted)[number]) => {
+          const mine = table.filter((r) => r.code === person.employee_code);
+          const punched = mine.filter((r) => r.punched);
+          const last = punched[punched.length - 1];
+          return [
+            person.employee_code,
+            person.full_name,
+            departmentOf(person.department_id),
+            punched.length,
+            mine.filter((r) => r.status === "Absent").length,
+            mine.filter((r) => r.late > 0).length,
+            mine.filter((r) => r.status === "No check-out").length,
+            hours(mine.reduce((t, r) => t + r.hours, 0)),
+            last ? `${last.date} ${last.checkIn}` : "—",
+            last ? (last.checkOut === "—" ? "Still in" : `${last.date} ${last.checkOut}`) : "—",
+          ] as const;
+        };
+        const lines = groupedByDepartment(
+          sorted,
+          (p) => departmentOf(p.department_id),
+          (person) => tillRow(person) as unknown as (string | number)[],
+        );
         const tillTitle = `Check-in and check-out till now — ${profileId ? (people[0]?.full_name ?? "") : scopeNote}`;
         const tillSubtitle = `${period} · as of ${asOf}`;
-        const sum = (index: number) => lines.reduce((t, l) => t + Number(l[index]), 0);
+        const rawLines = sorted.map(tillRow);
+        const sum = (index: number) => rawLines.reduce((t, l) => t + Number(l[index]), 0);
         const totalsRow = [
           "Total",
-          `${lines.length} people`,
+          `${rawLines.length} people`,
           "",
           sum(3),
           sum(4),
@@ -669,7 +744,13 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
               { header: "Late (min)", width: 44, align: "right" },
               { header: "Status", width: 58 },
             ],
-            rows: table.map((r) => ({ cells: cells(r), ...toneOf(r) })),
+            rows: withDepartmentHeadings(
+              table,
+              byDay ? (r) => `${r.iso}|${r.department}` : (r) => r.department,
+              (r) => r.department,
+              peopleByDepartment,
+              (r) => ({ cells: cells(r), ...toneOf(r) }),
+            ),
             totals: ["Total", "", `${people.length} people`, "", "", "", totalHours, "", ""],
             orientation: "landscape",
           }),
@@ -710,19 +791,25 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
                 { header: "Late (min)", width: 11, format: "number" as const },
                 { header: "Status", width: 14, format: "text" as const },
               ],
-              rows: day.map((r) => ({
-                cells: [
-                  r.code,
-                  r.name,
-                  r.department,
-                  r.checkIn,
-                  r.checkOut,
-                  r.hours,
-                  r.late,
-                  r.status,
-                ],
-                ...toneOf(r),
-              })),
+              rows: withDepartmentHeadings(
+                day,
+                (r) => r.department,
+                (r) => r.department,
+                peopleByDepartment,
+                (r) => ({
+                  cells: [
+                    r.code,
+                    r.name,
+                    r.department,
+                    r.checkIn,
+                    r.checkOut,
+                    r.hours,
+                    r.late,
+                    r.status,
+                  ],
+                  ...toneOf(r),
+                }),
+              ),
               totals: [
                 "",
                 `${day.length} people`,
@@ -754,7 +841,13 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
               { header: "Late (min)", width: 11, format: "number" },
               { header: "Status", width: 14, format: "text" },
             ],
-            rows: table.map((r) => ({ cells: cells(r), ...toneOf(r) })),
+            rows: withDepartmentHeadings(
+              table,
+              byDay ? (r) => `${r.iso}|${r.department}` : (r) => r.department,
+              (r) => r.department,
+              peopleByDepartment,
+              (r) => ({ cells: cells(r), ...toneOf(r) }),
+            ),
             totals: ["", "", `${people.length} people`, "", "", "", totalHours, "", ""],
           },
           {
@@ -786,17 +879,21 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
                 format: "text" as const,
               })),
             ],
-            rows: byName.map((person) => [
-              person.employee_code,
-              person.full_name,
-              departmentOf(person.department_id),
-              ...dates.map((date) => {
-                const row = dayOf.get(`${person.id}|${date}`);
-                const a = row?.first_in ? formatTime(row.first_in) : "";
-                const b = row?.last_out ? formatTime(row.last_out) : "";
-                return a || b ? `${a || "?"} – ${b || "?"}` : "";
-              }),
-            ]),
+            rows: groupedByDepartment(
+              sorted,
+              (p) => departmentOf(p.department_id),
+              (person) => [
+                person.employee_code,
+                person.full_name,
+                departmentOf(person.department_id),
+                ...dates.map((date) => {
+                  const row = dayOf.get(`${person.id}|${date}`);
+                  const a = row?.first_in ? formatTime(row.first_in) : "";
+                  const b = row?.last_out ? formatTime(row.last_out) : "";
+                  return a || b ? `${a || "?"} – ${b || "?"}` : "";
+                }),
+              ],
+            ),
           },
         ]),
         filename("attendance-log", "xlsx"),
@@ -869,17 +966,21 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
         { header: "Absent days", width: 12, format: "number" as const },
       ];
 
-      const rows = computed.map((c) => [
-        c.person.employee_code,
-        c.person.full_name,
-        departmentOf(c.person.department_id),
-        c.workingDays,
-        hours(c.duty),
-        hours(c.overtime),
-        c.late,
-        c.lateMinutes,
-        c.absent,
-      ]);
+      const rows = groupedByDepartment(
+        computed,
+        (c) => departmentOf(c.person.department_id),
+        (c) => [
+          c.person.employee_code,
+          c.person.full_name,
+          departmentOf(c.person.department_id),
+          c.workingDays,
+          hours(c.duty),
+          hours(c.overtime),
+          c.late,
+          c.lateMinutes,
+          c.absent,
+        ],
+      );
 
       const sum = (pick: (c: (typeof computed)[number]) => number) =>
         computed.reduce((t, c) => t + pick(c), 0);
@@ -910,16 +1011,20 @@ export async function GET(request: NextRequest, context: { params: Promise<{ kin
               { header: "Late", width: 36, align: "right" },
               { header: "Absent", width: 42, align: "right" },
             ],
-            rows: computed.map((c) => [
-              c.person.employee_code,
-              c.person.full_name,
-              departmentOf(c.person.department_id),
-              c.workingDays,
-              hours(c.duty),
-              hours(c.overtime),
-              c.late,
-              c.absent,
-            ]),
+            rows: groupedByDepartment(
+              computed,
+              (c) => departmentOf(c.person.department_id),
+              (c) => [
+                c.person.employee_code,
+                c.person.full_name,
+                departmentOf(c.person.department_id),
+                c.workingDays,
+                hours(c.duty),
+                hours(c.overtime),
+                c.late,
+                c.absent,
+              ],
+            ),
             totals: [
               "Total",
               `${computed.length} people`,

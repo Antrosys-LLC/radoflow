@@ -151,6 +151,14 @@ export async function correctAttendanceDay(
     });
   }
 
+  // What the day held, for the record below and for undoing it.
+  const previousValues = {
+    first_in: before.first_in,
+    last_out: before.last_out,
+    regular_hours: before.regular_hours,
+    status: before.status,
+  };
+
   const { data, error } = await supabase
     .from("attendance_days")
     .update(payload)
@@ -164,8 +172,32 @@ export async function correctAttendanceDay(
     return { ok: false, message: "Nothing changed — that day is not yours to correct." };
   }
 
+  /*
+   * Leadership's own corrections apply at once, but they are not silent: every
+   * correction, whoever makes it, lands in the approvals list with its reason,
+   * where the owners and C-Level read it. Recorded as already approved, with
+   * what the day held before so it can be undone for an hour like any other.
+   * Best effort — the correction itself has stood by this point.
+   */
+  await supabase.from("change_requests").insert({
+    kind: "attendance_correction",
+    entity_table: "attendance_days",
+    entity_id: before.id,
+    payload: payload as never,
+    site_id: before.site_id,
+    title: `${person?.full_name ?? "Attendance"} — ${before.work_date}`,
+    summary: summary ? `${summary} · ${reason}` : reason,
+    requested_by: session.userId,
+    status: "approved",
+    decided_by: session.userId,
+    decided_at: new Date().toISOString(),
+    decision_note: "Made directly by leadership.",
+    previous_values: previousValues as never,
+  });
+
   revalidatePath("/attendance/logs");
   revalidatePath("/attendance");
+  revalidatePath("/approvals");
 
   return { ok: true, message: "Corrected." };
 }
